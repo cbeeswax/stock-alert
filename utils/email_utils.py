@@ -20,7 +20,10 @@ def format_summary(ema_list, high_list):
                 f"(Crossed {s['CrossoverDate']}, ${s['CrossoverPrice']} → ${s['CurrentPrice']}) "
                 f"{trend_tag}\n"
             )
-        summary += "\n"
+     else:
+        summary += "No EMA Crossovers with strong momentum today.\n"
+        
+    summary += "\n"
 
     if high_list:
         summary += "🚀 **New 52-Week Highs**\n\n"
