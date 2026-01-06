@@ -43,22 +43,32 @@ def format_summary(ema_list, high_list):
 
 
 def send_email_alert(ema_list, high_list, subject_prefix="📊 Market Summary", custom_body=None):
+     """
+    Sends an email with either a custom body or formatted summary of EMA and 52-week high signals.
+    Signals are sorted by Score descending for priority.
     """
-    Sends an email with either a custom body or formatted summary of EMA and high signals.
-    """
+    # --- Sort lists by Score descending ---
+    if ema_list:
+        ema_list = sorted(ema_list, key=lambda x: x.get("Score", 0), reverse=True)
+    if high_list:
+        high_list = sorted(high_list, key=lambda x: x.get("Score", 0), reverse=True)
+
+    # --- Build email body ---
     body = custom_body or format_summary(ema_list, high_list)
 
+    # --- Email credentials from environment ---
     sender = os.getenv("EMAIL_SENDER")
     receiver = os.getenv("EMAIL_RECEIVER")
     password = os.getenv("EMAIL_PASSWORD")
-
     subject = f"{subject_prefix} – {datetime.now().strftime('%Y-%m-%d')}"
 
+    # --- Build MIME email ---
     msg = MIMEText(body, "plain")
     msg["Subject"] = subject
     msg["From"] = sender
     msg["To"] = receiver
 
+    # --- Send email ---
     try:
         with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
             server.login(sender, password)
