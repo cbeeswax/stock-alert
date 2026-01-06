@@ -29,8 +29,8 @@ def get_ema_signals(ticker):
         (df["RSI14"] < 70)
     )
 
-    # Only consider last 20 days
-    df_filtered = df[mask].tail(20)
+    # Only consider last 50 days
+    df_filtered = df[mask].tail(40)
 
     if df_filtered.empty:
         return None
@@ -43,7 +43,7 @@ def get_ema_signals(ticker):
     pct_above_cross = (current_price - crossover_price) / crossover_price * 100
     pct_above_ema200 = (current_price - today["EMA200"]) / today["EMA200"] * 100
 
-    if not (5 <= pct_above_cross <= 10 and 5 <= pct_above_ema200 <= 10):
+    if not (3 <= pct_above_cross <= 12 and 3 <= pct_above_ema200 <= 12):
         return None
 
     # --- Momentum-adjusted score ---
