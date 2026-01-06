@@ -1,5 +1,5 @@
 import pandas as pd
-from utils.ema_utils import compute_ema_incremental
+from utils.ema_utils import compute_ema_incremental, compute_rsi
 
 def get_ema_signals(ticker):
     """
@@ -62,19 +62,6 @@ def get_ema_signals(ticker):
         "VolumeRatio": round(today["VolumeRatio"], 2),
         "Score": score,
     }
-
-# --- Optimized RSI ---
-def compute_rsi(series, period=14):
-    delta = series.diff()
-    gain = delta.clip(lower=0)
-    loss = -delta.clip(upper=0)
-
-    avg_gain = gain.ewm(alpha=1/period, adjust=False).mean()
-    avg_loss = loss.ewm(alpha=1/period, adjust=False).mean()
-
-    rs = avg_gain / avg_loss
-    rsi = 100 - (100 / (1 + rs))
-    return rsi
 
 # --- RSI filter is now implicit in the vectorized mask ---
 
