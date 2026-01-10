@@ -4,89 +4,155 @@ from email.mime.text import MIMEText
 import pandas as pd
 from datetime import datetime
 
-# --- Helper to create HTML table with row coloring ---
+
+# ============================================================
+# Helper: Create HTML table with score-based row coloring
+# ============================================================
 def df_to_html_table(df, score_column="Score", title=""):
-    if df.empty:
+    if df is None or df.empty:
         return f"<p>No {title} today.</p>"
 
-    # Build HTML table manually
-    html = f"<h2>{title}</h2><table border='1' style='border-collapse: collapse;'>"
+    html = f"<h2>{title}</h2>"
+    html += "<table border='1' cellpadding='4' cellspacing='0' style='border-collapse:collapse;'>"
+
     # Header
     html += "<tr>"
     for col in df.columns:
-        html += f"<th style='background-color:#d9d9d9;padding:4px'>{col}</th>"
+        html += (
+            "<th style='background-color:#f2f2f2;"
+            "font-weight:bold;text-align:center;'>"
+            f"{col}</th>"
+        )
     html += "</tr>"
 
     # Rows
     for _, row in df.iterrows():
         score = row.get(score_column, 0)
-        if score >= 8:
-            color = "#c6efce"  # green
-        elif score >= 6:
-            color = "#ffeb9c"  # yellow
-        else:
-            color = "#f4c7c3"  # red
 
-        html += f"<tr style='background-color:{color}'>"
+        if score >= 8.5:
+            color = "#c6efce"   # green
+        elif score >= 6.5:
+            color = "#ffeb9c"   # yellow
+        else:
+            color = "#f4c7c3"   # red
+
+        html += f"<tr style='background-color:{color};'>"
         for col in df.columns:
-            html += f"<td style='padding:4px'>{row[col]}</td>"
+            html += f"<td style='text-align:center;'>{row[col]}</td>"
         html += "</tr>"
 
-    html += "</table>"
+    html += "</table><br>"
     return html
 
-# --- Format 52-week highs as HTML list ---
-def highs_to_html(high_list):
+
+# ============================================================
+# Helper: Normalize 52-week highs into table-friendly DataFrame
+# ============================================================
+def normalize_highs_for_table(high_list):
     if not high_list:
-        return "<p>No new 52-week highs today.</p>"
+        return pd.DataFrame()
 
-    html = "<h2>🚀 New 52-Week Highs</h2><ul>"
-    for h in high_list:
-        html += f"<li>{h['Ticker']} ({h.get('Company','N/A')}): ${h['Close']} | Score: {h.get('Score','N/A')}</li>"
-    html += "</ul>"
-    return html
+    df = pd.DataFrame(high_list)
 
-# --- Main function to send email ---
-def send_email_alert(trade_df, high_list, ema_list=None, subject_prefix="📊 Market Summary", html_body=None):
+    preferred_columns = [
+        "Ticker",
+        "Company",
+        "Close",
+        "High52",
+        "PctFrom52High",
+        "EMA20",
+        "EMA50",
+        "EMA200",
+        "VolumeRatio",
+        "RSI14",
+        "Score"
+    ]
+
+    return df[[c for c in preferred_columns if c in df.columns]]
+
+
+# ============================================================
+# Main Email Sender
+# ============================================================
+def send_email_alert(
+    trade_df,
+    high_list,
+    ema_list=None,
+    subject_prefix="📊 Market Summary",
+    html_body=None,
+):
     """
     Sends an HTML email with:
-    - EMA crossovers
+    - EMA crossover pre-buy signals
     - Pre-buy actionable trades
-    - 52-week highs
-    All formatting is handled internally without jinja2.
+    - 52-week high continuation setups
+
+    All formatting handled here.
     """
-    # --- Build HTML body if not provided ---
+
+    # --------------------------------------------------------
+    # Build email body
+    # --------------------------------------------------------
     if html_body:
         body_html = html_body
     else:
         body_html = "<h1>📊 Daily Market Scan</h1>"
 
+        # ============================
         # EMA Crossovers
+        # ============================
         if ema_list:
             ema_df = pd.DataFrame(ema_list)
-            body_html += df_to_html_table(ema_df, score_column="Score", title="📈 EMA Crossovers")
+            body_html += df_to_html_table(
+                ema_df,
+                score_column="Score",
+                title="📈 EMA Crossovers (Trend Ignition)"
+            )
         else:
             body_html += "<p>No EMA crossovers today.</p>"
 
+        # ============================
         # Pre-Buy Actionable Trades
-        body_html += df_to_html_table(trade_df, score_column="Score", title="🔥 Pre-Buy Actionable Trades")
+        # ============================
+        body_html += df_to_html_table(
+            trade_df,
+            score_column="Score",
+            title="🔥 Pre-Buy Actionable Trades"
+        )
 
-        # 52-Week Highs
-        body_html += highs_to_html(high_list)
+        # ============================
+        # 52-Week High Continuations
+        # ============================
+        if high_list:
+            highs_df = normalize_highs_for_table(high_list)
+            body_html += df_to_html_table(
+                highs_df,
+                score_column="Score",
+                title="🚀 52-Week High Continuation (Trend Expansion)"
+            )
+        else:
+            body_html += "<p>No 52-week high continuation setups today.</p>"
 
-    # --- Email credentials from environment ---
+    # --------------------------------------------------------
+    # Email credentials
+    # --------------------------------------------------------
     sender = os.getenv("EMAIL_SENDER")
     receiver = os.getenv("EMAIL_RECEIVER")
     password = os.getenv("EMAIL_PASSWORD")
+
     subject = f"{subject_prefix} – {datetime.now().strftime('%Y-%m-%d')}"
 
-    # --- Build MIME email ---
+    # --------------------------------------------------------
+    # Build MIME email
+    # --------------------------------------------------------
     msg = MIMEText(body_html, "html")
     msg["Subject"] = subject
     msg["From"] = sender
     msg["To"] = receiver
 
-    # --- Send email ---
+    # --------------------------------------------------------
+    # Send email
+    # --------------------------------------------------------
     try:
         with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
             server.login(sender, password)
