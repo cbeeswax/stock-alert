@@ -66,7 +66,7 @@ def get_ema_signals(ticker):
     )
 
     return {
-        "Ticker": ticker,
+        "ticker": ticker,
         "CrossoverDate": str(signal.name.date()),
         "CrossoverPrice": round(signal["Close"], 2),
         "CurrentPrice": round(current_price, 2),
@@ -79,6 +79,7 @@ def get_ema_signals(ticker):
         "VolumeRatio": round(signal["VolumeRatio"], 2),
         "Score": score,
     }
+    
 
 
 # --- Momentum-adjusted scoring ---
