@@ -66,7 +66,7 @@ def get_ema_signals(ticker):
     )
 
     return {
-        "ticker": ticker,
+        "Ticker": ticker,
         "CrossoverDate": str(signal.name.date()),
         "CrossoverPrice": round(signal["Close"], 2),
         "CurrentPrice": round(current_price, 2),
