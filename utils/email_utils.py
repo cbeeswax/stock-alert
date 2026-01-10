@@ -2,59 +2,50 @@ import os
 import smtplib
 from email.mime.text import MIMEText
 from datetime import datetime
+import pandas as pd
 
-def format_summary(ema_list, high_list):
+def format_trade_table_html(trade_df):
     """
-    Builds a detailed, unified summary for email content.
-    Always includes both sections, even if empty.
-    Shows key metrics: Score, Trend, Volume, RSI, and prices.
+    Converts pre-buy actionable trades DataFrame into an HTML table for email.
     """
-    summary = ""
+    if trade_df.empty:
+        return "<p>No actionable trades today.</p>"
 
-    # --- EMA Crossover Section ---
-    summary += "📈 **EMA Crossovers (3–12% above crossover)**\n\n"
-    if ema_list:
-        for s in ema_list:
-            trend_tag = "🔥 Strong Momentum" if s["Score"] >= 8 else "⚡ Steady Trend"
-            summary += (
-                f"- {s['Ticker']}: +{s['PctAboveCrossover']}% above crossover "
-                f"(Crossed {s['CrossoverDate']}, ${s['CrossoverPrice']} → ${s['CurrentPrice']}) "
-                f"[EMA20:{s['EMA20']} EMA50:{s['EMA50']} EMA200:{s['EMA200']}] "
-                f"[VolRatio:{s['VolumeRatio']} RSI:{s['RSI14']}] "
-                f"{trend_tag} | Score: {s['Score']}\n"
-            )
+    html = "<h2>📈 Ready-to-Trade EMA Signals</h2>"
+    html += trade_df.to_html(index=False, border=1, justify="center", classes="trade-table")
+    return html
+
+def format_highs_html(high_list):
+    """
+    Converts 52-week highs into an HTML list.
+    """
+    if not high_list:
+        return "<p>No new 52-week highs today.</p>"
+
+    html = "<h2>🚀 New 52-Week Highs</h2><ul>"
+    for h in high_list:
+        html += (
+            f"<li>{h['Ticker']} ({h.get('Company','N/A')}): ${h['Close']} "
+            f"on {h.get('HighDate','N/A')} | Trend: {h.get('Trend','N/A')} "
+            f"| VolRatio: {h.get('VolumeRatio','N/A')} | RSI: {h.get('RSI14','N/A')} "
+            f"| Score: {h.get('Score','N/A')}</li>"
+        )
+    html += "</ul>"
+    return html
+
+def send_email_alert(trade_df, high_list, subject_prefix="📊 Market Summary", custom_body=None):
+    """
+    Sends an HTML email with actionable trades and 52-week highs.
+    If custom_body is provided, uses that instead.
+    """
+    # --- Build HTML body ---
+    if custom_body:
+        body_html = custom_body
     else:
-        summary += "No EMA Crossovers with strong momentum today.\n"
-    summary += "\n"
-
-    # --- 52-Week High Section ---
-    summary += "🚀 **New 52-Week Highs**\n\n"
-    if high_list:
-        for h in high_list:
-            summary += (
-                f"- {h['Ticker']} ({h['Company']}): ${h['Close']} on {h['HighDate']} "
-                f"[Trend: {h['Trend']} | VolRatio:{h['VolumeRatio']} | RSI:{h['RSI14']}] "
-                f"| Score: {h['Score']}\n"
-            )
-    else:
-        summary += "No new 52-week highs today.\n"
-
-    return summary
-
-
-def send_email_alert(ema_list, high_list, subject_prefix="📊 Market Summary", custom_body=None):
-    """
-    Sends an email with either a custom body or formatted summary of EMA and 52-week high signals.
-    Signals are sorted by Score descending for priority.
-    """
-    # --- Sort lists by Score descending ---
-    if ema_list:
-        ema_list = sorted(ema_list, key=lambda x: x.get("Score", 0), reverse=True)
-    if high_list:
-        high_list = sorted(high_list, key=lambda x: x.get("Score", 0), reverse=True)
-
-    # --- Build email body ---
-    body = custom_body or format_summary(ema_list, high_list)
+        body_html = ""
+        body_html += format_trade_table_html(trade_df)
+        body_html += "<br><br>"
+        body_html += format_highs_html(high_list)
 
     # --- Email credentials from environment ---
     sender = os.getenv("EMAIL_SENDER")
@@ -63,7 +54,7 @@ def send_email_alert(ema_list, high_list, subject_prefix="📊 Market Summary", 
     subject = f"{subject_prefix} – {datetime.now().strftime('%Y-%m-%d')}"
 
     # --- Build MIME email ---
-    msg = MIMEText(body, "plain")
+    msg = MIMEText(body_html, "html")
     msg["Subject"] = subject
     msg["From"] = sender
     msg["To"] = receiver
