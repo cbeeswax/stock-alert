@@ -4,29 +4,35 @@ from email.mime.text import MIMEText
 import pandas as pd
 from datetime import datetime
 
-# --- Helper to color-code rows based on Score ---
-def style_score(row, score_column="Score"):
-    score = row.get(score_column, 0)
-    if score >= 8:
-        color = "#c6efce"  # green
-    elif score >= 6:
-        color = "#ffeb9c"  # yellow
-    else:
-        color = "#f4c7c3"  # red
-    return [f'background-color: {color}'] * len(row)
-
-# --- Format DataFrame as HTML table with color coding ---
+# --- Helper to create HTML table with row coloring ---
 def df_to_html_table(df, score_column="Score", title=""):
     if df.empty:
         return f"<p>No {title} today.</p>"
 
-    styled = df.style.apply(style_score, axis=1, score_column=score_column)\
-                     .set_table_attributes('border="1" style="border-collapse: collapse;"')\
-                     .set_table_styles([
-                         {'selector': 'th', 'props': [('background-color', '#d9d9d9'), ('padding', '4px')]}
-                     ])\
-                     .render()
-    html = f"<h2>{title}</h2>{styled}"
+    # Build HTML table manually
+    html = f"<h2>{title}</h2><table border='1' style='border-collapse: collapse;'>"
+    # Header
+    html += "<tr>"
+    for col in df.columns:
+        html += f"<th style='background-color:#d9d9d9;padding:4px'>{col}</th>"
+    html += "</tr>"
+
+    # Rows
+    for _, row in df.iterrows():
+        score = row.get(score_column, 0)
+        if score >= 8:
+            color = "#c6efce"  # green
+        elif score >= 6:
+            color = "#ffeb9c"  # yellow
+        else:
+            color = "#f4c7c3"  # red
+
+        html += f"<tr style='background-color:{color}'>"
+        for col in df.columns:
+            html += f"<td style='padding:4px'>{row[col]}</td>"
+        html += "</tr>"
+
+    html += "</table>"
     return html
 
 # --- Format 52-week highs as HTML list ---
@@ -47,7 +53,7 @@ def send_email_alert(trade_df, high_list, ema_list=None, subject_prefix="📊 Ma
     - EMA crossovers
     - Pre-buy actionable trades
     - 52-week highs
-    All formatting is handled internally.
+    All formatting is handled internally without jinja2.
     """
     # --- Build HTML body if not provided ---
     if html_body:
