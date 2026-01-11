@@ -37,7 +37,7 @@ def df_to_html_table(df, score_column="Score", title=""):
             else:
                 color = "#f4c7c3"   # red
         else:
-            color = "#ffffff"      # neutral (watchlist)
+            color = "#ffffff"      # neutral (watchlist or non-scored lists)
 
         html += f"<tr style='background-color:{color};'>"
         for col in df.columns:
@@ -49,7 +49,7 @@ def df_to_html_table(df, score_column="Score", title=""):
 
 
 # ============================================================
-# Normalize 52-week lists into table-friendly DataFrame
+# Normalize lists for table-friendly DataFrames
 # ============================================================
 def normalize_highs_for_table(high_list):
     if not high_list:
@@ -95,14 +95,25 @@ def normalize_watchlist_for_table(watch_list):
     return df[[c for c in preferred_columns if c in df.columns]]
 
 
+def normalize_generic_for_table(generic_list):
+    """For consolidation_list or rs_list where Score may exist"""
+    if not generic_list:
+        return pd.DataFrame()
+
+    df = pd.DataFrame(generic_list)
+    return df  # Keep all available columns
+
+
 # ============================================================
 # Main Email Sender
 # ============================================================
 def send_email_alert(
     trade_df,
-    high_buy_list,
+    high_buy_list=None,
     high_watch_list=None,
     ema_list=None,
+    consolidation_list=None,
+    rs_list=None,
     subject_prefix="📊 Market Summary",
     html_body=None,
 ):
@@ -112,6 +123,8 @@ def send_email_alert(
     - Pre-buy actionable trades
     - 52-week high BUY-ready continuations
     - 52-week near-high WATCHLIST
+    - Consolidation Breakouts
+    - Relative Strength / Sector Leaders
 
     All formatting handled here.
     """
@@ -171,6 +184,32 @@ def send_email_alert(
             )
         else:
             body_html += "<p>No 52-week near-high watchlist stocks today.</p>"
+
+        # ============================
+        # Consolidation Breakouts
+        # ============================
+        if consolidation_list:
+            cons_df = normalize_generic_for_table(consolidation_list)
+            body_html += df_to_html_table(
+                cons_df,
+                score_column="Score" if "Score" in cons_df.columns else None,
+                title="📊 Consolidation Breakouts"
+            )
+        else:
+            body_html += "<p>No consolidation breakout setups today.</p>"
+
+        # ============================
+        # Relative Strength / Sector Leaders
+        # ============================
+        if rs_list:
+            rs_df = normalize_generic_for_table(rs_list)
+            body_html += df_to_html_table(
+                rs_df,
+                score_column="Score" if "Score" in rs_df.columns else None,
+                title="⭐ Relative Strength / Sector Leaders"
+            )
+        else:
+            body_html += "<p>No relative strength setups today.</p>"
 
     # --------------------------------------------------------
     # Email credentials
