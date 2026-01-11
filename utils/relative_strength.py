@@ -14,25 +14,36 @@ def check_relative_strength(ticker, benchmark_df, lookback=50):
         if stock_df.empty or "Close" not in stock_df.columns:
             return None
 
+        # --- Clean stock data ---
         stock_df = stock_df.copy()
         stock_df["Close"] = pd.to_numeric(stock_df["Close"], errors="coerce")
         stock_df.dropna(subset=["Close"], inplace=True)
 
-        # Ensure enough data
+        # --- Clean benchmark data ---
+        benchmark_df = benchmark_df.copy()
+        benchmark_df["Close"] = pd.to_numeric(benchmark_df["Close"], errors="coerce")
+        benchmark_df.dropna(subset=["Close"], inplace=True)
+
+        # --- Ensure enough data ---
         if len(stock_df) < lookback or len(benchmark_df) < lookback:
             return None
 
-        # Use last `lookback` rows for comparison
-        stock_ret = (stock_df["Close"].iloc[-1] - stock_df["Close"].iloc[-lookback]) / stock_df["Close"].iloc[-lookback]
-        benchmark_ret = (benchmark_df["Close"].iloc[-1] - benchmark_df["Close"].iloc[-lookback]) / benchmark_df["Close"].iloc[-lookback]
+        # --- Compute returns ---
+        stock_start = float(stock_df["Close"].iloc[-lookback])
+        stock_end = float(stock_df["Close"].iloc[-1])
+        benchmark_start = float(benchmark_df["Close"].iloc[-lookback])
+        benchmark_end = float(benchmark_df["Close"].iloc[-1])
+
+        stock_ret = (stock_end - stock_start) / stock_start
+        benchmark_ret = (benchmark_end - benchmark_start) / benchmark_start
 
         rs_ratio = stock_ret - benchmark_ret
 
-        # Only consider stocks outperforming benchmark
+        # --- Only consider outperforming stocks ---
         if rs_ratio <= 0:
             return None
 
-        # Simple score proportional to outperformance, capped at 10
+        # --- Score capped at 10 ---
         score = round(min(rs_ratio * 100, 10), 2)
 
         return {
