@@ -2,11 +2,12 @@ import time
 import pandas as pd
 import yfinance as yf
 from config import MIN_MARKET_CAP, SP500_SOURCE
-from utils.market_data import get_market_cap
+from utils.market_data import get_market_cap, get_historical_data
 from utils.ema_signals import get_ema_signals
-from utils.high_52w_strategy import score_52week_high_stock
+from utils.high_52w_strategy import score_52week_high_stock, is_52w_watchlist_candidate
 from utils.consolidation_breakout import check_consolidation_breakout
 from utils.relative_strength import check_relative_strength
+from utils.ema_utils import compute_rsi
 
 BACKOFF_BASE = 2
 MAX_RETRIES = 5
@@ -30,6 +31,7 @@ def run_scan(test_mode=False):
     high_list = []
     consolidation_list = []
     rs_list = []
+    watchlist_highs = []
 
     # Download benchmark for relative strength
     benchmark_df = yf.download("SPY", period="3mo", interval="1d")
@@ -59,33 +61,47 @@ def run_scan(test_mode=False):
 
         # --- 52-Week High ---
         try:
-            high_result = score_52week_high_stock(ticker)
-            if high_result:
-                high_list.append(high_result)
+            df = get_historical_data(ticker)
+            if df.empty or "Close" not in df.columns:
+                continue
+            df = df.copy()
+            df["Close"] = pd.to_numeric(df["Close"], errors="coerce")
+            df["Volume"] = pd.to_numeric(df["Volume"], errors="coerce").fillna(0)
+            df.dropna(subset=["Close"], inplace=True)
+
+            close_today = df["Close"].iloc[-1]
+            high_52w = df["Close"].rolling(252, min_periods=1).max().iloc[-1]
+            pct_from_high = (close_today - high_52w) / high_52w * 100
+
+            ema20 = df["Close"].ewm(span=20, adjust=False).mean().iloc[-1]
+            ema50 = df["Close"].ewm(span=50, adjust=False).mean().iloc[-1]
+            ema200 = df["Close"].ewm(span=200, adjust=False).mean().iloc[-1]
+
+            avg_vol50 = df["Volume"].rolling(50).mean().iloc[-1]
+            vol_ratio = df["Volume"].iloc[-1] / max(avg_vol50, 1)
+
+            rsi14 = compute_rsi(df["Close"], 14).iloc[-1]
+
+            row = {
+                "Ticker": ticker,
+                "Close": close_today,
+                "High52": high_52w,
+                "PctFrom52High": pct_from_high,
+                "EMA20": ema20,
+                "EMA50": ema50,
+                "EMA200": ema200,
+                "VolumeRatio": vol_ratio,
+                "RSI14": rsi14
+            }
+
+            score = score_52week_high_stock(row)
+            if score is not None:
+                row["Score"] = score
+                high_list.append(row)
+            elif is_52w_watchlist_candidate(row):
+                watchlist_highs.append(row)
+
         except Exception as e:
             print(f"⚠️ [scanner.py] Error processing 52-week high for {ticker}: {e}")
 
-        # --- Consolidation Breakout ---
-        try:
-            cons_result = check_consolidation_breakout(ticker)
-            if cons_result:
-                consolidation_list.append(cons_result)
-        except Exception as e:
-            print(f"⚠️ [scanner.py] Error processing consolidation breakout for {ticker}: {e}")
-
-        # --- Relative Strength ---
-        try:
-            rs_result = check_relative_strength(ticker, benchmark_df)
-            if rs_result:
-                rs_list.append(rs_result)
-        except Exception as e:
-            print(f"⚠️ [scanner.py] Error processing relative strength for {ticker}: {e}")
-
-    # --- Summary ---
-    print("✅ Scan completed!")
-    print(f"📈 EMA Crossovers: {len(ema_list)} stocks")
-    print(f"🔥 52-week Highs: {len(high_list)} stocks")
-    print(f"🔥 Consolidation Breakouts: {len(consolidation_list)} stocks")
-    print(f"🚀 Relative Strength Leaders: {len(rs_list)} stocks")
-
-    return ema_list, high_list, consolidation_list, rs_list
+        # --- Consolidation Breakou
