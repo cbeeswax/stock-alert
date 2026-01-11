@@ -27,14 +27,17 @@ def df_to_html_table(df, score_column="Score", title=""):
 
     # Rows
     for _, row in df.iterrows():
-        score = row.get(score_column, 0)
+        score = row.get(score_column, 0) if score_column else 0
 
-        if score >= 8.5:
-            color = "#c6efce"   # green
-        elif score >= 6.5:
-            color = "#ffeb9c"   # yellow
+        if score_column:
+            if score >= 8.5:
+                color = "#c6efce"   # green
+            elif score >= 6.5:
+                color = "#ffeb9c"   # yellow
+            else:
+                color = "#f4c7c3"   # red
         else:
-            color = "#f4c7c3"   # red
+            color = "#ffffff"      # neutral (watchlist)
 
         html += f"<tr style='background-color:{color};'>"
         for col in df.columns:
@@ -46,7 +49,7 @@ def df_to_html_table(df, score_column="Score", title=""):
 
 
 # ============================================================
-# Helper: Normalize 52-week highs into table-friendly DataFrame
+# Normalize 52-week lists into table-friendly DataFrame
 # ============================================================
 def normalize_highs_for_table(high_list):
     if not high_list:
@@ -65,7 +68,28 @@ def normalize_highs_for_table(high_list):
         "EMA200",
         "VolumeRatio",
         "RSI14",
-        "Score"
+        "Score",
+    ]
+
+    return df[[c for c in preferred_columns if c in df.columns]]
+
+
+def normalize_watchlist_for_table(watch_list):
+    if not watch_list:
+        return pd.DataFrame()
+
+    df = pd.DataFrame(watch_list)
+
+    preferred_columns = [
+        "Ticker",
+        "Company",
+        "Close",
+        "High52",
+        "PctFrom52High",
+        "EMA20",
+        "EMA50",
+        "EMA200",
+        "RSI14",
     ]
 
     return df[[c for c in preferred_columns if c in df.columns]]
@@ -76,7 +100,8 @@ def normalize_highs_for_table(high_list):
 # ============================================================
 def send_email_alert(
     trade_df,
-    high_list,
+    high_buy_list,
+    high_watch_list=None,
     ema_list=None,
     subject_prefix="📊 Market Summary",
     html_body=None,
@@ -85,7 +110,8 @@ def send_email_alert(
     Sends an HTML email with:
     - EMA crossover pre-buy signals
     - Pre-buy actionable trades
-    - 52-week high continuation setups
+    - 52-week high BUY-ready continuations
+    - 52-week near-high WATCHLIST
 
     All formatting handled here.
     """
@@ -121,17 +147,30 @@ def send_email_alert(
         )
 
         # ============================
-        # 52-Week High Continuations
+        # 52-Week High BUY-READY
         # ============================
-        if high_list:
-            highs_df = normalize_highs_for_table(high_list)
+        if high_buy_list:
+            highs_df = normalize_highs_for_table(high_buy_list)
             body_html += df_to_html_table(
                 highs_df,
                 score_column="Score",
-                title="🚀 52-Week High Continuation (Trend Expansion)"
+                title="🚀 52-Week High Continuation (BUY-READY)"
             )
         else:
-            body_html += "<p>No 52-week high continuation setups today.</p>"
+            body_html += "<p>No BUY-ready 52-week continuation setups today.</p>"
+
+        # ============================
+        # 52-Week High WATCHLIST
+        # ============================
+        if high_watch_list:
+            watch_df = normalize_watchlist_for_table(high_watch_list)
+            body_html += df_to_html_table(
+                watch_df,
+                score_column=None,
+                title="👀 52-Week Near-High Watchlist"
+            )
+        else:
+            body_html += "<p>No 52-week near-high watchlist stocks today.</p>"
 
     # --------------------------------------------------------
     # Email credentials
