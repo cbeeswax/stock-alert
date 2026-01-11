@@ -29,9 +29,9 @@ def run_scan(test_mode=False):
     # --- Initialize output lists ---
     ema_list = []
     high_list = []
+    watchlist_highs = []
     consolidation_list = []
     rs_list = []
-    watchlist_highs = []
 
     # Download benchmark for relative strength
     benchmark_df = yf.download("SPY", period="3mo", interval="1d")
@@ -104,4 +104,29 @@ def run_scan(test_mode=False):
         except Exception as e:
             print(f"⚠️ [scanner.py] Error processing 52-week high for {ticker}: {e}")
 
-        # --- Consolidation Breakou
+        # --- Consolidation Breakout ---
+        try:
+            cons_result = check_consolidation_breakout(ticker)
+            if cons_result:
+                consolidation_list.append(cons_result)
+        except Exception as e:
+            print(f"⚠️ [scanner.py] Error processing consolidation breakout for {ticker}: {e}")
+
+        # --- Relative Strength ---
+        try:
+            rs_result = check_relative_strength(ticker, benchmark_df)
+            if rs_result:
+                rs_list.append(rs_result)
+        except Exception as e:
+            print(f"⚠️ [scanner.py] Error processing relative strength for {ticker}: {e}")
+
+    # --- Summary ---
+    print("✅ Scan completed!")
+    print(f"📈 EMA Crossovers: {len(ema_list)} stocks")
+    print(f"🔥 52-week Highs (BUY-READY): {len(high_list)} stocks")
+    print(f"👀 52-week Highs (WATCHLIST): {len(watchlist_highs)} stocks")
+    print(f"🔥 Consolidation Breakouts: {len(consolidation_list)} stocks")
+    print(f"🚀 Relative Strength Leaders: {len(rs_list)} stocks")
+
+    # --- RETURN ALL LISTS ---
+    return ema_list, high_list, watchlist_highs, consolidation_list, rs_list
