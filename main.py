@@ -1,7 +1,7 @@
 from utils.scanner import run_scan
 from utils.pre_buy_check import pre_buy_check
 from utils.email_utils import send_email_alert
-from utils.high_52w_strategy import score_52week_high_stock
+from utils.high_52w_strategy import score_52week_high_stock, is_52w_watchlist_candidate
 import pandas as pd
 
 if __name__ == "__main__":
@@ -14,18 +14,31 @@ if __name__ == "__main__":
     ema_list, high_list, high_watch_list, consolidation_list, rs_list = run_scan(test_mode=False)
 
     # --------------------------------------------------
-    # Step 2: Apply pre-buy checks on EMA setups
+    # Step 2: Label strategy for each signal
     # --------------------------------------------------
-    trade_ready = pre_buy_check(ema_list)
+    for s in ema_list:
+        s["Strategy"] = "EMA Crossover"
+    for s in high_list:
+        s["Strategy"] = "52-Week High"
+    for s in consolidation_list:
+        s["Strategy"] = "Consolidation Breakout"
+    for s in rs_list:
+        s["Strategy"] = "Relative Strength"
 
     # --------------------------------------------------
-    # Step 3: Console summary
+    # Step 3: Combine all signals for pre-buy checks
+    # --------------------------------------------------
+    combined_signals = ema_list + high_list + consolidation_list + rs_list
+    trade_ready = pre_buy_check(combined_signals)
+
+    # --------------------------------------------------
+    # Step 4: Console summary
     # --------------------------------------------------
     # EMA Crossovers
     if ema_list:
         print("\n📈 EMA Crossovers:")
         for s in ema_list:
-            print(f"{s['Ticker']} - {s['PctAboveCrossover']}% | Score: {s['Score']}")
+            print(f"{s['Ticker']} - {s.get('PctAboveCrossover','N/A')}% | Score: {s.get('Score','N/A')}")
     else:
         print("\n📈 No EMA crossovers today.")
 
@@ -34,8 +47,9 @@ if __name__ == "__main__":
         print("\n🔥 Pre-Buy Actionable Trades:")
         for t in trade_ready.to_dict(orient="records"):
             print(
-                f"{t['Ticker']} | Entry: {t['Entry']} | Stop: {t['StopLoss']} | "
-                f"Target: {t['Target']} | Score: {t['Score']}"
+                f"{t['Ticker']} | Strategy: {t['Strategy']} | "
+                f"Entry: {t['Entry']} | Stop: {t['StopLoss']} | Target: {t['Target']} | "
+                f"Score: {t['Score']}"
             )
     else:
         print("\n🔥 No actionable trades today.")
@@ -73,8 +87,7 @@ if __name__ == "__main__":
         print("\n💪 No relative strength leaders today.")
 
     # --------------------------------------------------
-    # Step 4: Send HTML email
-    # Formatting fully handled in email_utils.py
+    # Step 5: Send HTML email
     # --------------------------------------------------
     send_email_alert(
         trade_df=trade_ready,
