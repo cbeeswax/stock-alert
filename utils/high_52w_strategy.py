@@ -19,7 +19,7 @@ def score_52week_high_stock(row):
     # ----------------------------
     # 1️⃣ HARD FILTERS
     # ----------------------------
-    if not (0 >= row["PctFrom52High"] >= -5):
+    if not (0 >= row["PctFrom52High"] >= -8):
         return None
 
     if not (row["EMA20"] > row["EMA50"] > row["EMA200"]):
