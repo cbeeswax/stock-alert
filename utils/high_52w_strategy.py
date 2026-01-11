@@ -61,3 +61,19 @@ def score_52week_high_stock(row):
     final_score = round(base_score * (1 + momentum_boost), 2)
 
     return final_score
+
+def is_52w_watchlist_candidate(row):
+    """
+    NEAR-HIGH watchlist (monitor, not buy)
+    """
+
+    if not (-15 <= row["PctFrom52High"] < -8):
+        return False
+
+    if not (row["EMA20"] > row["EMA50"] > row["EMA200"]):
+        return False
+
+    if row["RSI14"] >= 80:
+        return False
+
+    return True
