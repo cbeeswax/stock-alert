@@ -4,7 +4,10 @@ from utils.market_data import get_historical_data
 def check_relative_strength(ticker, benchmark_df, lookback=50):
     """
     Checks if a stock is outperforming a benchmark (e.g., SPY/Nasdaq)
-    - lookback: number of days to compare
+    over a lookback period.
+    
+    Returns a dict with performance metrics and a score if outperforming,
+    else returns None.
     """
     try:
         stock_df = get_historical_data(ticker)
@@ -12,20 +15,25 @@ def check_relative_strength(ticker, benchmark_df, lookback=50):
             return None
 
         stock_df = stock_df.copy()
-        stock_df["Close"] = pd.to_numeric(stock_df["Close"], errors="coerce").dropna()
+        stock_df["Close"] = pd.to_numeric(stock_df["Close"], errors="coerce")
+        stock_df.dropna(subset=["Close"], inplace=True)
 
-        if len(stock_df) < lookback:
+        # Ensure enough data
+        if len(stock_df) < lookback or len(benchmark_df) < lookback:
             return None
 
+        # Use last `lookback` rows for comparison
         stock_ret = (stock_df["Close"].iloc[-1] - stock_df["Close"].iloc[-lookback]) / stock_df["Close"].iloc[-lookback]
         benchmark_ret = (benchmark_df["Close"].iloc[-1] - benchmark_df["Close"].iloc[-lookback]) / benchmark_df["Close"].iloc[-lookback]
 
         rs_ratio = stock_ret - benchmark_ret
-        if rs_ratio <= 0:
-            return None  # Not outperforming
 
-        # Simple score: proportional to outperformance
-        score = round(min(rs_ratio * 100, 10), 2)  # cap at 10
+        # Only consider stocks outperforming benchmark
+        if rs_ratio <= 0:
+            return None
+
+        # Simple score proportional to outperformance, capped at 10
+        score = round(min(rs_ratio * 100, 10), 2)
 
         return {
             "Ticker": ticker,
