@@ -1,7 +1,7 @@
 from utils.scanner import run_scan
 from utils.pre_buy_check import pre_buy_check
 from utils.email_utils import send_email_alert
-from utils.high_52w_strategy import score_52week_high_stock, is_52w_watchlist_candidate
+from utils.high_52w_strategy import score_52week_high_stock
 import pandas as pd
 
 if __name__ == "__main__":
@@ -9,9 +9,9 @@ if __name__ == "__main__":
 
     # --------------------------------------------------
     # Step 1: Run complete scan
-    # Returns: ema_list, high_list, consolidation_list, rs_list
+    # Returns: ema_list, high_list (BUY-ready), watchlist_highs, consolidation_list, rs_list
     # --------------------------------------------------
-    ema_list, high_list, consolidation_list, rs_list = run_scan(test_mode=False)
+    ema_list, high_list, high_watch_list, consolidation_list, rs_list = run_scan(test_mode=False)
 
     # --------------------------------------------------
     # Step 2: Apply pre-buy checks on EMA setups
@@ -19,21 +19,7 @@ if __name__ == "__main__":
     trade_ready = pre_buy_check(ema_list)
 
     # --------------------------------------------------
-    # Step 3: Split 52-week highs into BUY-ready and WATCHLIST
-    # --------------------------------------------------
-    high_buy_list = []
-    high_watch_list = []
-
-    for h in high_list or []:
-        score = score_52week_high_stock(h)
-        if score is not None:
-            h["Score"] = score
-            high_buy_list.append(h)
-        elif is_52w_watchlist_candidate(h):
-            high_watch_list.append(h)
-
-    # --------------------------------------------------
-    # Step 4: Console summary
+    # Step 3: Console summary
     # --------------------------------------------------
     # EMA Crossovers
     if ema_list:
@@ -55,10 +41,10 @@ if __name__ == "__main__":
         print("\n🔥 No actionable trades today.")
 
     # 52-Week High BUY-READY
-    if high_buy_list:
+    if high_list:
         print("\n🚀 52-Week High BUY-READY:")
-        for h in high_buy_list:
-            print(f"{h['Ticker']} | Score: {h['Score']}")
+        for h in high_list:
+            print(f"{h['Ticker']} | Score: {h.get('Score', 'N/A')}")
     else:
         print("\n🚀 No BUY-ready 52-week highs today.")
 
@@ -66,7 +52,7 @@ if __name__ == "__main__":
     if high_watch_list:
         print("\n👀 52-Week High WATCHLIST:")
         for h in high_watch_list:
-            print(f"{h['Ticker']} | {h['PctFrom52High']}% from high")
+            print(f"{h['Ticker']} | {h['PctFrom52High']:.2f}% from high")
     else:
         print("\n👀 No watchlist candidates today.")
 
@@ -87,12 +73,12 @@ if __name__ == "__main__":
         print("\n💪 No relative strength leaders today.")
 
     # --------------------------------------------------
-    # Step 5: Send HTML email
+    # Step 4: Send HTML email
     # Formatting fully handled in email_utils.py
     # --------------------------------------------------
     send_email_alert(
         trade_df=trade_ready,
-        high_buy_list=high_buy_list,
+        high_buy_list=high_list,
         high_watch_list=high_watch_list,
         ema_list=ema_list,
         consolidation_list=consolidation_list,
