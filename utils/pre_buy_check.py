@@ -3,7 +3,6 @@ import numpy as np
 from utils.market_data import get_historical_data
 from utils.ema_utils import compute_rsi
 
-
 def compute_adx(df, period=14):
     """
     Compute ADX (Average Directional Index) for trend strength.
@@ -31,54 +30,70 @@ def compute_adx(df, period=14):
     adx = dx.rolling(period).mean()
     return adx
 
-
-def pre_buy_check(ema_list):
+def calculate_atr(df, period=14):
     """
-    Apply pre-buy filters and calculate entry/stop/target levels.
-    Returns a DataFrame with actionable info.
+    ATR for stop/target calculation
     """
-    actionable = []
+    high = df["High"]
+    low = df["Low"]
+    close = df["Close"]
 
-    for s in ema_list:
-        ticker = s["Ticker"]
+    tr = pd.concat([
+        high - low,
+        (high - close.shift(1)).abs(),
+        (low - close.shift(1)).abs()
+    ], axis=1).max(axis=1)
+
+    atr = tr.rolling(period).mean()
+    return atr.iloc[-1] if not atr.empty else 0
+
+def pre_buy_check(combined_signals, rr_ratio=2):
+    """
+    Apply pre-buy filters to all strategy signals and calculate
+    entry, stop, target levels using ATR + R:R.
+    """
+    trades = []
+
+    for s in combined_signals:
+        ticker = s['Ticker']
+        strategy = s.get('Strategy','Unknown')
+
         df = get_historical_data(ticker)
-        if df.empty or len(df) < 50:
+        if df.empty or len(df) < 30:
             continue
 
-        # Compute trend & momentum indicators
-        df["RSI14"] = compute_rsi(df["Close"], 14)
-        df["ADX14"] = compute_adx(df)
-        df["ATR14"] = df["Close"].rolling(14).apply(lambda x: x.max() - x.min())
+        df = df.tail(60)  # last 60 days
+        close = df['Close'].iloc[-1]
 
-        current = df.iloc[-1]
+        # ATR-based stop and target
+        atr = calculate_atr(df)
+        if atr == 0:
+            atr = close * 0.02  # fallback 2%
 
-        # --- Filters ---
-        trend_ok = s["EMA20"] > s["EMA50"] and s["EMA50"] > s["EMA200"]
-        rsi_ok = 45 <= current["RSI14"] <= 72
-        adx_ok = current["ADX14"] >= 20  # strong trend
-        price_ok = current["Close"] <= s["CurrentPrice"] * 1.05  # not too extended
+        entry = close
+        stop = entry - atr
+        target = entry + rr_ratio * (entry - stop)
 
-        if all([trend_ok, rsi_ok, adx_ok, price_ok]):
-            # --- Suggested levels ---
-            entry_price = round(s["CurrentPrice"], 2)
-            stop_loss = round(s["EMA50"], 2)  # below EMA50
-            target = round(entry_price + 2 * (entry_price - stop_loss), 2)  # 2x RR
+        # Additional EMA filters for EMA strategy
+        if strategy == 'EMA Crossover':
+            df['RSI14'] = compute_rsi(df['Close'], 14)
+            df['ADX14'] = compute_adx(df)
+            trend_ok = s['EMA20'] > s['EMA50'] > s['EMA200']
+            rsi_ok = 45 <= df['RSI14'].iloc[-1] <= 72
+            adx_ok = df['ADX14'].iloc[-1] >= 20
+            if not all([trend_ok, rsi_ok, adx_ok]):
+                continue  # skip if EMA trend filter fails
 
-            actionable.append({
-                "Ticker": ticker,
-                "Entry": entry_price,
-                "StopLoss": stop_loss,
-                "Target": target,
-                "PctAboveCrossover": s["PctAboveCrossover"],
-                "PctAboveEMA200": s["PctAboveEMA200"],
-                "RSI14": round(current["RSI14"], 1),
-                "ADX14": round(current["ADX14"], 1),
-                "ATR14": round(current["ATR14"], 2),
-                "Score": s["Score"]
-            })
+        trades.append({
+            'Ticker': ticker,
+            'Strategy': strategy,
+            'Entry': round(entry,2),
+            'StopLoss': round(stop,2),
+            'Target': round(target,2),
+            'Score': s.get('Score',0)
+        })
 
-    df_actionable = pd.DataFrame(actionable)
-    if not df_actionable.empty:
-        df_actionable = df_actionable.sort_values(by="Score", ascending=False)
-
-    return df_actionable
+    df_trades = pd.DataFrame(trades)
+    if not df_trades.empty:
+        df_trades = df_trades.sort_values(by='Score', ascending=False)
+    return df_trades

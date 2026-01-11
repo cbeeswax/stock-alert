@@ -30,7 +30,17 @@ This project scans U.S. stocks daily to identify high-probability swing trade se
 - Stocks slightly below 52-week highs not yet BUY-ready
 - Monitored for potential breakout or pullback opportunities
 
+### 📊 Consolidation Breakouts
+- Stocks breaking out from multi-week sideways consolidation zones
+- Confirmed by above-average volume and trend continuation
+- Weighted score based on consolidation duration, breakout strength, and momentum
+
+### ⭐ Relative Strength / Sector Leaders
+- Stocks outperforming peers in their sector or index
+- Identified via relative price strength and volume
+- Weighted score based on sector leadership and trend momentum
+
 ## Email Alerts
 - Formatted HTML email automatically sent daily
-- Includes EMA crossovers, pre-buy trades, BUY-ready 52-week highs, and watchlist
+- Includes EMA crossovers, pre-buy trades, BUY-ready 52-week highs, watchlist, consolidation breakouts, and relative strength setups
 - Scores are color-coded for priority
