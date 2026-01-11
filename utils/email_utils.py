@@ -12,6 +12,10 @@ def df_to_html_table(df, score_column="Score", title=""):
     if df is None or df.empty:
         return f"<p>No {title} today.</p>"
 
+    # --- Sort by Score descending if score exists ---
+    if score_column and score_column in df.columns:
+        df = df.sort_values(by=score_column, ascending=False)
+
     html = f"<h2>{title}</h2>"
     html += "<table border='1' cellpadding='4' cellspacing='0' style='border-collapse:collapse;'>"
 
@@ -125,8 +129,6 @@ def send_email_alert(
     - 52-week near-high WATCHLIST
     - Consolidation Breakouts
     - Relative Strength / Sector Leaders
-
-    All formatting handled here.
     """
 
     # --------------------------------------------------------
