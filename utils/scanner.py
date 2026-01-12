@@ -8,6 +8,7 @@ from utils.high_52w_strategy import score_52week_high_stock, is_52w_watchlist_ca
 from utils.consolidation_breakout import check_consolidation_breakout
 from utils.relative_strength import check_relative_strength
 from utils.ema_utils import compute_ema_incremental, compute_rsi
+from utils.pre_buy_check import normalize_score
 
 BACKOFF_BASE = 2
 MAX_RETRIES = 5
@@ -62,13 +63,21 @@ def run_scan(test_mode=False):
             print(f"⚠️ [scanner.py] Skipping {ticker} due to low/missing market cap")
             continue
 
-        # --- EMA Signal ---
-        try:
-            ema_result = get_ema_signals(ticker)
-            if ema_result:
-                ema_list.append(ema_result)
-        except Exception as e:
-            print(f"⚠️ [scanner.py] Error processing EMA for {ticker}: {e}")
+        # --- EMA Signal (only if bullish market) ---
+        if market_bullish:
+            try:
+                ema_result = get_ema_signals(ticker)
+                if ema_result:
+                    # Normalize EMA signal score
+                    ema_result["NormalizedScore"] = normalize_score(
+                        ema_result.get("Score", 0),
+                        "EMA Crossover"
+                    )
+                    ema_list.append(ema_result)
+            except Exception as e:
+                print(f"⚠️ [scanner.py] Error processing EMA for {ticker}: {e}")
+        else:
+            print(f"⏭️ Skipping EMA signals for {ticker} due to bearish market")
 
         # --- 52-Week High & Consolidation Breakout (only if market bullish) ---
         if market_bullish:
@@ -110,6 +119,7 @@ def run_scan(test_mode=False):
                 score = score_52week_high_stock(row)
                 if score is not None:
                     row["Score"] = score
+                    row["NormalizedScore"] = normalize_score(score, "52-Week High")
                     high_list.append(row)
                 elif is_52w_watchlist_candidate(row):
                     watchlist_highs.append(row)
@@ -121,6 +131,10 @@ def run_scan(test_mode=False):
             try:
                 cons_result = check_consolidation_breakout(ticker)
                 if cons_result:
+                    cons_result["NormalizedScore"] = normalize_score(
+                        cons_result.get("Score",0),
+                        "Consolidation Breakout"
+                    )
                     consolidation_list.append(cons_result)
             except Exception as e:
                 print(f"⚠️ [scanner.py] Error processing consolidation breakout for {ticker}: {e}")
