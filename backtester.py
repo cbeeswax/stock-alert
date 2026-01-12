@@ -1,5 +1,5 @@
 import pandas as pd
-from datetime import datetime, timedelta
+from datetime import datetime
 from utils.scanner import run_scan
 from utils.pre_buy_check import pre_buy_check
 from utils.market_data import get_historical_data
@@ -22,8 +22,19 @@ class Backtester:
         """
         print(f"🚀 Running backtest from {self.start_date.date()}...")
 
-        # Run scan (today's signal will simulate past signals)
+        # Run scan (simulate past signals)
         ema_list, high_list, watchlist_highs, consolidation_list, rs_list = run_scan(test_mode=test_mode)
+
+        # Add Strategy field if missing (for safety)
+        for lst, name in [
+            (ema_list, "EMA Crossover"),
+            (high_list, "52-Week High"),
+            (consolidation_list, "Consolidation Breakout"),
+            (rs_list, "Relative Strength"),
+        ]:
+            for s in lst:
+                if "Strategy" not in s:
+                    s["Strategy"] = name
 
         # Combine all signals
         combined_signals = ema_list + high_list + consolidation_list + rs_list
@@ -40,6 +51,7 @@ class Backtester:
             entry = trade["Entry"]
             stop = trade["StopLoss"]
             target = trade["Target"]
+            strategy = trade.get("Strategy", "Unknown")
 
             hist_df = get_historical_data(ticker)
             if hist_df.empty or "Close" not in hist_df.columns:
@@ -50,41 +62,42 @@ class Backtester:
             if hist_df.empty:
                 continue
 
-            outcome = self._simulate_trade(hist_df, entry, stop, target, max_days=self.max_days)
-            trade.update(outcome)
+            outcome_data = self._simulate_trade(hist_df, entry, stop, target, max_days=self.max_days)
+            trade.update(outcome_data)
+            trade["Strategy"] = strategy
             trades_outcomes.append(trade)
 
         return pd.DataFrame(trades_outcomes)
 
     def _simulate_trade(self, df, entry, stop, target, max_days=30):
         """
-        Simulate trade using historical OHLC.
+        Simulate trade using historical OHLC with realistic intraday exits.
+        - Exits immediately if target or stop is hit
+        - Exits at max_days if neither target nor stop hit
         Returns MAE, MFE, final R-multiple, outcome (win/loss)
         """
         df = df.copy()
         df = df.iloc[:max_days]  # limit max holding period
 
-        # Compute MAE / MFE
-        df["Adverse"] = entry - df["Low"]   # Max loss from entry
-        df["Favorable"] = df["High"] - entry  # Max gain from entry
+        # Track MAE / MFE during the trade
+        adverse_moves = entry - df["Low"]
+        favorable_moves = df["High"] - entry
+        mae = adverse_moves.max()
+        mfe = favorable_moves.max()
 
-        mae = df["Adverse"].max()
-        mfe = df["Favorable"].max()
+        # Default exit at last available close (time stop)
+        exit_price = df["Close"].iloc[-1]
+        outcome = "Win" if exit_price >= entry else "Loss"
 
-        # Determine exit
-        win_exit = df[df["High"] >= target]
-        loss_exit = df[df["Low"] <= stop]
-
-        if not win_exit.empty:
-            exit_price = target
-            outcome = "Win"
-        elif not loss_exit.empty:
-            exit_price = stop
-            outcome = "Loss"
-        else:
-            # Close at last available price (time stop)
-            exit_price = df["Close"].iloc[-1]
-            outcome = "Win" if exit_price >= entry else "Loss"
+        for idx, row in df.iterrows():
+            if row["Low"] <= stop:
+                exit_price = stop
+                outcome = "Loss"
+                break
+            elif row["High"] >= target:
+                exit_price = target
+                outcome = "Win"
+                break
 
         r_multiple = (exit_price - entry) / max(entry - stop, 0.01)  # avoid zero division
 
@@ -109,7 +122,7 @@ class Backtester:
         win_rate = wins / total_trades * 100
         avg_r_multiple = trades_df["RMultiple"].mean()
 
-        # Optional: strategy-wise summary
+        # Strategy-wise summary
         strategy_summary = trades_df.groupby("Strategy")["RMultiple"].agg(
             count="count", avg_r="mean"
         ).to_dict(orient="index")
