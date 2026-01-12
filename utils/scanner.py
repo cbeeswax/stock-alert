@@ -8,7 +8,6 @@ from utils.high_52w_strategy import score_52week_high_stock, is_52w_watchlist_ca
 from utils.consolidation_breakout import check_consolidation_breakout
 from utils.relative_strength import check_relative_strength
 from utils.ema_utils import compute_ema_incremental, compute_rsi
-from utils.pre_buy_check import normalize_score
 
 BACKOFF_BASE = 2
 MAX_RETRIES = 5
@@ -37,15 +36,19 @@ def run_scan(test_mode=False):
 
     # --- Download benchmark for relative strength & market regime ---
     benchmark_df = yf.download("SPY", period="1y", interval="1d")
-    benchmark_df["EMA200"] = benchmark_df["Close"].ewm(span=200, adjust=False).mean()
-    spy_latest = benchmark_df["Close"].iloc[-1]
-    spy_ema200 = benchmark_df["EMA200"].iloc[-1]
-
-    market_bullish = spy_latest > spy_ema200
-    if market_bullish:
-        print(f"📈 Market Bullish: SPY {spy_latest:.2f} > EMA200 {spy_ema200:.2f}")
+    if benchmark_df.empty:
+        print("⚠️ Failed to download SPY data. Defaulting to allow breakouts.")
+        market_bullish = True
     else:
-        print(f"📉 Market Bearish: SPY {spy_latest:.2f} <= EMA200 {spy_ema200:.2f}. Breakouts will be skipped.")
+        benchmark_df["EMA200"] = benchmark_df["Close"].ewm(span=200, adjust=False).mean()
+        spy_latest = float(benchmark_df["Close"].iloc[-1])
+        spy_ema200 = float(benchmark_df["EMA200"].iloc[-1])
+
+        market_bullish = spy_latest > spy_ema200
+        if market_bullish:
+            print(f"📊 Market Regime: Bullish | SPY Close: {spy_latest:.2f}, EMA200: {spy_ema200:.2f}")
+        else:
+            print(f"📊 Market Regime: Bearish | SPY Close: {spy_latest:.2f}, EMA200: {spy_ema200:.2f}. Breakouts will be skipped.")
 
     # --- Iterate tickers ---
     for ticker in tickers:
@@ -63,21 +66,13 @@ def run_scan(test_mode=False):
             print(f"⚠️ [scanner.py] Skipping {ticker} due to low/missing market cap")
             continue
 
-        # --- EMA Signal (only if bullish market) ---
-        if market_bullish:
-            try:
-                ema_result = get_ema_signals(ticker)
-                if ema_result:
-                    # Normalize EMA signal score
-                    ema_result["NormalizedScore"] = normalize_score(
-                        ema_result.get("Score", 0),
-                        "EMA Crossover"
-                    )
-                    ema_list.append(ema_result)
-            except Exception as e:
-                print(f"⚠️ [scanner.py] Error processing EMA for {ticker}: {e}")
-        else:
-            print(f"⏭️ Skipping EMA signals for {ticker} due to bearish market")
+        # --- EMA Signal ---
+        try:
+            ema_result = get_ema_signals(ticker)
+            if ema_result:
+                ema_list.append(ema_result)
+        except Exception as e:
+            print(f"⚠️ [scanner.py] Error processing EMA for {ticker}: {e}")
 
         # --- 52-Week High & Consolidation Breakout (only if market bullish) ---
         if market_bullish:
@@ -119,7 +114,6 @@ def run_scan(test_mode=False):
                 score = score_52week_high_stock(row)
                 if score is not None:
                     row["Score"] = score
-                    row["NormalizedScore"] = normalize_score(score, "52-Week High")
                     high_list.append(row)
                 elif is_52w_watchlist_candidate(row):
                     watchlist_highs.append(row)
@@ -131,10 +125,6 @@ def run_scan(test_mode=False):
             try:
                 cons_result = check_consolidation_breakout(ticker)
                 if cons_result:
-                    cons_result["NormalizedScore"] = normalize_score(
-                        cons_result.get("Score",0),
-                        "Consolidation Breakout"
-                    )
                     consolidation_list.append(cons_result)
             except Exception as e:
                 print(f"⚠️ [scanner.py] Error processing consolidation breakout for {ticker}: {e}")
