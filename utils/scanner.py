@@ -70,6 +70,7 @@ def run_scan(test_mode=False):
         try:
             ema_result = get_ema_signals(ticker)
             if ema_result:
+                ema_result["Strategy"] = "EMA Crossover"  # <-- assign here
                 ema_list.append(ema_result)
         except Exception as e:
             print(f"⚠️ [scanner.py] Error processing EMA for {ticker}: {e}")
@@ -108,7 +109,8 @@ def run_scan(test_mode=False):
                     "EMA50": ema50,
                     "EMA200": ema200,
                     "VolumeRatio": vol_ratio,
-                    "RSI14": rsi14
+                    "RSI14": rsi14,
+                    "Strategy": "52-Week High"  # <-- assign here
                 }
 
                 score = score_52week_high_stock(row)
@@ -125,6 +127,7 @@ def run_scan(test_mode=False):
             try:
                 cons_result = check_consolidation_breakout(ticker)
                 if cons_result:
+                    cons_result["Strategy"] = "Consolidation Breakout"  # <-- assign here
                     consolidation_list.append(cons_result)
             except Exception as e:
                 print(f"⚠️ [scanner.py] Error processing consolidation breakout for {ticker}: {e}")
@@ -135,6 +138,7 @@ def run_scan(test_mode=False):
         try:
             rs_result = check_relative_strength(ticker, benchmark_df)
             if rs_result:
+                rs_result["Strategy"] = "Relative Strength"  # <-- assign here
                 rs_list.append(rs_result)
         except Exception as e:
             print(f"⚠️ [scanner.py] Error processing relative strength for {ticker}: {e}")
