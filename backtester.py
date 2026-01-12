@@ -4,6 +4,7 @@ from utils.scanner import run_scan
 from utils.pre_buy_check import pre_buy_check
 from utils.market_data import get_historical_data
 
+
 class Backtester:
     """
     Historical backtester using your scan + pre-buy logic.
@@ -23,9 +24,11 @@ class Backtester:
         print(f"🚀 Running backtest from {self.start_date.date()}...")
 
         # Run scan (simulate past signals)
-        ema_list, high_list, watchlist_highs, consolidation_list, rs_list = run_scan(test_mode=test_mode)
+        ema_list, high_list, watchlist_highs, consolidation_list, rs_list = run_scan(
+            test_mode=test_mode
+        )
 
-        # Add Strategy field if missing (for safety)
+        # Ensure Strategy field exists (safety for backtest)
         for lst, name in [
             (ema_list, "EMA Crossover"),
             (high_list, "52-Week High"),
@@ -33,8 +36,7 @@ class Backtester:
             (rs_list, "Relative Strength"),
         ]:
             for s in lst:
-                if "Strategy" not in s:
-                    s["Strategy"] = name
+                s.setdefault("Strategy", name)
 
         # Combine all signals
         combined_signals = ema_list + high_list + consolidation_list + rs_list
@@ -46,6 +48,7 @@ class Backtester:
 
         # Simulate trades using historical OHLC
         trades_outcomes = []
+
         for _, trade in trades_df.iterrows():
             ticker = trade["Ticker"]
             entry = trade["Entry"]
@@ -62,70 +65,75 @@ class Backtester:
             if hist_df.empty:
                 continue
 
-            outcome_data = self._simulate_trade(hist_df, entry, stop, target, max_days=self.max_days)
-            trade.update(outcome_data)
-            trade["Strategy"] = strategy
-            trades_outcomes.append(trade)
+            outcome_data = self._simulate_trade(
+                hist_df,
+                entry,
+                stop,
+                target,
+                max_days=self.max_days
+            )
+
+            # ✅ CRITICAL FIX: build dict, do NOT update Series
+            trade_dict = trade.to_dict()
+            trade_dict.update(outcome_data)
+            trade_dict["Strategy"] = strategy
+
+            trades_outcomes.append(trade_dict)
 
         return pd.DataFrame(trades_outcomes)
 
     def _simulate_trade(self, df, entry, stop, target, max_days=30):
         """
-        Simulate trade using historical OHLC with realistic intraday exits.
-        - Exits immediately if target or stop is hit
-        - Exits at max_days if neither target nor stop hit
-        Returns MAE, MFE, final R-multiple, outcome (win/loss)
+        Simulate trade using historical OHLC with realistic exits.
         """
-        df = df.copy()
-        df = df.iloc[:max_days]  # limit max holding period
+        df = df.copy().iloc[:max_days]
 
-        # Track MAE / MFE during the trade
-        adverse_moves = entry - df["Low"]
-        favorable_moves = df["High"] - entry
-        mae = adverse_moves.max()
-        mfe = favorable_moves.max()
+        # MAE / MFE
+        mae = (entry - df["Low"]).max()
+        mfe = (df["High"] - entry).max()
 
-        # Default exit at last available close (time stop)
         exit_price = df["Close"].iloc[-1]
         outcome = "Win" if exit_price >= entry else "Loss"
 
-        for idx, row in df.iterrows():
+        for _, row in df.iterrows():
             if row["Low"] <= stop:
                 exit_price = stop
                 outcome = "Loss"
                 break
-            elif row["High"] >= target:
+            if row["High"] >= target:
                 exit_price = target
                 outcome = "Win"
                 break
 
-        r_multiple = (exit_price - entry) / max(entry - stop, 0.01)  # avoid zero division
+        r_multiple = (exit_price - entry) / max(entry - stop, 0.01)
 
         return {
             "MAE": round(mae, 2),
             "MFE": round(mfe, 2),
             "ExitPrice": round(exit_price, 2),
             "Outcome": outcome,
-            "RMultiple": round(r_multiple, 2)
+            "RMultiple": round(r_multiple, 2),
         }
 
     def evaluate(self, trades_df):
         """
         Summarize backtest performance.
         """
-        if trades_df.empty:
-            return "No trades executed"
+        if trades_df.empty or "Outcome" not in trades_df.columns:
+            return "No completed trades with outcomes"
 
         total_trades = len(trades_df)
-        wins = sum(trades_df["Outcome"] == "Win")
+        wins = int((trades_df["Outcome"] == "Win").sum())
         losses = total_trades - wins
         win_rate = wins / total_trades * 100
         avg_r_multiple = trades_df["RMultiple"].mean()
 
-        # Strategy-wise summary
-        strategy_summary = trades_df.groupby("Strategy")["RMultiple"].agg(
-            count="count", avg_r="mean"
-        ).to_dict(orient="index")
+        strategy_summary = (
+            trades_df
+            .groupby("Strategy")["RMultiple"]
+            .agg(count="count", avg_r="mean")
+            .to_dict(orient="index")
+        )
 
         return {
             "TotalTrades": total_trades,
@@ -133,7 +141,7 @@ class Backtester:
             "Losses": losses,
             "WinRate%": round(win_rate, 2),
             "AvgRMultiple": round(avg_r_multiple, 2),
-            "StrategySummary": strategy_summary
+            "StrategySummary": strategy_summary,
         }
 
 
