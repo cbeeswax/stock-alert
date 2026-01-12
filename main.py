@@ -1,17 +1,50 @@
 from utils.scanner import run_scan
 from utils.pre_buy_check import pre_buy_check
 from utils.email_utils import send_email_alert
-from utils.high_52w_strategy import score_52week_high_stock, is_52w_watchlist_candidate
-import pandas as pd
+from utils.ema_utils import compute_ema_incremental
+
+MAX_TRADES_EMAIL = 5
+MIN_NORM_SCORE = 7
+
+def get_market_regime(benchmark_ticker="SPY"):
+    """
+    Determines current market regime using EMA200 of benchmark.
+    Returns True if bullish (SPY > EMA200), False if bearish.
+    """
+    df = compute_ema_incremental(benchmark_ticker)
+    if df.empty or "EMA200" not in df.columns:
+        print("⚠️ Unable to determine market regime, assuming bullish.")
+        return True
+
+    close_today = df["Close"].iloc[-1]
+    ema200_today = df["EMA200"].iloc[-1]
+
+    bullish = close_today > ema200_today
+    print(f"📊 Market Regime: {'Bullish' if bullish else 'Bearish'} | {benchmark_ticker} Close: {close_today}, EMA200: {ema200_today}")
+    return bullish
+
 
 if __name__ == "__main__":
     print("🚀 Running full stock scan...")
 
     # --------------------------------------------------
+    # Step 0: Determine market regime
+    # --------------------------------------------------
+    is_bullish = get_market_regime()
+
+    # --------------------------------------------------
     # Step 1: Run complete scan
-    # Returns: ema_list, high_list (BUY-ready), watchlist_highs, consolidation_list, rs_list
     # --------------------------------------------------
     ema_list, high_list, high_watch_list, consolidation_list, rs_list = run_scan(test_mode=False)
+
+    # --------------------------------------------------
+    # Step 1.1: Apply Market Regime Filter
+    # Disable breakout signals if market is bearish
+    # --------------------------------------------------
+    if not is_bullish:
+        print("⚠️ Bearish market detected → disabling breakout trades.")
+        high_list = []
+        consolidation_list = []
 
     # --------------------------------------------------
     # Step 2: Label strategy for each signal
@@ -32,62 +65,15 @@ if __name__ == "__main__":
     trade_ready = pre_buy_check(combined_signals)
 
     # --------------------------------------------------
-    # Step 4: Console summary
+    # Step 3.1: Apply normalized score filter and max email trades
     # --------------------------------------------------
-    # EMA Crossovers
-    if ema_list:
-        print("\n📈 EMA Crossovers:")
-        for s in ema_list:
-            print(f"{s['Ticker']} - {s.get('PctAboveCrossover','N/A')}% | Score: {s.get('Score','N/A')}")
-    else:
-        print("\n📈 No EMA crossovers today.")
-
-    # Pre-Buy Actionable Trades
     if not trade_ready.empty:
-        print("\n🔥 Pre-Buy Actionable Trades:")
-        for t in trade_ready.to_dict(orient="records"):
-            print(
-                f"{t['Ticker']} | Strategy: {t['Strategy']} | "
-                f"Entry: {t['Entry']} | Stop: {t['StopLoss']} | Target: {t['Target']} | "
-                f"Score: {t['Score']}"
-            )
-    else:
-        print("\n🔥 No actionable trades today.")
-
-    # 52-Week High BUY-READY
-    if high_list:
-        print("\n🚀 52-Week High BUY-READY:")
-        for h in high_list:
-            print(f"{h['Ticker']} | Score: {h.get('Score', 'N/A')}")
-    else:
-        print("\n🚀 No BUY-ready 52-week highs today.")
-
-    # 52-Week High WATCHLIST
-    if high_watch_list:
-        print("\n👀 52-Week High WATCHLIST:")
-        for h in high_watch_list:
-            print(f"{h['Ticker']} | {h['PctFrom52High']:.2f}% from high")
-    else:
-        print("\n👀 No watchlist candidates today.")
-
-    # Consolidation Breakouts
-    if consolidation_list:
-        print("\n📦 Consolidation Breakouts:")
-        for c in consolidation_list:
-            print(f"{c['Ticker']} | Score: {c['Score']}")
-    else:
-        print("\n📦 No consolidation breakouts today.")
-
-    # Relative Strength Leaders
-    if rs_list:
-        print("\n💪 Relative Strength Leaders:")
-        for r in rs_list:
-            print(f"{r['Ticker']} | RS%: {r['RS%']} | Score: {r['Score']}")
-    else:
-        print("\n💪 No relative strength leaders today.")
+        trade_ready = trade_ready[
+            trade_ready["NormalizedScore"] >= MIN_NORM_SCORE
+        ].head(MAX_TRADES_EMAIL)
 
     # --------------------------------------------------
-    # Step 5: Send HTML email
+    # Step 4: Send email
     # --------------------------------------------------
     send_email_alert(
         trade_df=trade_ready,

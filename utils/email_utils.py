@@ -11,7 +11,7 @@ def df_to_html_table(df, score_column="Score", title="", max_rows=5):
     if df is None or df.empty:
         return f"<p>No {title} today.</p>"
 
-    # --- Sort by Score descending if score exists ---
+    # --- Sort by score descending if score exists ---
     if score_column and score_column in df.columns:
         df = df.sort_values(by=score_column, ascending=False)
 
@@ -44,15 +44,20 @@ def df_to_html_table(df, score_column="Score", title="", max_rows=5):
             else:
                 color = "#f4c7c3"   # red
         else:
-            color = "#ffffff"      # neutral (watchlist or non-scored lists)
+            color = "#ffffff"      # neutral
 
         html += f"<tr style='background-color:{color};'>"
         for col in df.columns:
-            html += f"<td style='text-align:center;'>{row[col]}</td>"
+            # Show numbers rounded if float
+            val = row[col]
+            if isinstance(val, float):
+                val = round(val, 2)
+            html += f"<td style='text-align:center;'>{val}</td>"
         html += "</tr>"
 
     html += "</table><br>"
     return html
+
 
 # ============================================================
 # Normalize lists for table-friendly DataFrames
@@ -60,11 +65,10 @@ def df_to_html_table(df, score_column="Score", title="", max_rows=5):
 def normalize_highs_for_table(high_list):
     if not high_list:
         return pd.DataFrame()
-
     df = pd.DataFrame(high_list)
     preferred_columns = [
         "Ticker", "Company", "Close", "High52", "PctFrom52High",
-        "EMA20", "EMA50", "EMA200", "VolumeRatio", "RSI14", "Score",
+        "EMA20", "EMA50", "EMA200", "VolumeRatio", "RSI14", "Score", "NormalizedScore",
     ]
     return df[[c for c in preferred_columns if c in df.columns]]
 
@@ -72,7 +76,6 @@ def normalize_highs_for_table(high_list):
 def normalize_watchlist_for_table(watch_list):
     if not watch_list:
         return pd.DataFrame()
-
     df = pd.DataFrame(watch_list)
     preferred_columns = [
         "Ticker", "Company", "Close", "High52", "PctFrom52High",
@@ -82,10 +85,11 @@ def normalize_watchlist_for_table(watch_list):
 
 
 def normalize_generic_for_table(generic_list):
-    """For consolidation_list or rs_list where Score may exist"""
+    """For consolidation_list or rs_list where Score/NormalizedScore may exist"""
     if not generic_list:
         return pd.DataFrame()
     return pd.DataFrame(generic_list)  # keep all columns
+
 
 # ============================================================
 # Main Email Sender
@@ -109,20 +113,19 @@ def send_email_alert(
     - Consolidation Breakouts
     - Relative Strength / Sector Leaders
     """
-
     if html_body:
         body_html = html_body
     else:
         body_html = "<h1>📊 Daily Market Scan</h1>"
 
-        # Pre-Buy Actionable Trades
+        # Pre-Buy Actionable Trades (use NormalizedScore)
         body_html += df_to_html_table(
             trade_df,
-            score_column="Score",
+            score_column="NormalizedScore",
             title="🔥 Pre-Buy Actionable Trades",
             max_rows=5
         )
-        
+
         # EMA Crossovers
         if ema_list:
             ema_df = pd.DataFrame(ema_list)
@@ -133,14 +136,14 @@ def send_email_alert(
                 max_rows=5
             )
         else:
-            body_html += "<p>No EMA crossovers today.</p>"        
+            body_html += "<p>No EMA crossovers today.</p>"
 
         # 52-Week High BUY-READY
         if high_buy_list:
             highs_df = normalize_highs_for_table(high_buy_list)
             body_html += df_to_html_table(
                 highs_df,
-                score_column="Score",
+                score_column="NormalizedScore",
                 title="🚀 52-Week High Continuation (BUY-READY)",
                 max_rows=5
             )
@@ -164,7 +167,7 @@ def send_email_alert(
             cons_df = normalize_generic_for_table(consolidation_list)
             body_html += df_to_html_table(
                 cons_df,
-                score_column="Score" if "Score" in cons_df.columns else None,
+                score_column="NormalizedScore" if "NormalizedScore" in cons_df.columns else "Score",
                 title="📊 Consolidation Breakouts",
                 max_rows=5
             )
@@ -176,7 +179,7 @@ def send_email_alert(
             rs_df = normalize_generic_for_table(rs_list)
             body_html += df_to_html_table(
                 rs_df,
-                score_column="Score" if "Score" in rs_df.columns else None,
+                score_column="NormalizedScore" if "NormalizedScore" in rs_df.columns else "Score",
                 title="⭐ Relative Strength / Sector Leaders",
                 max_rows=5
             )
