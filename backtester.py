@@ -15,7 +15,7 @@ class Backtester:
         self.rr_ratio = rr_ratio
         self.max_days = max_days  # Max holding period per trade
 
-    def run(self, test_mode=True):
+    def run(self, test_mode=False):
         """
         Runs backtest for all tickers.
         Returns DataFrame with trades + outcomes.
@@ -126,7 +126,7 @@ class Backtester:
 
 if __name__ == "__main__":
     bt = Backtester(start_date="2022-01-01", rr_ratio=2)
-    trades = bt.run(test_mode=True)
+    trades = bt.run(test_mode=False)
     print(trades)
     summary = bt.evaluate(trades)
     print("\n📊 Backtest Summary:", summary)
