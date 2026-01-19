@@ -68,9 +68,20 @@ def pre_buy_check(combined_signals, rr_ratio=2, benchmark="SPY"):
     and blocks breakout trades in bearish market regime.
     """
 
-    # Market regime must be supplied by scanner (walk-forward safe)
-    is_bullish = True
-    print(f"📊 Market regime ({benchmark}): {'BULLISH' if is_bullish else 'BEARISH'}")
+    # -------------------------------
+    # Determine market regime (SPY vs EMA200)
+    # -------------------------------
+    spy_df = get_historical_data(benchmark)
+    if spy_df.empty or "Close" not in spy_df.columns:
+        print(f"⚠️ Could not fetch benchmark {benchmark}, proceeding without market filter")
+        is_bullish = True
+    else:
+        spy_df = spy_df.copy()
+        spy_df["EMA200"] = compute_ema_incremental(benchmark)["EMA200"]
+        close_today = spy_df["Close"].iloc[-1]
+        ema200 = spy_df["EMA200"].iloc[-1]
+        is_bullish = close_today >= ema200
+        print(f"📊 Market regime ({benchmark}): {'BULLISH' if is_bullish else 'BEARISH'} | SPY: {close_today:.2f}, EMA200: {ema200:.2f}")
 
     # -------------------------------
     # Deduplicate by strategy priority
@@ -98,12 +109,7 @@ def pre_buy_check(combined_signals, rr_ratio=2, benchmark="SPY"):
         # -------------------------------
         # Skip breakout trades in bearish regime
         # -------------------------------
-        market_regime = s.get("MarketRegime", "BULLISH")
-
-        if market_regime == "BEARISH" and strategy in [
-            "52-Week High",
-            "Consolidation Breakout"
-        ]:
+        if not is_bullish and strategy in ["52-Week High", "Consolidation Breakout"]:
             continue
 
         df = get_historical_data(ticker)

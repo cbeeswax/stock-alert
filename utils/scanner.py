@@ -35,7 +35,7 @@ def run_scan(test_mode=False):
     rs_list = []
 
     # --- Download benchmark for relative strength & market regime ---
-    benchmark_df = yf.download("SPY", period="5y", interval="1d")
+    benchmark_df = yf.download("SPY", period="1y", interval="1d")
     if benchmark_df.empty:
         print("⚠️ Failed to download SPY data. Defaulting to allow breakouts.")
         market_bullish = True
@@ -110,8 +110,7 @@ def run_scan(test_mode=False):
                     "EMA200": ema200,
                     "VolumeRatio": vol_ratio,
                     "RSI14": rsi14,
-                    "Strategy": "52-Week High"  # <-- assign here,
-                    "MarketRegime": market_bullish,
+                    "Strategy": "52-Week High"  # <-- assign here
                 }
 
                 score = score_52week_high_stock(row)
