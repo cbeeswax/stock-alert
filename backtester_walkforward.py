@@ -1,9 +1,9 @@
 import pandas as pd
-from utils.scanner_walkforward import run_scan_as_of
-from utils.pre_buy_check import pre_buy_check
+from scanners.scanner_walkforward import run_scan_as_of
+from core.pre_buy_check import pre_buy_check
 from utils.market_data import get_historical_data
-from download_history import download_ticker
-from trading_config import (
+from scripts.download_history import download_ticker
+from config.trading_config import (
     CAPITAL_PER_TRADE,
     RISK_REWARD_RATIO,
     MAX_HOLDING_DAYS,
@@ -190,7 +190,7 @@ class WalkForwardBacktester:
 if __name__ == "__main__":
     # Example: S&P 500 tickers loaded elsewhere
     # Using local CSV to avoid SSL certificate issues on macOS
-    tickers = pd.read_csv("sp500_constituents.csv")["Symbol"].tolist()
+    tickers = pd.read_csv("data/sp500_constituents.csv")["Symbol"].tolist()
 
     # -------------------------------------------------
     # 📥 UPDATE HISTORICAL DATA (INCREMENTAL)

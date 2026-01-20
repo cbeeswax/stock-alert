@@ -3,7 +3,7 @@ import pandas as pd
 import yfinance as yf
 from pathlib import Path
 from datetime import datetime, timedelta
-from config import SP500_SOURCE
+from config.config import SP500_SOURCE
 
 # ----------------------------
 # Folders and settings
