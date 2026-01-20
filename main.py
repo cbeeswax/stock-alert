@@ -1,8 +1,8 @@
-from utils.scanner import run_scan
-from utils.pre_buy_check import pre_buy_check
+from scanners.scanner import run_scan
+from core.pre_buy_check import pre_buy_check
 from utils.email_utils import send_email_alert
 from utils.ema_utils import compute_ema_incremental
-from trading_config import MAX_TRADES_PER_SCAN
+from config.trading_config import MAX_TRADES_PER_SCAN
 
 # Email-specific filtering (separate from trade selection)
 MIN_NORM_SCORE = 7  # Minimum score to include in email

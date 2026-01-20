@@ -16,8 +16,13 @@ def check_consolidation_breakout(ticker, lookback=20):
             return None
 
         df = df.copy()
-        df["Close"] = pd.to_numeric(df["Close"], errors="coerce").dropna()
+        df["Close"] = pd.to_numeric(df["Close"], errors="coerce")
         df["Volume"] = pd.to_numeric(df["Volume"], errors="coerce").fillna(0)
+        df = df.dropna(subset=["Close"])  # Drop rows where Close is NaN
+
+        # Need at least lookback+1 rows for consolidation and additional rows for momentum
+        if len(df) < max(lookback + 1, 6):
+            return None
 
         # EMA trend
         ema_df = compute_ema_incremental(ticker)
@@ -27,8 +32,8 @@ def check_consolidation_breakout(ticker, lookback=20):
         ema50 = ema_df["EMA50"].iloc[-1]
         ema200 = ema_df["EMA200"].iloc[-1]
 
-        # Consolidation: price range < 5% over lookback
-        recent = df["Close"].iloc[-lookback:]
+        # Consolidation: price range < 5% over lookback (excluding today)
+        recent = df["Close"].iloc[-lookback-1:-1]  # Exclude today from consolidation range
         max_close = recent.max()
         min_close = recent.min()
         if (max_close - min_close) / min_close * 100 > 5:
@@ -59,8 +64,11 @@ def check_consolidation_breakout(ticker, lookback=20):
         base_score = price_score + ema_score + vol_score
 
         # EMA200 slope and short-term price momentum for momentum boost
-        ema200_slope = (ema200 - ema_df["EMA200"].iloc[-6]) / ema200 if ema200 != 0 else 0
-        price_momentum_5d = (close_today - df["Close"].iloc[-6]) / df["Close"].iloc[-6]
+        ema200_slope = 0
+        price_momentum_5d = 0
+        if len(ema_df) >= 6 and len(df) >= 6:
+            ema200_slope = (ema200 - ema_df["EMA200"].iloc[-6]) / ema200 if ema200 != 0 else 0
+            price_momentum_5d = (close_today - df["Close"].iloc[-6]) / df["Close"].iloc[-6]
         momentum_boost = min(ema200_slope + price_momentum_5d, 0.1)  # capped at 10%
 
         final_score = round(base_score * (1 + momentum_boost), 2)

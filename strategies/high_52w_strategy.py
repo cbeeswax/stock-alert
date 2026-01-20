@@ -1,5 +1,5 @@
 def score_52week_high_stock(row):
-    if not (0 >= row["PctFrom52High"] >= -8):
+    if not (-8 <= row["PctFrom52High"] <= 0):
         return None
 
     if not (row["EMA20"] > row["EMA50"] > row["EMA200"]):

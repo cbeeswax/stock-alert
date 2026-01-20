@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 from utils.market_data import get_historical_data
 from utils.ema_utils import compute_rsi, compute_ema_incremental
-from trading_config import (
+from config.trading_config import (
     ADX_THRESHOLD,
     RSI_MIN,
     RSI_MAX,

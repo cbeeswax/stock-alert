@@ -18,13 +18,15 @@ def check_new_high(ticker):
         if df.empty or "Close" not in df.columns:
             return None
 
-        df["Close"] = pd.to_numeric(df["Close"], errors="coerce").dropna()
+        df["Close"] = pd.to_numeric(df["Close"], errors="coerce")
         df["Volume"] = pd.to_numeric(df["Volume"], errors="coerce").fillna(0)
+        df = df.dropna(subset=["Close"])  # Drop rows where Close is NaN
 
         # --- Check 52-week high ---
-        max_close = df["Close"].max()
+        # Exclude today to check if today breaks above previous highs
+        max_close_previous = df["Close"].iloc[:-1].max()
         close_today = df["Close"].iloc[-1]
-        if close_today < max_close:
+        if close_today <= max_close_previous:
             return None  # no new high
 
         # --- Trend indicators (reuse EMA logic if available) ---

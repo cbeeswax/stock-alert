@@ -1,9 +1,9 @@
 import pandas as pd
-from utils.scanner_walkforward import run_scan_as_of
-from utils.pre_buy_check import pre_buy_check
+from scanners.scanner_walkforward import run_scan_as_of
+from core.pre_buy_check import pre_buy_check
 from utils.market_data import get_historical_data
-from download_history import download_ticker
-from trading_config import (
+from scripts.download_history import download_ticker
+from config.trading_config import (
     CAPITAL_PER_TRADE,
     RISK_REWARD_RATIO,
     MAX_HOLDING_DAYS,
@@ -188,9 +188,21 @@ class WalkForwardBacktester:
 # RUN
 # -------------------------------------------------
 if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Walk-forward backtester with configurable scan frequency")
+    parser.add_argument(
+        "--scan-frequency",
+        type=str,
+        default="B",
+        choices=["B", "W-MON", "W-TUE", "W-WED", "W-THU", "W-FRI"],
+        help="Scan frequency: B (daily), W-MON (weekly Monday), W-FRI (weekly Friday), etc."
+    )
+    args = parser.parse_args()
+
     # Example: S&P 500 tickers loaded elsewhere
     # Using local CSV to avoid SSL certificate issues on macOS
-    tickers = pd.read_csv("sp500_constituents.csv")["Symbol"].tolist()
+    tickers = pd.read_csv("data/sp500_constituents.csv")["Symbol"].tolist()
 
     # -------------------------------------------------
     # 📥 UPDATE HISTORICAL DATA (INCREMENTAL)
@@ -219,10 +231,10 @@ if __name__ == "__main__":
         start_date=BACKTEST_START_DATE,
         rr_ratio=RISK_REWARD_RATIO,
         max_days=MAX_HOLDING_DAYS,
-        scan_frequency=SCAN_FREQUENCY
+        scan_frequency=args.scan_frequency
     )
 
-    print(f"⚙️  CONFIG: R/R={RISK_REWARD_RATIO}:1, MaxTrades={MAX_TRADES_PER_SCAN}, Capital=${CAPITAL_PER_TRADE:,}/trade\n")
+    print(f"⚙️  CONFIG: R/R={RISK_REWARD_RATIO}:1, MaxTrades={MAX_TRADES_PER_SCAN}, Capital=${CAPITAL_PER_TRADE:,}/trade, ScanFreq={args.scan_frequency}\n")
 
     trades = bt.run()
     print(trades)
