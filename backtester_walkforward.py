@@ -198,6 +198,11 @@ if __name__ == "__main__":
         choices=["B", "W-MON", "W-TUE", "W-WED", "W-THU", "W-FRI"],
         help="Scan frequency: B (daily), W-MON (weekly Monday), W-FRI (weekly Friday), etc."
     )
+    parser.add_argument(
+        "--skip-download",
+        action="store_true",
+        help="Skip downloading/updating historical data (use existing data)"
+    )
     args = parser.parse_args()
 
     # Example: S&P 500 tickers loaded elsewhere
@@ -207,24 +212,29 @@ if __name__ == "__main__":
     # -------------------------------------------------
     # 📥 UPDATE HISTORICAL DATA (INCREMENTAL)
     # -------------------------------------------------
-    print("="*60)
-    print("📥 UPDATING HISTORICAL DATA FOR ALL TICKERS")
-    print("="*60)
-    updated_count = 0
-    skipped_count = 0
+    if not args.skip_download:
+        print("="*60)
+        print("📥 UPDATING HISTORICAL DATA FOR ALL TICKERS")
+        print("="*60)
+        updated_count = 0
+        skipped_count = 0
 
-    for i, ticker in enumerate(tickers, 1):
-        if i % 50 == 0:  # Progress update every 50 tickers
-            print(f"\n[Progress: {i}/{len(tickers)} tickers processed]")
-        download_ticker(ticker)
+        for i, ticker in enumerate(tickers, 1):
+            if i % 50 == 0:  # Progress update every 50 tickers
+                print(f"\n[Progress: {i}/{len(tickers)} tickers processed]")
+            download_ticker(ticker)
 
-    # Also update SPY benchmark data
-    print("\n📊 Updating SPY benchmark data...")
-    download_ticker("SPY")
+        # Also update SPY benchmark data
+        print("\n📊 Updating SPY benchmark data...")
+        download_ticker("SPY")
 
-    print("\n" + "="*60)
-    print("✅ DATA UPDATE COMPLETE! Starting backtest...")
-    print("="*60 + "\n")
+        print("\n" + "="*60)
+        print("✅ DATA UPDATE COMPLETE! Starting backtest...")
+        print("="*60 + "\n")
+    else:
+        print("="*60)
+        print("⚡ SKIPPING DATA DOWNLOAD (using existing data)")
+        print("="*60 + "\n")
 
     bt = WalkForwardBacktester(
         tickers=tickers,
