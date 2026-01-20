@@ -76,10 +76,11 @@ PRICE_ABOVE_EMA20_MAX = 0.05    # Max 5% above EMA20
 # =============================================================================
 
 BACKTEST_START_DATE = "2022-01-01"  # Historical backtest start date
-SCAN_FREQUENCY = "W-MON"            # Backtest scan frequency
+SCAN_FREQUENCY = "B"                # Backtest scan frequency (default)
                                     # "B" = daily
                                     # "W-MON" = weekly Monday
                                     # "W-FRI" = weekly Friday
+                                    # Note: Can be overridden via --scan-frequency flag
 
 
 # =============================================================================

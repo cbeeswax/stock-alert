@@ -188,6 +188,18 @@ class WalkForwardBacktester:
 # RUN
 # -------------------------------------------------
 if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Walk-forward backtester with configurable scan frequency")
+    parser.add_argument(
+        "--scan-frequency",
+        type=str,
+        default="B",
+        choices=["B", "W-MON", "W-TUE", "W-WED", "W-THU", "W-FRI"],
+        help="Scan frequency: B (daily), W-MON (weekly Monday), W-FRI (weekly Friday), etc."
+    )
+    args = parser.parse_args()
+
     # Example: S&P 500 tickers loaded elsewhere
     # Using local CSV to avoid SSL certificate issues on macOS
     tickers = pd.read_csv("data/sp500_constituents.csv")["Symbol"].tolist()
@@ -219,10 +231,10 @@ if __name__ == "__main__":
         start_date=BACKTEST_START_DATE,
         rr_ratio=RISK_REWARD_RATIO,
         max_days=MAX_HOLDING_DAYS,
-        scan_frequency=SCAN_FREQUENCY
+        scan_frequency=args.scan_frequency
     )
 
-    print(f"⚙️  CONFIG: R/R={RISK_REWARD_RATIO}:1, MaxTrades={MAX_TRADES_PER_SCAN}, Capital=${CAPITAL_PER_TRADE:,}/trade\n")
+    print(f"⚙️  CONFIG: R/R={RISK_REWARD_RATIO}:1, MaxTrades={MAX_TRADES_PER_SCAN}, Capital=${CAPITAL_PER_TRADE:,}/trade, ScanFreq={args.scan_frequency}\n")
 
     trades = bt.run()
     print(trades)
