@@ -104,9 +104,11 @@ def send_email_alert(
     rs_list=None,
     subject_prefix="📊 Market Summary",
     html_body=None,
+    position_tracker=None,  # 🆕 NEW parameter
 ):
     """
     Sends simplified HTML email with:
+    - Open positions (currently held)
     - Actionable trades only (top trades that passed all filters)
     - Watchlist of 10 stocks with strategy names
     """
@@ -116,15 +118,41 @@ def send_email_alert(
         body_html = "<h1>📊 Daily Market Scan - Actionable Trades</h1>"
         body_html += f"<p><strong>Config:</strong> 2:1 R/R, ADX≥24, RSI 50-66, Vol≥1.4x | {datetime.now().strftime('%Y-%m-%d')}</p>"
 
+        # 🆕 Show Open Positions (if any)
+        if position_tracker:
+            open_positions = position_tracker.get_all_positions()
+            if open_positions:
+                pos_data = []
+                for ticker, pos in open_positions.items():
+                    pos_data.append({
+                        "Ticker": ticker,
+                        "Entry $": f"${pos.get('entry_price', 0):.2f}",
+                        "Entry Date": str(pos.get('entry_date', 'N/A'))[:10],
+                        "Strategy": pos.get('strategy', 'Unknown'),
+                        "Stop $": f"${pos.get('stop_loss', 0):.2f}" if pos.get('stop_loss', 0) > 0 else "N/A",
+                        "Target $": f"${pos.get('target', 0):.2f}" if pos.get('target', 0) > 0 else "N/A",
+                    })
+
+                pos_df = pd.DataFrame(pos_data)
+                body_html += "<hr>"
+                body_html += df_to_html_table(
+                    pos_df,
+                    score_column=None,
+                    title=f"📊 CURRENT OPEN POSITIONS ({len(pos_df)} stocks)",
+                    max_rows=None
+                )
+                body_html += "<hr>"
+
         # Actionable Trades Only
         if not trade_df.empty:
             # Select columns for actionable trades
-            action_cols = ["Ticker", "Strategy", "Entry", "StopLoss", "Target", "NormalizedScore"]
+            action_cols = ["Ticker", "Strategy", "Entry", "StopLoss", "Target",
+                           "ATR", "SuggestedShares", "FinalScore", "Expectancy"]
             action_df = trade_df[[c for c in action_cols if c in trade_df.columns]]
 
             body_html += df_to_html_table(
                 action_df,
-                score_column="NormalizedScore",
+                score_column="FinalScore",
                 title=f"🔥 ACTIONABLE TRADES ({len(action_df)} stocks)",
                 max_rows=None  # Show all actionable trades
             )

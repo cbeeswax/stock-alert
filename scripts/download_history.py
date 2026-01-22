@@ -4,6 +4,7 @@ import yfinance as yf
 from pathlib import Path
 from datetime import datetime, timedelta
 from config.config import SP500_SOURCE
+import os
 
 # ----------------------------
 # Folders and settings
@@ -11,40 +12,98 @@ from config.config import SP500_SOURCE
 DATA_DIR = Path("data/historical")
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 
+# Track last update to avoid re-downloading on same day
+UPDATE_TRACKER_FILE = DATA_DIR / ".last_update"
+
 SLEEP_SECONDS = 0.5  # Reduced delay for faster incremental updates
+
+# ----------------------------
+# Update tracking functions
+# ----------------------------
+def was_updated_today(file: Path) -> bool:
+    """Check if file was modified today."""
+    if not file.exists():
+        return False
+
+    file_mtime = datetime.fromtimestamp(file.stat().st_mtime)
+    today = datetime.now().date()
+    file_date = file_mtime.date()
+
+    return file_date == today
+
+
+def mark_update_session():
+    """Mark that we performed an update session today."""
+    UPDATE_TRACKER_FILE.write_text(datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+
+
+def was_update_session_today() -> bool:
+    """Check if we already ran an update session today."""
+    if not UPDATE_TRACKER_FILE.exists():
+        return False
+
+    try:
+        last_update = UPDATE_TRACKER_FILE.read_text().strip()
+        last_update_date = datetime.strptime(last_update, "%Y-%m-%d %H:%M:%S").date()
+        return last_update_date == datetime.now().date()
+    except:
+        return False
 
 # ----------------------------
 # Download single ticker (with incremental update support)
 # ----------------------------
-def download_ticker(ticker: str):
+def download_ticker(ticker: str, force: bool = False):
+    """
+    Download or update historical data for a ticker.
+
+    Args:
+        ticker: Stock ticker symbol
+        force: Force download even if already updated today
+    """
     file = DATA_DIR / f"{ticker}.csv"
 
     try:
-        # Check if file exists for incremental update
+        # 🆕 CHECK 1: Skip if file was already updated today (unless forced)
+        if not force and was_updated_today(file):
+            # File was already downloaded/updated today, skip
+            return  # Silent skip for efficiency
+
+        # CHECK 2: File exists - do incremental update
         if file.exists():
             # Read existing data
             existing_df = pd.read_csv(file, index_col=0, parse_dates=True)
-            last_date = existing_df.index.max()
-            today = pd.Timestamp.now().normalize()
 
-            # If data is up to date (within 1 day), skip
-            if (today - last_date).days <= 1:
-                print(f"⚡ {ticker}: Already up to date (last: {last_date.date()})")
-                return
+            if existing_df.empty:
+                print(f"⚠️ {ticker}: Empty file, re-downloading...")
+                file.unlink()  # Delete empty file
+                # Fall through to full download
+            else:
+                last_date = existing_df.index.max()
+                today = pd.Timestamp.now().normalize()
 
-            # Download only new data since last date
-            start_date = (last_date + timedelta(days=1)).strftime('%Y-%m-%d')
-            print(f"🔄 {ticker}: Updating from {start_date}...")
+                # If data is up to date (within 3 days to account for weekends), skip
+                days_diff = (today - last_date).days
+                if days_diff <= 3:
+                    print(f"⚡ {ticker}: Already up to date (last: {last_date.date()})")
+                    # Touch file to mark as checked today
+                    file.touch()
+                    return
 
-            df = yf.download(
-                ticker,
-                start=start_date,
-                end=None,  # Today
-                interval="1d",
-                auto_adjust=True,
-                progress=False
-            )
-        else:
+                # Download only new data since last date
+                start_date = (last_date + timedelta(days=1)).strftime('%Y-%m-%d')
+                print(f"🔄 {ticker}: Updating from {start_date}...")
+
+                df = yf.download(
+                    ticker,
+                    start=start_date,
+                    end=None,  # Today
+                    interval="1d",
+                    auto_adjust=True,
+                    progress=False
+                )
+
+        # File doesn't exist - full download
+        if not file.exists():
             # Download full 5 years for new ticker
             print(f"📥 {ticker}: Downloading 5 years...")
             df = yf.download(
@@ -77,7 +136,7 @@ def download_ticker(ticker: str):
         df = df.loc[:, ["Open", "High", "Low", "Close", "Volume"]]
 
         # Append or save
-        if file.exists():
+        if file.exists() and os.path.getsize(file) > 0:
             # Append new data to existing
             existing_df = pd.read_csv(file, index_col=0, parse_dates=True)
             combined = pd.concat([existing_df, df])
@@ -89,6 +148,9 @@ def download_ticker(ticker: str):
             # Save new file
             df.to_csv(file, index_label="Date")
             print(f"✅ {ticker}: Saved {len(df)} rows")
+
+        # 🆕 Touch file to update modification time (marks as updated today)
+        file.touch()
 
         # Sleep between downloads
         time.sleep(SLEEP_SECONDS)

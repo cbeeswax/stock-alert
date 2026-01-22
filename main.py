@@ -2,10 +2,17 @@ from scanners.scanner import run_scan
 from core.pre_buy_check import pre_buy_check
 from utils.email_utils import send_email_alert
 from utils.ema_utils import compute_ema_incremental
+from utils.position_tracker import PositionTracker, filter_trades_by_position
 from config.trading_config import MAX_TRADES_PER_SCAN
 
 # Email-specific filtering (separate from trade selection)
-MIN_NORM_SCORE = 7  # Minimum score to include in email
+MIN_FINAL_SCORE = 3.0  # Minimum FinalScore to include in email
+                       # FinalScore = NormalizedScore × ExpectedValue
+                       # Range: 0 to ~13 (varies by strategy)
+                       # 3.0 = filters out low-quality signals across all strategies
+
+# 🆕 Position tracker for live trading (persistent file)
+position_tracker = PositionTracker(mode="live", file="data/open_positions.json")
 
 def get_market_regime(benchmark_ticker="SPY"):
     """
@@ -66,17 +73,27 @@ if __name__ == "__main__":
     trade_ready = pre_buy_check(combined_signals)
 
     # --------------------------------------------------
-    # Step 3.1: Apply normalized score filter and max trades
+    # Step 3.1: Filter out tickers already in position (🆕 LIVE TRADING)
+    # --------------------------------------------------
+    print(f"\n📊 Current Open Positions: {position_tracker.get_position_count()}")
+    if position_tracker.get_position_count() > 0:
+        print(position_tracker)
+
+    if not trade_ready.empty:
+        trade_ready = filter_trades_by_position(trade_ready, position_tracker)
+
+    # --------------------------------------------------
+    # Step 3.2: Apply final score filter and max trades
     # --------------------------------------------------
     if not trade_ready.empty:
         trade_ready = trade_ready[
-            trade_ready["NormalizedScore"] >= MIN_NORM_SCORE
+            trade_ready["FinalScore"] >= MIN_FINAL_SCORE
         ].head(MAX_TRADES_PER_SCAN)
 
-    print(f"📧 Sending email with top {len(trade_ready)} trade(s) (max: {MAX_TRADES_PER_SCAN})")
+    print(f"\n📧 Sending email with top {len(trade_ready)} trade(s) (max: {MAX_TRADES_PER_SCAN})")
 
     # --------------------------------------------------
-    # Step 4: Send email
+    # Step 4: Send email (with open positions)
     # --------------------------------------------------
     send_email_alert(
         trade_df=trade_ready,
@@ -85,5 +102,6 @@ if __name__ == "__main__":
         high_watch_list=high_watch_list,
         ema_list=ema_list,
         consolidation_list=consolidation_list,
-        rs_list=rs_list
+        rs_list=rs_list,
+        position_tracker=position_tracker  # 🆕 Pass position tracker
     )

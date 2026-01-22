@@ -60,3 +60,50 @@ def compute_rsi(series, period=14):
     rs = avg_gain / avg_loss
     rsi = 100 - (100 / (1 + rs))
     return rsi
+
+
+# --- Bollinger Bands ---
+def compute_bollinger_bands(series, period=20, std_dev=2):
+    """
+    Calculate Bollinger Bands
+
+    Args:
+        series: Price series (typically Close)
+        period: Moving average period (default 20)
+        std_dev: Number of standard deviations (default 2)
+
+    Returns:
+        tuple: (middle_band, upper_band, lower_band, bandwidth)
+    """
+    middle_band = series.rolling(period).mean()
+    std = series.rolling(period).std()
+
+    upper_band = middle_band + (std_dev * std)
+    lower_band = middle_band - (std_dev * std)
+
+    # BandWidth: measure of volatility (used for squeeze detection)
+    bandwidth = (upper_band - lower_band) / middle_band * 100
+
+    return middle_band, upper_band, lower_band, bandwidth
+
+
+def compute_percent_b(price, upper_band, lower_band):
+    """
+    Calculate %B (Percent B)
+    Shows where price is relative to Bollinger Bands
+
+    %B = 0: Price at lower band
+    %B = 0.5: Price at middle band
+    %B = 1: Price at upper band
+    %B < 0: Price below lower band (extremely oversold)
+    %B > 1: Price above upper band (extremely overbought)
+
+    Args:
+        price: Price series
+        upper_band: Upper Bollinger Band
+        lower_band: Lower Bollinger Band
+
+    Returns:
+        %B series
+    """
+    return (price - lower_band) / (upper_band - lower_band)

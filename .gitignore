@@ -24,6 +24,9 @@ ENV/
 # Data and logs
 *.log
 *.csv.tmp
+data/weekly/
+data/earnings_cache/
+ema_data/
 
 # Environment variables
 .env
