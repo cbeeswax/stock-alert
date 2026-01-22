@@ -28,6 +28,13 @@ data/weekly/
 data/earnings_cache/
 ema_data/
 
+# Backtest results (temporary - regenerated on each run)
+backtest_results.csv
+
+# Test files (optional - uncomment if you want to exclude)
+# test_*.py
+# verify_*.py
+
 # Environment variables
 .env
 .env.local
