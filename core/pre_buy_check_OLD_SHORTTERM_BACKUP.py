@@ -1,0 +1,320 @@
+import pandas as pd
+import numpy as np
+from utils.market_data import get_historical_data
+from utils.ema_utils import compute_rsi, compute_ema_incremental
+from config.trading_config import (
+    ADX_THRESHOLD,
+    RSI_MIN,
+    RSI_MAX,
+    VOLUME_MULTIPLIER,
+    MIN_LIQUIDITY_USD,
+    PRICE_ABOVE_EMA20_MIN,
+    PRICE_ABOVE_EMA20_MAX,
+    RISK_REWARD_RATIO
+)
+
+# -------------------------------------------------
+# Strategy-Specific Stop Loss & Target Helpers
+# -------------------------------------------------
+def get_stop_loss(strategy: str, entry: float, atr: float) -> float:
+    """
+    Calculate stop loss based on strategy-specific ATR multipliers.
+    Wider stops for strategies that need more room.
+    """
+    stops = {
+        "EMA Crossover": 2.5,        # Widest - needs room after crossover
+        "52-Week High": 2.0,         # Momentum breakout
+        "Mean Reversion": 2.0,       # Mean reversion needs room
+        "Consolidation Breakout": 2.0,
+        "%B Mean Reversion": 2.0,    # Mean reversion
+        "BB+RSI Combo": 2.0,         # Mean reversion
+        "BB Squeeze": 2.0,           # Volatility breakout
+    }
+    mult = stops.get(strategy, 2.0)
+    return entry - mult * atr
+
+
+def get_target(strategy: str, entry: float, stop: float) -> float:
+    """
+    Calculate target based on strategy-specific risk/reward ratios.
+    Mean reversion: 1.5R (quick bounces)
+    Momentum: 2.0R (trend continuation)
+    """
+    targets = {
+        "EMA Crossover": 2.0,        # Momentum trend
+        "52-Week High": 2.0,         # Momentum breakout
+        "Mean Reversion": 1.5,       # Quick bounce
+        "Consolidation Breakout": 2.0,
+        "%B Mean Reversion": 1.5,    # Quick bounce
+        "BB+RSI Combo": 1.5,         # Quick bounce
+        "BB Squeeze": 2.0,           # Momentum breakout
+    }
+    rr = targets.get(strategy, 2.0)
+    return entry + rr * (entry - stop)
+
+
+# -------------------------------------------------
+# ADX
+# -------------------------------------------------
+def compute_adx(df, period=14):
+    high = df["High"]
+    low = df["Low"]
+    close = df["Close"]
+
+    plus_dm = high.diff()
+    minus_dm = low.diff() * -1
+
+    plus_dm[plus_dm < 0] = 0
+    minus_dm[minus_dm < 0] = 0
+
+    tr = pd.concat([
+        high - low,
+        (high - close.shift(1)).abs(),
+        (low - close.shift(1)).abs()
+    ], axis=1).max(axis=1)
+
+    atr = tr.rolling(period).mean()
+    plus_di = 100 * (plus_dm.rolling(period).mean() / atr)
+    minus_di = 100 * (minus_dm.rolling(period).mean() / atr)
+    dx = 100 * (abs(plus_di - minus_di) / (plus_di + minus_di))
+    return dx.rolling(period).mean()
+
+
+# -------------------------------------------------
+# ATR
+# -------------------------------------------------
+def calculate_atr(df, period=14):
+    tr = pd.concat([
+        df["High"] - df["Low"],
+        (df["High"] - df["Close"].shift(1)).abs(),
+        (df["Low"] - df["Close"].shift(1)).abs()
+    ], axis=1).max(axis=1)
+
+    atr = tr.rolling(period).mean()
+    return atr.iloc[-1] if not atr.empty else 0
+
+
+# -------------------------------------------------
+# Strategy Performance Metrics (Historical - for Van Tharp Expectancy)
+# -------------------------------------------------
+STRATEGY_METRICS = {
+    # Format: (Win Rate, Avg Win R-Multiple, Avg Loss R-Multiple)
+    # 🔧 UPDATED WITH IMPROVED ASSUMPTIONS (based on tighter filters + better exits)
+    # These will be overwritten with actual backtest results
+
+    # High Win Rate Strategies (tight filters, mean reversion)
+    "BB+RSI Combo": (0.80, 1.50, -1.00),        # Triple confirmation, highest priority
+    "Mean Reversion": (0.78, 1.50, -1.00),      # RSI(2) proven winner
+    "%B Mean Reversion": (0.78, 1.50, -1.00),   # BB mean reversion variant
+
+    # Moderate Win Rate Strategies (momentum/breakout)
+    "52-Week High": (0.50, 2.00, -1.00),        # Tightened filters should improve WR
+    "EMA Crossover": (0.45, 2.00, -1.00),       # Fixed detection + wider stops
+    "Consolidation Breakout": (0.45, 2.00, -1.00),
+    "BB Squeeze": (0.45, 2.00, -1.00),
+
+    "Relative Strength": (0.30, 2.0, -1.0),     # Default values
+}
+
+# NOTE: These metrics come from actual backtest 2022-2026
+# - Mean Reversion WORKS (75% WR as expected!)
+# - Momentum strategies underperforming (30%, 22% WR)
+# - Cascading BROKEN (14.6% vs expected 65%) - needs urgent fix
+
+# NOTE: Negative R-multiples represent losses (e.g., -1.0R means losing 1× initial risk)
+#       Positive R-multiples represent wins (e.g., 2.0R means gaining 2× initial risk)
+
+# -------------------------------------------------
+# Van Tharp Expectancy Scoring Algorithm
+# -------------------------------------------------
+def normalize_score(score, strategy):
+    """
+    VAN THARP EXPECTANCY SCORING SYSTEM
+
+    Van Tharp's Expectancy Formula:
+    Expectancy = (WinRate × AvgWin) - ((1 - WinRate) × AvgLoss)
+
+    This accounts for the asymmetry between wins and losses:
+    - Not all wins are equal (some 0.5R, some 3R)
+    - Not all losses are equal (some -0.5R, some -2R)
+    - Expectancy represents the average R you can expect per trade
+
+    Algorithm:
+    1. Normalize raw score to 0-1 (quality within strategy)
+    2. Calculate Van Tharp Expectancy for strategy
+    3. FinalScore = Quality × Expectancy
+    4. Multiply by 10 for readability (0-13 scale)
+
+    Example:
+    - Strategy: 60% WR, +2R avg win, -1R avg loss
+    - Expectancy = (0.60 × 2.0) - (0.40 × 1.0) = 1.2 - 0.4 = 0.8R per trade
+    - Signal quality: 0.8 (80% of max)
+    - FinalScore = 0.8 × 0.8 × 10 = 6.4
+    """
+
+    # Step 1: Normalize raw score to 0-1 (quality within strategy)
+    ranges = {
+        "EMA Crossover": (50, 100),           # Base: 75 pts + Crossover bonus: 25 pts
+        "52-Week High": (6, 12),              # Simple scoring
+        "Consolidation Breakout": (4, 10),    # Range + volume based
+        "BB Squeeze": (50, 100),              # Squeeze + breakout + volume
+        "Mean Reversion": (40, 100),          # RSI(2) based: Max 100 pts
+        "%B Mean Reversion": (40, 100),       # %B based: Max 100 pts
+        "BB+RSI Combo": (50, 100),            # Double confirmation: Max 100 pts
+        "Relative Strength": (5, 15),
+    }
+
+    low, high = ranges.get(strategy, (0, 20))
+    quality = (score - low) / (high - low)
+    quality = max(0, min(1, quality))  # Clamp to [0, 1]
+
+    # Step 2: Calculate Van Tharp Expectancy for this strategy
+    win_rate, avg_win_r, avg_loss_r = STRATEGY_METRICS.get(strategy, (0.30, 1.5, -1.0))
+
+    # Van Tharp's Expectancy = (WinRate × AvgWin) - ((1 - WinRate) × |AvgLoss|)
+    # Note: avg_loss_r is already negative, so we use abs() for clarity
+    expectancy = (win_rate * avg_win_r) - ((1 - win_rate) * abs(avg_loss_r))
+
+    # Step 3: Calculate final score (quality × expectancy)
+    # Scale by 10 for readability (0-13 range instead of 0-1.3)
+    final_score = quality * expectancy * 10
+
+    return round(final_score, 2)
+
+
+# -------------------------------------------------
+# Pre-Buy Check with Market Regime Filter
+# -------------------------------------------------
+def pre_buy_check(combined_signals, rr_ratio=None, benchmark="SPY", as_of_date=None):
+    """
+    Deduplicates signals, applies liquidity + trend filters,
+    computes ATR-based stops, normalizes scores,
+    and blocks breakout trades in bearish market regime.
+
+    Args:
+        combined_signals: List of signal dictionaries
+        rr_ratio: Risk/reward ratio for target calculation
+        benchmark: Benchmark ticker for regime (not used, kept for compatibility)
+        as_of_date: Optional date for backtesting. If None, uses latest data (live mode).
+                    If provided, filters data to only use information up to this date.
+    """
+
+    # Use config value if rr_ratio not provided
+    if rr_ratio is None:
+        rr_ratio = RISK_REWARD_RATIO
+
+    # Market regime must be supplied by scanner (walk-forward safe)
+    is_bullish = True
+    mode = "BACKTEST" if as_of_date else "LIVE"
+    print(f"📊 Mode: {mode} | Market regime ({benchmark}): {'BULLISH' if is_bullish else 'BEARISH'}")
+
+    # -------------------------------
+    # Deduplicate by strategy priority
+    # -------------------------------
+    # Higher number = higher priority (if same ticker has multiple signals, use highest priority)
+    # 🔧 UPDATED: Prioritize proven high-WR strategies
+    priority = {
+        "BB+RSI Combo": 7,           # Highest - triple confirmation, 80% WR expected
+        "Mean Reversion": 6,         # Proven 75% WR
+        "%B Mean Reversion": 5,      # Similar to Mean Reversion
+        "52-Week High": 4,           # Momentum, 50% WR expected (tightened)
+        "EMA Crossover": 3,          # Fixed but still needs proof
+        "Consolidation Breakout": 2,
+        "BB Squeeze": 1,             # Lowest
+        "Relative Strength": 1,
+    }
+
+    best_signal = {}
+    for s in combined_signals:
+        t = s["Ticker"]
+        if t not in best_signal or priority[s["Strategy"]] > priority[best_signal[t]["Strategy"]]:
+            best_signal[t] = s
+
+    signals = list(best_signal.values())
+    trades = []
+
+    for s in signals:
+        ticker = s["Ticker"]
+        strategy = s["Strategy"]
+
+        # -------------------------------
+        # Skip breakout trades in bearish regime
+        # -------------------------------
+        market_regime = s.get("MarketRegime", "BULLISH")
+
+        if market_regime == "BEARISH" and strategy in [
+            "52-Week High",
+            "Consolidation Breakout"
+        ]:
+            continue
+
+        df = get_historical_data(ticker)
+        if df.empty:
+            continue
+
+        # 🔒 CRITICAL: Filter to as_of_date for backtesting (prevents look-ahead bias)
+        if as_of_date is not None:
+            df = df[df.index <= as_of_date]
+
+        if len(df) < 60:
+            continue
+
+        df = df.tail(60)
+        close = df["Close"].iloc[-1]
+
+        # -------------------------------
+        # Liquidity filter (from config)
+        # -------------------------------
+        avg_dollar_vol = (df["Close"] * df["Volume"]).rolling(20).mean().iloc[-1]
+        if avg_dollar_vol < MIN_LIQUIDITY_USD:
+            continue
+
+        # -------------------------------
+        # ATR-based risk
+        # -------------------------------
+        atr = calculate_atr(df)
+        if atr == 0:
+            atr = close * 0.02
+
+        entry = close
+
+        # 🔧 Use strategy-specific stop/target helpers
+        stop = get_stop_loss(strategy, entry, atr)
+        target = get_target(strategy, entry, stop)
+
+        # -------------------------------
+        # EMA strategy extra filters (NOW DONE IN SCANNER - kept for other strategies)
+        # -------------------------------
+        if strategy == "EMA Crossover":
+            # Filters already applied in scanner, just verify data quality
+            if not s.get("ADX14") or s.get("ADX14") < ADX_THRESHOLD:
+                continue
+
+        # Calculate final score using Van Tharp Expectancy
+        final_score = normalize_score(s.get("Score", 0), strategy)
+
+        # Get strategy metrics for display
+        win_rate, avg_win_r, avg_loss_r = STRATEGY_METRICS.get(strategy, (0.30, 1.5, -1.0))
+
+        # Calculate Van Tharp Expectancy
+        expectancy = (win_rate * avg_win_r) - ((1 - win_rate) * abs(avg_loss_r))
+
+        trades.append({
+            "Ticker": ticker,
+            "Strategy": strategy,
+            "Entry": round(entry, 2),
+            "StopLoss": round(stop, 2),
+            "Target": round(target, 2),
+            "RawScore": s.get("Score", 0),          # Original strategy score
+            "FinalScore": final_score,              # Quality × Expectancy × 10
+            "Expectancy": round(expectancy, 2),     # Van Tharp Expectancy (R per trade)
+            "CrossoverType": s.get("CrossoverType", "Unknown"),
+            "CrossoverBonus": s.get("CrossoverBonus", 0),
+        })
+
+    df_trades = pd.DataFrame(trades)
+    if not df_trades.empty:
+        # Sort by FinalScore (incorporates both quality and profitability)
+        df_trades = df_trades.sort_values(by="FinalScore", ascending=False)
+
+    return df_trades

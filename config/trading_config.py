@@ -27,6 +27,7 @@ UNIVERSAL_QQQ_BULL_MA = 100           # QQQ > 100-MA (stronger than 200-MA)
 UNIVERSAL_QQQ_MA_RISING_DAYS = 20     # QQQ MA100 must be rising over 20 days
 
 # Risk Management
+POSITION_INITIAL_EQUITY = 100000   # Starting equity for position sizing ($100k default)
 POSITION_RISK_PER_TRADE_PCT = 2.0  # 2.0% of equity per trade (up from 1.5%)
 POSITION_MAX_TOTAL = 20            # Max 20 total positions (focused on 3 strategies)
 

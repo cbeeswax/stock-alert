@@ -3,6 +3,7 @@ import smtplib
 from email.mime.text import MIMEText
 import pandas as pd
 from datetime import datetime
+from config.trading_config import POSITION_INITIAL_EQUITY, POSITION_RISK_PER_TRADE_PCT
 
 # ============================================================
 # Helper: Create HTML table with score-based row coloring
@@ -234,11 +235,66 @@ def send_email_alert(
             is_position_trading = "Priority" in trade_df.columns and "MaxDays" in trade_df.columns
 
             if is_position_trading:
-                # Position trading columns
-                action_cols = ["Ticker", "Strategy", "Entry", "StopLoss", "Target",
-                               "Score", "Priority", "MaxDays", "Direction"]
-                score_col = "Score"
-                title_prefix = "🎯 POSITION TRADES"
+                # Calculate position sizing for each trade
+                # User can update POSITION_INITIAL_EQUITY in config/trading_config.py
+                equity = POSITION_INITIAL_EQUITY  # Default $100k
+                risk_pct = POSITION_RISK_PER_TRADE_PCT / 100  # 2% default
+
+                body_html += f"<h2>🎯 NEW POSITION TRADES ({len(trade_df)} signals) - ACTION ITEMS</h2>"
+                body_html += f"<p><strong>Account Equity:</strong> ${equity:,.0f} | <strong>Risk per Trade:</strong> {risk_pct*100}% = ${equity*risk_pct:,.0f}</p>"
+                body_html += "<table border='1' cellpadding='6' cellspacing='0' style='border-collapse:collapse; width:100%;'>"
+                body_html += "<tr style='background-color:#e6f2ff;'>"
+                body_html += "<th>Ticker</th><th>Strategy</th><th>Action</th><th>Shares</th><th>Position $</th>"
+                body_html += "<th>Entry $</th><th>Stop $</th><th>Target $</th><th>Risk/Share</th><th>Max Days</th></tr>"
+
+                for idx, row in trade_df.iterrows():
+                    ticker = row['Ticker']
+                    strategy = row['Strategy']
+                    entry = row['Entry']
+                    stop = row['StopLoss']
+                    target = row['Target']
+                    max_days = row.get('MaxDays', 150)
+
+                    # Calculate position sizing
+                    risk_amount = equity * risk_pct  # $2,000 default
+                    risk_per_share = entry - stop
+                    shares = int(risk_amount / risk_per_share) if risk_per_share > 0 else 0
+                    position_size = shares * entry
+
+                    # Color code by score
+                    score = row.get('Score', 0)
+                    if score >= 8:
+                        row_color = "#c6efce"  # green
+                    elif score >= 6:
+                        row_color = "#ffeb9c"  # yellow
+                    else:
+                        row_color = "#f4c7c3"  # red
+
+                    body_html += f"<tr style='background-color:{row_color};'>"
+                    body_html += f"<td><strong>{ticker}</strong></td>"
+                    body_html += f"<td>{strategy}</td>"
+                    body_html += f"<td><strong>BUY {shares} shares at ${entry:.2f}</strong></td>"
+                    body_html += f"<td><strong>{shares}</strong></td>"
+                    body_html += f"<td>${position_size:,.0f}</td>"
+                    body_html += f"<td>${entry:.2f}</td>"
+                    body_html += f"<td>${stop:.2f}</td>"
+                    body_html += f"<td>${target:.2f}</td>"
+                    body_html += f"<td>${risk_per_share:.2f}</td>"
+                    body_html += f"<td>{max_days}d</td>"
+                    body_html += "</tr>"
+
+                body_html += "</table>"
+
+                # Add summary instructions
+                body_html += "<br><h3>📋 EXECUTION CHECKLIST:</h3>"
+                body_html += "<ol>"
+                body_html += "<li><strong>Place Orders:</strong> Buy the shares at market or limit order</li>"
+                body_html += "<li><strong>Set Stop Loss:</strong> Place stop-loss order at the Stop $ price</li>"
+                body_html += "<li><strong>Set Alert:</strong> Set price alert at Target $ for partial profit (30%)</li>"
+                body_html += f"<li><strong>Track Position:</strong> Run <code>python manage_positions.py add TICKER ENTRY_PRICE</code></li>"
+                body_html += "<li><strong>Monitor Daily:</strong> Next scan will check for exit signals automatically</li>"
+                body_html += "</ol><br>"
+
             else:
                 # Short-term trading columns (old system)
                 action_cols = ["Ticker", "Strategy", "Entry", "StopLoss", "Target",
@@ -246,14 +302,14 @@ def send_email_alert(
                 score_col = "FinalScore"
                 title_prefix = "🔥 ACTIONABLE TRADES"
 
-            action_df = trade_df[[c for c in action_cols if c in trade_df.columns]]
+                action_df = trade_df[[c for c in action_cols if c in trade_df.columns]]
 
-            body_html += df_to_html_table(
-                action_df,
-                score_column=score_col,
-                title=f"{title_prefix} ({len(action_df)} stocks)",
-                max_rows=None  # Show all actionable trades
-            )
+                body_html += df_to_html_table(
+                    action_df,
+                    score_column=score_col,
+                    title=f"{title_prefix} ({len(action_df)} stocks)",
+                    max_rows=None  # Show all actionable trades
+                )
         else:
             body_html += "<h2>🔥 ACTIONABLE TRADES</h2><p>No actionable trades today.</p>"
 

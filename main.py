@@ -20,6 +20,7 @@ from config.trading_config import (
     POSITION_MAX_TOTAL,
     POSITION_MAX_PER_STRATEGY,
     POSITION_RISK_PER_TRADE_PCT,
+    POSITION_INITIAL_EQUITY,
     REGIME_INDEX,
     UNIVERSAL_QQQ_BULL_MA,
 )
@@ -209,10 +210,29 @@ if __name__ == "__main__":
     if not trade_ready.empty:
         print(f"\n✅ {len(trade_ready)} new position signal(s) ready:\n")
 
-        # Display format
+        # Calculate position sizing
+        equity = POSITION_INITIAL_EQUITY  # From config (default $100k)
+        risk_pct = POSITION_RISK_PER_TRADE_PCT / 100  # 2%
+        risk_amount = equity * risk_pct
+
+        print(f"💰 Account Equity: ${equity:,} | Risk per Trade: {risk_pct*100}% = ${risk_amount:,}\n")
+
+        # Display format with position sizing
         for idx, trade in trade_ready.iterrows():
-            print(f"   {idx+1}. {trade['Ticker']:<6} | {trade['Strategy']:<35}")
-            print(f"      Entry: ${trade['Entry']:.2f} | Stop: ${trade['StopLoss']:.2f} | Target: ${trade['Target']:.2f}")
+            ticker = trade['Ticker']
+            entry = trade['Entry']
+            stop = trade['StopLoss']
+            target = trade['Target']
+
+            # Calculate shares
+            risk_per_share = entry - stop
+            shares = int(risk_amount / risk_per_share) if risk_per_share > 0 else 0
+            position_size = shares * entry
+
+            print(f"   {idx+1}. {ticker:<6} | {trade['Strategy']:<35}")
+            print(f"      🎯 BUY {shares} shares at ${entry:.2f} = ${position_size:,.0f} position")
+            print(f"      📉 Stop: ${stop:.2f} (risk: ${risk_per_share:.2f}/share)")
+            print(f"      📈 Target: ${target:.2f} | Max Days: {trade.get('MaxDays', 150)}")
             print(f"      Score: {trade.get('Score', 0):.1f} | Priority: {trade.get('Priority', 999)}")
             print()
     else:
