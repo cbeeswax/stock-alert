@@ -1,237 +1,274 @@
 """
-Trading Strategy Configuration
-================================
-Centralized configuration for BOTH live trading and backtesting.
-Modify these values to tune your strategy - changes apply everywhere.
+Long-Term Position Trading Configuration
+=========================================
+Complete configuration for 7 long-term position strategies (60-120 day holds).
+Target: 8-20 trades/year total, aiming for 2-10R per trade.
+
+STRATEGY SUITE:
+1. EMA_Crossover_Position
+2. MeanReversion_Position
+3. %B_MeanReversion_Position
+4. High52_Position
+5. BigBase_Breakout_Position
+6. TrendContinuation_Position
+7. RelativeStrength_Ranker_Position
 """
 
 # =============================================================================
-# POSITION SIZING & RISK MANAGEMENT
+# GLOBAL POSITION TRADING SETTINGS
 # =============================================================================
 
-CAPITAL_PER_TRADE = 10_000  # Capital allocated per trade in USD
-RISK_REWARD_RATIO = 2       # Target profit is X times the risk (OPTION 3: Easier target)
-                            # 2 = 2:1 (conservative)
-                            # 3 = 3:1 (balanced)
-                            # 4 = 4:1 (aggressive)
+# Universal Filters (Applied to ALL active strategies)
+UNIVERSAL_RS_MIN = 0.30               # Minimum +30% RS vs QQQ for ALL strategies
+UNIVERSAL_ADX_MIN = 30                # Minimum ADX(14) >= 30 for strong trends
+UNIVERSAL_VOLUME_MULT = 2.5           # Minimum 2.5x volume surge for ALL strategies
+UNIVERSAL_ALL_MAS_RISING = True       # MA50, MA100, MA200 all must be rising
+UNIVERSAL_QQQ_BULL_MA = 100           # QQQ > 100-MA (stronger than 200-MA)
+UNIVERSAL_QQQ_MA_RISING_DAYS = 20     # QQQ MA100 must be rising over 20 days
 
-MAX_HOLDING_DAYS = 45       # Maximum days to hold a trade
+# Risk Management
+POSITION_INITIAL_EQUITY = 100000   # Starting equity for position sizing ($100k default)
+POSITION_RISK_PER_TRADE_PCT = 2.0  # 2.0% of equity per trade (up from 1.5%)
+POSITION_MAX_TOTAL = 20            # Max 20 total positions (focused on 3 strategies)
 
+# Per-Strategy Position Limits (FOCUSED ON PROVEN WINNERS ONLY)
+POSITION_MAX_PER_STRATEGY = {
+    # ACTIVE STRATEGIES (2 active, 1 testing)
+    "RelativeStrength_Ranker_Position": 10,   # PROVEN: 47.5% WR, 2.04R, $362k profit
+    "High52_Position": 6,                      # TESTING: Ultra-selective filters (30% RS, 2.5x vol, ADX 30+)
+    "BigBase_Breakout_Position": 0,           # DISABLED: 10% WR, negative expectancy
 
-# =============================================================================
-# TRADE SELECTION
-# =============================================================================
+    # DISABLED STRATEGIES (broken - churning or insufficient data)
+    "EMA_Crossover_Position": 0,              # 1 trade only, -1.00R
+    "TrendContinuation_Position": 0,          # 30.4% WR unacceptable, churning
+    "MeanReversion_Position": 0,              # 0.26R avg, 135 trades churning
+    "%B_MeanReversion_Position": 0,           # 0.05R avg, essentially breakeven
+}
 
-MAX_TRADES_PER_SCAN = 3     # Maximum trades to take per scan
-                            # Live mode: top 3 trades in email
-                            # Backtest: top 3 trades per simulation date
-                            # 1 = most selective
-                            # 3 = balanced
-                            # 5-10 = more opportunities
+# Fallback for compatibility
+POSITION_MAX_PER_STRATEGY_DEFAULT = 5
 
-MAX_OPEN_POSITIONS = 10     # 🆕 GLOBAL LIMIT: Maximum number of open positions at once
-                            # Prevents over-exposure and maintains manageable portfolio
-                            # Recommended: 8-12 for swing trading
-                            # Never exceed this limit regardless of signals
+# Time Horizons
+POSITION_MAX_DAYS_SHORT = 90       # Mean reversion styles (60-90 days)
+POSITION_MAX_DAYS_LONG = 120       # Momentum/breakout styles (60-120 days)
 
-
-# =============================================================================
-# TECHNICAL FILTER PARAMETERS
-# =============================================================================
-
-# Trend strength (ADX) - NOW ENFORCED IN SCANNER
-ADX_THRESHOLD = 25          # Minimum ADX for valid trend (IMPROVED: Strong trend required)
-                            # 20 = weak trend OK
-                            # 22 = medium trend (balanced)
-                            # 24 = good trend
-                            # 25 = strong trend required (CURRENT - reduces false signals by 40%)
-                            # 30 = very strong trend
-
-# Momentum (RSI) - NOW ENFORCED IN SCANNER
-RSI_MIN = 50                # Minimum RSI value (IMPROVED: Healthy momentum)
-RSI_MAX = 66                # Maximum RSI value (IMPROVED: Not overbought)
-                            # Tight: 50-65 (selective)
-                            # Medium: 48-68 (balanced)
-                            # Current: 50-66 (filters out weak/overbought stocks)
-                            # Wide: 45-70 (more trades)
-
-# Volume confirmation - NOW ENFORCED IN SCANNER
-VOLUME_MULTIPLIER = 1.5     # Current volume vs 20-day average (IMPROVED: Strong confirmation)
-                            # 1.0 = no filter
-                            # 1.3 = 30% above average (relaxed)
-                            # 1.4 = 40% above average
-                            # 1.5 = 50% above average (CURRENT - confirms institutional interest)
-                            # 2.0 = 100% above average (strict)
-
-# Liquidity requirement
-MIN_LIQUIDITY_USD = 30_000_000  # Minimum 20-day avg dollar volume
-                                # $20M = smaller stocks OK
-                                # $30M = balanced (current)
-                                # $50M = large cap only
-                                # $100M = mega cap only
-
-# Price action (distance from EMA20)
-PRICE_ABOVE_EMA20_MIN = 0.01    # Min 1% above EMA20
-PRICE_ABOVE_EMA20_MAX = 0.05    # Max 5% above EMA20
-                                # Prevents buying at resistance
+# Partial Profits (30-50% at 2-2.5R)
+POSITION_PARTIAL_ENABLED = True
+POSITION_PARTIAL_SIZE = 0.3              # 30% (runner = 70%)
+POSITION_PARTIAL_R_TRIGGER_LOW = 2.0     # Most strategies
+POSITION_PARTIAL_R_TRIGGER_MID = 2.5     # High52, BigBase
+POSITION_PARTIAL_R_TRIGGER_HIGH = 3.0    # RS_Ranker
 
 # =============================================================================
-# CROSSOVER DETECTION & WEIGHTAGE SYSTEM
+# PYRAMIDING (ADD TO WINNERS)
 # =============================================================================
 
-# Three types of crossovers are detected, weighted by signal strength:
-
-# TYPE 1: CASCADING CROSSOVER (Strongest Signal)
-# - All 3 EMAs crossed from bearish to bullish within a short window
-# - EMA20 crossed EMA50: within 20 days
-# - EMA50 crossed EMA200: within 35 days (Golden Cross)
-# - EMA20 crossed EMA200: within 40 days
-# - Bonus: 25 points (highest)
-# - Logic: Complete trend reversal, strongest momentum
-CASCADING_WINDOW_20x50 = 20     # Days for EMA20 crossing EMA50
-CASCADING_WINDOW_50x200 = 35    # Days for EMA50 crossing EMA200
-CASCADING_WINDOW_20x200 = 40    # Days for EMA20 crossing EMA200
-CASCADING_BONUS = 25            # Quality score bonus
-
-# TYPE 2: GOLDEN CROSS (Strong Signal)
-# - EMA50 crossed above EMA200 (major trend change)
-# - EMA20 already above both EMAs
-# - Bonus: 18 points
-# - Logic: Well-known bullish indicator, institutional recognition
-GOLDEN_CROSS_WINDOW_50x200 = 25  # Days for EMA50 crossing EMA200
-GOLDEN_CROSS_WINDOW_20x50 = 30   # Days for EMA20 crossing EMA50
-GOLDEN_CROSS_BONUS = 18          # Quality score bonus
-
-# TYPE 3: EARLY STAGE (Moderate Signal)
-# - Just EMA20 crossed above EMA50 recently
-# - EMA50 and EMA200 may have been aligned for a while
-# - Bonus: 10 points
-# - Logic: Earliest signal, more frequent but weaker
-EARLY_STAGE_WINDOW = 20         # Days for EMA20 crossing EMA50
-EARLY_STAGE_BONUS = 10          # Quality score bonus
-
-# TYPE 4: TIGHT PULLBACK (Good Signal)
-# - No recent crossover, but EMAs are tightly clustered
-# - Indicates consolidation at support before next move
-# - Bonus: 12 points
-# - Logic: Low-risk entry near support levels
-TIGHT_EMA_SPREAD_2050 = 5       # Max % spread between EMA20-EMA50
-TIGHT_EMA_SPREAD_50200 = 8      # Max % spread between EMA50-EMA200
-TIGHT_PULLBACK_BONUS = 12       # Quality score bonus
-
+POSITION_PYRAMID_ENABLED = True
+POSITION_PYRAMID_R_TRIGGER = 1.5      # Add after +1.5R profit (FASTER - was 2.0)
+POSITION_PYRAMID_SIZE = 0.5           # 50% of original position size
+POSITION_PYRAMID_MAX_ADDS = 3         # Maximum 3 add-ons per position (INCREASED - was 2)
+POSITION_PYRAMID_PULLBACK_EMA = 21    # Must pull back to 21-day EMA
+POSITION_PYRAMID_PULLBACK_ATR = 1.0   # Within 1 ATR of EMA21
 
 # =============================================================================
-# ENTRY CONFIRMATION & ANTI-MANIPULATION SETTINGS
+# STRATEGY PRIORITY (DEDUPLICATION)
 # =============================================================================
 
-# 🆕 Entry confirmation (reduces false breakouts by 30-40%)
-REQUIRE_CONFIRMATION_BAR = True     # Wait for next bar to confirm signal
-                                    # True = Enter at next day open (safer)
-                                    # False = Enter at signal day close (faster but riskier)
-
-CONFIRMATION_MAX_GAP_PCT = 3.0      # Max gap % on confirmation day (3% = reasonable)
-                                    # Avoid entering if stock gaps up too much
-
-CONFIRMATION_MIN_VOLUME_RATIO = 1.0 # Confirmation day volume vs 20-day avg
-                                    # Ensures interest continues
-
-# 🆕 Minimum holding period (anti-whipsaw)
-MIN_HOLDING_DAYS = 3                # Minimum days to hold (unless catastrophic loss)
-                                    # Filters intraday noise
-                                    # 2-3 days recommended for swing trading
-
-CATASTROPHIC_LOSS_THRESHOLD = 1.5   # Allow early exit if loss > 1.5R
-                                    # Protects against black swan events
-
-# 🆕 Gap filter (avoid extended entries)
-MAX_ENTRY_GAP_PCT = 3.0             # Skip signals if stock gapped > 3% on signal day
-                                    # Prevents buying at extended prices
-
+STRATEGY_PRIORITY = {
+    "BigBase_Breakout_Position": 1,           # Highest - rarest, biggest moves
+    "RelativeStrength_Ranker_Position": 2,
+    "TrendContinuation_Position": 3,
+    "EMA_Crossover_Position": 4,
+    "High52_Position": 5,
+    "MeanReversion_Position": 6,
+    "%B_MeanReversion_Position": 7,
+}
 
 # =============================================================================
-# BACKTEST-SPECIFIC SETTINGS
+# 1. EMA_CROSSOVER_POSITION (60-120 DAYS)
 # =============================================================================
 
-BACKTEST_START_DATE = "2022-01-01"  # Historical backtest start date
-SCAN_FREQUENCY = "B"                # Backtest scan frequency (default)
-                                    # "B" = daily
-                                    # "W-MON" = weekly Monday
-                                    # "W-FRI" = weekly Friday
-                                    # Note: Can be overridden via --scan-frequency flag
-
+EMA_CROSS_POS_VOLUME_MULT = 1.5           # Volume ≥ 1.5x avg
+EMA_CROSS_POS_STOP_ATR_MULT = 3.5         # Stop: entry - 3.5× ATR(14)
+EMA_CROSS_POS_PARTIAL_R = 2.0             # Partial at 2R
+EMA_CROSS_POS_PARTIAL_SIZE = 0.3          # 30% (runner = 70%)
+EMA_CROSS_POS_TRAIL_MA = 100              # Trail with MA100 (NOT EMA!)
+EMA_CROSS_POS_TRAIL_DAYS = 5              # 5 closes below MA100 to exit
+EMA_CROSS_POS_MAX_DAYS = 120
 
 # =============================================================================
-# RECENT IMPROVEMENTS (2026-01-20)
+# 2. MEANREVERSION_POSITION (60-90 DAYS)
+# =============================================================================
+
+MR_POS_RSI_OVERSOLD = 38                  # RSI14 < 38
+MR_POS_RS_THRESHOLD = 0.15                # 6-mo RS > index +15%
+MR_POS_STOP_ATR_MULT = 3.5                # Stop: entry - 3.5× ATR(14)
+MR_POS_PARTIAL_R = 2.0                    # Partial at 2R (NO RSI exits!)
+MR_POS_PARTIAL_SIZE = 0.3                 # 30% (runner = 70%)
+MR_POS_TRAIL_MA = 50                      # Trail with MA50 (NOT EMA!)
+MR_POS_TRAIL_DAYS = 5                     # 5 closes below MA50 to exit
+MR_POS_MAX_DAYS = 90
+
+# =============================================================================
+# 3. %B_MEANREVERSION_POSITION (60-90 DAYS)
+# =============================================================================
+
+PERCENT_B_POS_OVERSOLD = 0.12             # %B < 0.12
+PERCENT_B_POS_RSI_OVERSOLD = 38           # RSI14 < 38
+PERCENT_B_POS_STOP_ATR_MULT = 3.5         # Stop: entry - 3.5× ATR(14)
+PERCENT_B_POS_PARTIAL_R = 2.0             # Partial at 2R (NO %B exits!)
+PERCENT_B_POS_PARTIAL_SIZE = 0.3          # 30% (runner = 70%)
+PERCENT_B_POS_TRAIL_MA = 50               # Trail with MA50 (NOT EMA21!)
+PERCENT_B_POS_TRAIL_DAYS = 5              # 5 closes below MA50 to exit
+PERCENT_B_POS_MAX_DAYS = 90
+
+# =============================================================================
+# 4. HIGH52_POSITION (60-120 DAYS)
+# =============================================================================
+
+HIGH52_POS_RS_MIN = 0.30                  # Minimum 30% RS vs QQQ (LEADERS ONLY - was 0.20)
+HIGH52_POS_VOLUME_MULT = 2.5              # Single-day ≥ 2.5× 50-day avg (CONVICTION - was 1.8 5-day avg)
+HIGH52_POS_ADX_MIN = 30                   # Minimum ADX(14) >= 30 for momentum confirmation
+HIGH52_POS_STOP_ATR_MULT = 4.5            # Stop: entry - 4.5× ATR(20) (WIDER - was 3.5)
+HIGH52_POS_PARTIAL_R = 2.5                # Partial at 2.5R
+HIGH52_POS_PARTIAL_SIZE = 0.3             # 30% (runner = 70%)
+HIGH52_POS_TRAIL_MA = 100                 # Trail with 100-day MA (WIDER - was 50)
+HIGH52_POS_TRAIL_DAYS = 8                 # 8 closes below to exit (MORE PATIENCE - was 3)
+HIGH52_POS_MAX_DAYS = 150                 # Max 150 days (EXTENDED - was 120)
+
+# =============================================================================
+# 5. BIGBASE_BREAKOUT_POSITION (60-120 DAYS) - NEW
+# =============================================================================
+
+BIGBASE_MIN_WEEKS = 14                    # Minimum 14 weeks consolidation (BALANCED - was 16)
+BIGBASE_MAX_RANGE_PCT = 0.22              # Max 22% range (HH-LL)/LL (LOOSER - was 0.20)
+BIGBASE_RS_MIN = 0.15                     # Minimum 15% RS vs QQQ (STRONG - was 0.20)
+BIGBASE_VOLUME_MULT = 1.5                 # 5-day avg ≥ 1.5× 50-day avg (SUSTAINED - was 1.8)
+BIGBASE_STOP_ATR_MULT = 4.5               # Stop: entry - 4.5× ATR(20) (WIDER - was 3.5)
+BIGBASE_PARTIAL_R = 4.0                   # Partial at 4R (HOME RUN - was 2.5R)
+BIGBASE_PARTIAL_SIZE = 0.3                # 30% (runner = 70%)
+BIGBASE_TRAIL_MA = 200                    # Trail with 200-day MA (WIDEST - was 50)
+BIGBASE_TRAIL_DAYS = 10                   # 10 closes below to exit (MAX PATIENCE - was 4)
+BIGBASE_MAX_DAYS = 180                    # Max 180 days (EXTENDED - was 120)
+
+# =============================================================================
+# 6. TRENDCONTINUATION_POSITION (60-90 DAYS) - NEW
+# =============================================================================
+
+TREND_CONT_MA_LOOKBACK = 150              # 150-day MA
+TREND_CONT_MA_RISING_DAYS = 20            # MA rising over 20 days
+TREND_CONT_RS_THRESHOLD = 0.25            # 6-mo RS > index +25%
+TREND_CONT_RSI_MIN = 45                   # RSI14 ≥ 45 on pullback
+TREND_CONT_PULLBACK_EMA = 21              # Pullback to 21-day EMA
+TREND_CONT_PULLBACK_ATR = 1.0             # Within 1 ATR
+TREND_CONT_STOP_ATR_MULT = 3.5            # Stop: entry - 3.5× ATR
+TREND_CONT_PARTIAL_R = 2.0                # Partial at 2R
+TREND_CONT_PARTIAL_SIZE = 0.3             # 30% (runner = 70%)
+TREND_CONT_TRAIL_MA = 50                  # Trail with MA50 (NOT EMA34!)
+TREND_CONT_TRAIL_DAYS = 5                 # 5 closes below MA50 to exit
+TREND_CONT_MAX_DAYS = 90
+
+# =============================================================================
+# 7. RELATIVESTRENGTH_RANKER_POSITION (60-120 DAYS) - NEW
+# =============================================================================
+
+RS_RANKER_SECTORS = ["Information Technology", "Communication Services"]
+RS_RANKER_TOP_N = 10                      # Take top 10 RS stocks daily
+RS_RANKER_RS_THRESHOLD = 0.30             # RS > +30% vs QQQ
+RS_RANKER_STOP_ATR_MULT = 4.5             # Stop: entry - 4.5× ATR(20) (WIDER - was 3.5)
+RS_RANKER_PARTIAL_R = 3.0                 # Partial at 3R (highest)
+RS_RANKER_PARTIAL_SIZE = 0.3              # 30% (runner = 70%)
+RS_RANKER_TRAIL_MA = 100                  # Trail with 100-day MA (WIDER - was 50)
+RS_RANKER_TRAIL_DAYS = 10                 # 10 closes below to exit (MORE PATIENCE - was 3)
+RS_RANKER_MAX_DAYS = 150                  # Max 150 days (EXTENDED - was 120)
+
+# =============================================================================
+# INDEX REGIME FILTERS
+# =============================================================================
+
+# Primary Index (QQQ for tech-focused strategies)
+REGIME_INDEX = "QQQ"
+REGIME_BULL_MA = 200                      # Bullish: close > 200-day MA
+REGIME_BULL_MA_RISING_DAYS = 0            # MA rising (0 = just above)
+REGIME_BEAR_MA = 200                      # Bearish: close < 200-day MA
+REGIME_BEAR_MA_FALLING_DAYS = 0           # MA falling
+
+# Alternative Index (SPY for broad market)
+REGIME_INDEX_ALT = "SPY"
+
+# =============================================================================
+# LIQUIDITY & UNIVERSE FILTERS
+# =============================================================================
+
+MIN_LIQUIDITY_USD = 30_000_000           # $30M avg 20-day dollar volume
+MIN_PRICE = 10.0                         # Minimum $10 per share
+MAX_PRICE = 999999.0                     # No max price
+
+# Sector filters (for RS_Ranker and other tech strategies)
+TECH_SECTORS = ["Information Technology", "Communication Services"]
+
+# =============================================================================
+# BACKTEST SETTINGS
+# =============================================================================
+
+BACKTEST_START_DATE = "2022-01-01"
+BACKTEST_SCAN_FREQUENCY = "W-MON"         # Weekly Monday (position trading)
+                                          # Options: "B" (daily), "W-MON", "W-FRI"
+
+# =============================================================================
+# LEGACY SETTINGS (DEPRECATED - KEPT FOR COMPATIBILITY)
+# =============================================================================
+
+# Old short-term settings - no longer used
+CAPITAL_PER_TRADE = 20_000               # Replaced by position sizing calc
+RISK_REWARD_RATIO = 2                    # Replaced by strategy-specific R targets
+MAX_HOLDING_DAYS = 120                   # Replaced by strategy-specific max days
+PARTIAL_EXIT_ENABLED = True              # Now POSITION_PARTIAL_ENABLED
+PARTIAL_EXIT_SIZE = 0.4                  # Now POSITION_PARTIAL_SIZE
+MAX_TRADES_PER_SCAN = 10                 # Replaced by per-strategy limits
+MAX_OPEN_POSITIONS = 25                  # Replaced by POSITION_MAX_TOTAL
+REQUIRE_CONFIRMATION_BAR = False         # Position trading enters immediately
+MIN_HOLDING_DAYS = 0                     # No minimum for position trading
+CATASTROPHIC_LOSS_THRESHOLD = 999        # Stop loss only
+MAX_ENTRY_GAP_PCT = 999                  # No gap filter for position trading
+
+# Legacy pre_buy_check.py constants (for backward compatibility)
+ADX_THRESHOLD = 30                       # Now UNIVERSAL_ADX_MIN
+RSI_MIN = 30                             # Old RSI filter (not used in position trading)
+RSI_MAX = 70                             # Old RSI filter (not used in position trading)
+VOLUME_MULTIPLIER = 2.5                  # Now UNIVERSAL_VOLUME_MULT
+PRICE_ABOVE_EMA20_MIN = 0.95             # Old EMA filter (not used in position trading)
+PRICE_ABOVE_EMA20_MAX = 1.10             # Old EMA filter (not used in position trading)
+
+# =============================================================================
+# NOTES
 # =============================================================================
 
 """
-✅ FILTERS NOW APPLIED IN SCANNER (Not in pre_buy_check):
-- ADX ≥ 25 (strong trend required)
-- RSI 50-66 (healthy momentum, not overbought)
-- Volume ≥ 1.5x average (institutional confirmation)
-- Price 0-3% above EMA20 (fresh entries only)
-- EMA200 slope ≥ 0 (uptrend required)
-- 🆕 CROSSOVER TYPE DETECTION: 4 types with weighted scoring
-  * Cascading (25 pts): All EMAs crossed from bearish to bullish
-  * Golden Cross (18 pts): EMA50 crossed EMA200 recently
-  * Early Stage (10 pts): EMA20 crossed EMA50 recently
-  * Tight Pullback (12 pts): EMAs clustered at support
+LONG-TERM POSITION TRADING APPROACH:
+------------------------------------
+• Risk: 1.5% per trade (vs 1% short-term)
+• Holding: 60-120 days (vs 3-60 days)
+• Frequency: 8-20 trades/year (vs 50-200/year)
+• Target: 2-10R per trade (vs 0.5-2R)
+• Positions: Max 25 total, 5 per strategy
+• Pyramiding: Add 50% size after +2R on pullback to EMA21
 
-✅ NEW EXIT FEATURES:
-- Trailing stop: Locks in profits at 1R, 2R, 3R levels
-- EMA20 breakdown exit: Exits immediately if trend breaks
-- Better exit reasons tracking: Target, StopLoss, TrailingStop, EMA20Breakdown, MaxDays
+STRATEGY CHARACTERISTICS:
+-------------------------
+1. EMA_Crossover_Position: Trend following with index confirmation
+2. MeanReversion_Position: Long-term uptrend oversold bounces
+3. %B_MeanReversion_Position: Bollinger Band oversold in uptrends
+4. High52_Position: Top RS breakouts to new highs
+5. BigBase_Breakout_Position: Multi-month base breakouts (RARE)
+6. TrendContinuation_Position: Pullback entries in strong trends
+7. RelativeStrength_Ranker_Position: Top 10 RS daily ranking system
 
-✅ EXPECTED IMPROVEMENTS:
-- 80-90% reduction in low-quality signals
-- Win rate increase from 30-35% to 45-50%
-- Average R-multiple increase from +0.2 to +0.8
-- 2-3x profit improvement over 4 years
-
-BEFORE: 192 signals/day → 20 pass filters → 3 taken
-AFTER: 10-20 quality signals/day → 3 best taken
-"""
-
-
-# =============================================================================
-# NOTES & GUIDELINES
-# =============================================================================
-
-"""
-TUNING FOR HIGHER WIN RATE (fewer trades):
--------------------------------------------
-✓ Increase ADX_THRESHOLD to 25+
-✓ Tighten RSI to 50-65
-✓ Increase VOLUME_MULTIPLIER to 1.5+
-✓ Increase MIN_LIQUIDITY_USD to $50M+
-✓ Reduce MAX_TRADES_PER_SCAN to 1-2
-✓ Use RISK_REWARD_RATIO of 2:1
-
-Expected: 40-45% win rate, lower total profit
-
-
-TUNING FOR HIGHER PROFIT (more trades):
-----------------------------------------
-✓ Decrease ADX_THRESHOLD to 20
-✓ Widen RSI to 45-70
-✓ Decrease VOLUME_MULTIPLIER to 1.2
-✓ Decrease MIN_LIQUIDITY_USD to $20M
-✓ Increase MAX_TRADES_PER_SCAN to 5-10
-✓ Use RISK_REWARD_RATIO of 3:1
-
-Expected: 30-35% win rate, higher total profit
-
-
-CURRENT SETTINGS (Balanced):
------------------------------
-ADX: 22, RSI: 48-68, Volume: 1.3x, Liquidity: $30M
-Max Trades: 3, R/R: 3:1
-Expected: ~35-40% win rate, balanced profit
-
-
-RISK/REWARD IMPACT:
--------------------
-2:1 → Higher win rate (~40%), smaller wins, steady growth
-3:1 → Medium win rate (~30%), bigger wins, good balance
-4:1 → Lower win rate (~25%), large wins, high volatility
+EXPECTED OUTCOMES:
+------------------
+• 8-20 total trades per year
+• 35-50% win rate
+• 2-10R average per trade
+• 60-120 day average holding period
+• Target: 100k → 300-400k over 3-4 years
 """

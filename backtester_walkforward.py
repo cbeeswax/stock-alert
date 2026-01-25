@@ -1,420 +1,745 @@
+"""
+Long-Term Position Trading Backtester
+======================================
+Walk-forward backtester for 8 position strategies (60-120 day holds).
+Features: Strategy-specific exits, pyramiding, per-strategy position limits.
+"""
+
 import pandas as pd
 from scanners.scanner_walkforward import run_scan_as_of
 from core.pre_buy_check import pre_buy_check
 from utils.market_data import get_historical_data
 from utils.position_tracker import PositionTracker, filter_trades_by_position
-from utils.ema_utils import compute_rsi, compute_bollinger_bands, compute_percent_b  # For Mean Reversion and BB exits
+from utils.ema_utils import compute_rsi, compute_bollinger_bands, compute_percent_b
 from scripts.download_history import download_ticker, was_update_session_today, mark_update_session
 from config.trading_config import (
-    CAPITAL_PER_TRADE,
-    RISK_REWARD_RATIO,
-    MAX_HOLDING_DAYS,
+    # Position trading settings
+    POSITION_RISK_PER_TRADE_PCT,
+    POSITION_MAX_PER_STRATEGY,
+    POSITION_MAX_TOTAL,
+    POSITION_PARTIAL_ENABLED,
+    POSITION_PARTIAL_SIZE,
+    POSITION_PARTIAL_R_TRIGGER_LOW,
+    POSITION_PARTIAL_R_TRIGGER_MID,
+    POSITION_PARTIAL_R_TRIGGER_HIGH,
+    POSITION_MAX_DAYS_SHORT,
+    POSITION_MAX_DAYS_LONG,
+
+    # Pyramiding
+    POSITION_PYRAMID_ENABLED,
+    POSITION_PYRAMID_R_TRIGGER,
+    POSITION_PYRAMID_SIZE,
+    POSITION_PYRAMID_MAX_ADDS,
+    POSITION_PYRAMID_PULLBACK_EMA,
+    POSITION_PYRAMID_PULLBACK_ATR,
+
+    # Strategy-specific configs
+    EMA_CROSS_POS_PARTIAL_R,
+    EMA_CROSS_POS_PARTIAL_SIZE,
+    EMA_CROSS_POS_TRAIL_MA,
+    EMA_CROSS_POS_TRAIL_DAYS,
+
+    MR_POS_PARTIAL_R,
+    MR_POS_TRAIL_MA,
+    MR_POS_TRAIL_DAYS,
+
+    PERCENT_B_POS_PARTIAL_R,
+    PERCENT_B_POS_TRAIL_MA,
+    PERCENT_B_POS_TRAIL_DAYS,
+
+    HIGH52_POS_PARTIAL_R,
+    HIGH52_POS_PARTIAL_SIZE,
+    HIGH52_POS_TRAIL_MA,
+    HIGH52_POS_TRAIL_DAYS,
+
+    BIGBASE_PARTIAL_R,
+    BIGBASE_PARTIAL_SIZE,
+    BIGBASE_TRAIL_MA,
+    BIGBASE_TRAIL_DAYS,
+
+    TREND_CONT_PARTIAL_R,
+    TREND_CONT_PARTIAL_SIZE,
+    TREND_CONT_TRAIL_MA,
+    TREND_CONT_TRAIL_DAYS,
+
+    RS_RANKER_PARTIAL_R,
+    RS_RANKER_PARTIAL_SIZE,
+    RS_RANKER_TRAIL_MA,
+    RS_RANKER_TRAIL_DAYS,
+
+    # Backtest settings
     BACKTEST_START_DATE,
-    SCAN_FREQUENCY,
-    MAX_TRADES_PER_SCAN,
-    MAX_OPEN_POSITIONS,
-    REQUIRE_CONFIRMATION_BAR,
-    CONFIRMATION_MAX_GAP_PCT,
-    CONFIRMATION_MIN_VOLUME_RATIO,
-    MIN_HOLDING_DAYS,
-    CATASTROPHIC_LOSS_THRESHOLD
+    BACKTEST_SCAN_FREQUENCY,
+
+    # Legacy (for compatibility)
+    CAPITAL_PER_TRADE,
 )
 
 
 class WalkForwardBacktester:
     """
-    True walk-forward backtester:
-    - Daily simulation
-    - No look-ahead bias
-    - Uses scanner_walkforward
+    Position trading backtester with pyramiding and per-strategy limits.
     """
 
-    def __init__(self, tickers, start_date="2022-01-01", rr_ratio=2, max_days=45, scan_frequency="W-MON"):
+    def __init__(self, tickers, start_date=None, scan_frequency=None, initial_capital=100000):
         """
         Args:
-            tickers: List of ticker symbols to backtest
-            start_date: Start date for backtest
-            rr_ratio: Risk/reward ratio (default 2:1)
-            max_days: Maximum holding period in days (default 45 for swing trading)
-            scan_frequency: How often to scan for signals (default 'W-MON' = weekly on Mondays)
-                           Options: 'B' (daily), 'W-MON' (weekly), 'W-FRI' (weekly Friday)
+            tickers: List of ticker symbols
+            start_date: Backtest start date (default from config)
+            scan_frequency: Scan frequency (default from config: W-MON)
+            initial_capital: Starting capital for risk calculation
         """
         self.tickers = tickers
-        self.start_date = pd.to_datetime(start_date)
-        self.rr_ratio = rr_ratio
-        self.max_days = max_days
-        self.scan_frequency = scan_frequency
+        self.start_date = pd.to_datetime(start_date or BACKTEST_START_DATE)
+        self.scan_frequency = scan_frequency or BACKTEST_SCAN_FREQUENCY
+        self.initial_capital = initial_capital
+        self.current_capital = initial_capital
 
-        # 🆕 Position tracker to prevent duplicate positions
+        # Position tracker
         self.position_tracker = PositionTracker(mode="backtest")
 
-    # -------------------------------------------------
-    # MAIN RUN
-    # -------------------------------------------------
-    def run(self):
-        end_date = pd.Timestamp.today()
-        print(f"🚀 Walk-forward backtest from {self.start_date.date()} to {end_date.date()}")
-        print(f"📅 Scan frequency: {self.scan_frequency} | Max holding: {self.max_days} days")
+        # Per-strategy position counters
+        self.strategy_positions = {}
 
-        all_trades = []
+        # Open positions for day-by-day simulation
+        self.open_positions = []  # List of position dicts
 
-        # Generate scan dates based on frequency (weekly is much faster than daily)
-        scan_dates = pd.date_range(
-            self.start_date,
-            end_date,
-            freq=self.scan_frequency
-        )
+        # All completed trades
+        self.completed_trades = []
 
-        print(f"🔍 Total scan dates: {len(scan_dates)}")
+    def _calculate_atr(self, df, period=14):
+        """Calculate ATR"""
+        high = df["High"]
+        low = df["Low"]
+        close = df["Close"]
 
-        for idx, day in enumerate(scan_dates, 1):
-            # Count positions that are still open as of this date
-            open_positions = sum(
-                1 for ticker in self.position_tracker.get_open_tickers()
-                if self.position_tracker.is_in_position(ticker, as_of_date=day)
-            )
-            print(f"📅 [{idx}/{len(scan_dates)}] Simulating {day.date()} | Open positions: {open_positions}")
+        tr = pd.concat([
+            high - low,
+            (high - close.shift(1)).abs(),
+            (low - close.shift(1)).abs()
+        ], axis=1).max(axis=1)
 
-            # 🆕 GLOBAL POSITION LIMIT: Skip scanning if at maximum capacity
-            if open_positions >= MAX_OPEN_POSITIONS:
-                print(f"   🛑 Max positions reached ({MAX_OPEN_POSITIONS}), skipping scan")
-                continue
+        return tr.rolling(period).mean()
 
-            # Generate signals using only data up to this date (no look-ahead bias)
-            signals = run_scan_as_of(day, self.tickers)
-            if not signals:
-                print(f"   ⚠️  No signals generated")
-                continue
+    def _calculate_position_size(self, entry_price, stop_price, risk_pct=None):
+        """
+        Calculate position size based on risk percentage.
 
-            print(f"   ✅ Found {len(signals)} signals")
+        Args:
+            entry_price: Entry price
+            stop_price: Stop loss price
+            risk_pct: Risk as % of capital (default 1.5%)
 
-            # 🔒 CRITICAL: Pass as_of_date to prevent look-ahead bias in pre_buy_check
-            trades = pre_buy_check(signals, rr_ratio=self.rr_ratio, as_of_date=day)
-            if trades.empty:
-                print(f"   ⚠️  No trades passed pre-buy filters")
-                continue
+        Returns:
+            Number of shares
+        """
+        if risk_pct is None:
+            risk_pct = POSITION_RISK_PER_TRADE_PCT
 
-            print(f"   💼 {len(trades)} trades passed filters")
+        risk_per_share = abs(entry_price - stop_price)
+        if risk_per_share == 0:
+            return 0
 
-            # 🆕 Filter out tickers already in position (as of this scan date)
-            trades = filter_trades_by_position(trades, self.position_tracker, as_of_date=day)
-            if trades.empty:
-                print(f"   ⚠️  All trades filtered out (already in position)")
-                continue
+        # Use FIXED initial capital for position sizing (prevents exponential growth)
+        risk_dollars = self.initial_capital * (risk_pct / 100)
+        shares = int(risk_dollars / risk_per_share)
 
-            # 🎯 Take top N trades per day based on config, but respect global limit
-            if not trades.empty:
-                # Calculate remaining slots
-                available_slots = MAX_OPEN_POSITIONS - open_positions
-                max_new_trades = min(MAX_TRADES_PER_SCAN, available_slots)
+        return max(shares, 1)  # At least 1 share
 
-                trades = trades.head(max_new_trades)
-                tickers_selected = ", ".join([f"{row['Ticker']}({row['FinalScore']:.1f})" for _, row in trades.iterrows()])
-                print(f"   🎯 Selected top {len(trades)} trade(s) (slots available: {available_slots}): {tickers_selected}")
-
-            for trade in trades.to_dict("records"):
-                result = self._simulate_trade(day, trade)
-                if result:
-                    all_trades.append(result)
-
-        return pd.DataFrame(all_trades)
-
-    # -------------------------------------------------
-    # TRADE SIMULATION (WITH TRAILING STOP & EMA BREAKDOWN)
-    # -------------------------------------------------
-    def _simulate_trade(self, entry_day, trade):
+    def _enter_position(self, entry_day, trade):
+        """
+        Enter a new position and add to open positions list.
+        Returns True if position entered successfully.
+        """
         ticker = trade["Ticker"]
-        signal_entry = trade["Entry"]  # Entry price from signal (close of signal day)
-        initial_stop = trade["StopLoss"]
-        target = trade["Target"]
-        strategy = trade.get("Strategy", "Unknown")
+        strategy = trade["Strategy"]
+        entry_price = trade["Entry"]
+        stop_price = trade["StopLoss"]
+        direction = trade.get("Direction", "LONG")
+        max_days = trade.get("MaxDays", POSITION_MAX_DAYS_LONG)
 
-        # 🆕 Capture crossover information for analysis
-        crossover_type = trade.get("CrossoverType", "Unknown")
-        crossover_bonus = trade.get("CrossoverBonus", 0)
-        score = trade.get("Score", 0)
+        # Position sizing
+        shares = self._calculate_position_size(entry_price, stop_price)
+        if shares == 0:
+            return False
 
-        # 🆕 Check if already in position (safety check with date)
-        if self.position_tracker.is_in_position(ticker, as_of_date=entry_day):
-            print(f"   ⚠️ {ticker}: Already in position, skipping")
-            return None
+        risk_amount = abs(entry_price - stop_price)
 
-        df = get_historical_data(ticker)
-        if df.empty:
-            return None
+        # Create position state
+        position = {
+            'ticker': ticker,
+            'strategy': strategy,
+            'direction': direction,
+            'entry_date': entry_day,
+            'entry_price': entry_price,
+            'stop_price': stop_price,
+            'initial_shares': shares,
+            'current_shares': shares,
+            'risk_amount': risk_amount,
+            'max_days': max_days,
+            'days_held': 0,
+            'highest_price': entry_price,
+            'partial_exited': False,
+            'partial_result': None,
+            'pyramid_adds': [],
+            'closes_below_trail': 0,
+        }
 
-        # 🔒 Only future candles AFTER entry day
-        # Use .copy() to avoid SettingWithCopyWarning
-        future_df = df[df.index > entry_day].iloc[: self.max_days].copy()
-        if future_df.empty:
-            return None
+        self.open_positions.append(position)
+        return True
 
-        # ========================================
-        # 🆕 CONFIRMATION BAR LOGIC
-        # ========================================
-        if REQUIRE_CONFIRMATION_BAR:
-            # Get signal day data for reference
-            signal_df = df[df.index <= entry_day].copy()
-            if len(signal_df) < 20:
-                return None  # Not enough data
+    def _check_open_positions(self, current_date):
+        """
+        Check all open positions for exits on current date.
+        Returns list of closed positions (includes partials and full exits).
+        """
+        closed_positions = []
+        remaining_positions = []
 
-            signal_close = signal_df["Close"].iloc[-1]
-            signal_ema20 = signal_df["Close"].ewm(span=20).mean().iloc[-1]
-            avg_volume = signal_df["Volume"].rolling(20).mean().iloc[-1]
+        for position in self.open_positions:
+            # Increment days held
+            position['days_held'] += 1
 
-            # Get confirmation day (next day after signal)
-            confirmation_day = future_df.iloc[0]
-            conf_open = confirmation_day.Open
-            conf_close = confirmation_day.Close
-            conf_volume = confirmation_day.Volume
-
-            # Calculate gap from signal close to confirmation open
-            gap_pct = abs((conf_open - signal_close) / signal_close * 100)
-
-            # Confirmation checks
-            gap_ok = gap_pct < CONFIRMATION_MAX_GAP_PCT
-            price_holds = conf_close > signal_ema20  # Still above EMA20
-            no_reversal = conf_close >= conf_open * 0.99  # Not bearish bar
-            volume_ok = conf_volume > avg_volume * CONFIRMATION_MIN_VOLUME_RATIO
-
-            if not all([gap_ok, price_holds, no_reversal, volume_ok]):
-                # Failed confirmation
-                return None
-
-            # CONFIRMED: Enter at confirmation day open
-            entry = conf_open
-            actual_entry_day = future_df.index[0]
-
-            # Adjust stop and target based on actual entry
-            risk = signal_entry - initial_stop
-            initial_stop = entry - risk  # Keep same risk amount
-            target = entry + self.rr_ratio * risk
-
-            # Use remaining candles after confirmation (explicit copy)
-            df = future_df.iloc[1:].copy()
-        else:
-            # No confirmation required - enter at signal close
-            entry = signal_entry
-            actual_entry_day = entry_day
-            df = future_df.copy()
-
-        if df.empty:
-            return None
-
-        # Calculate EMAs for breakdown detection
-        df["EMA20"] = df["Close"].ewm(span=20).mean()
-
-        # Calculate Mean Reversion indicators (RSI(2) and MA5)
-        df["RSI2"] = compute_rsi(df["Close"], 2)
-        df["MA5"] = df["Close"].rolling(5).mean()
-
-        # Calculate Bollinger Bands for BB strategies
-        middle_band, upper_band, lower_band, bandwidth = compute_bollinger_bands(df["Close"], period=20, std_dev=2)
-        df["BB_Middle"] = middle_band
-        df["BB_Upper"] = upper_band
-        df["BB_Lower"] = lower_band
-        df["PercentB"] = compute_percent_b(df["Close"], upper_band, lower_band)
-
-        # Calculate RSI(14) for BB+RSI combo exit
-        df["RSI14"] = compute_rsi(df["Close"], 14)
-
-        exit_price = df["Close"].iloc[-1]
-        outcome = "TimeExit"
-        holding_days = len(df)
-        exit_reason = "MaxDays"
-
-        # Trailing stop logic
-        stop = initial_stop
-        risk_amount = entry - initial_stop
-        highest_price = entry
-
-        for i, row in enumerate(df.itertuples()):
-            current_close = row.Close
-            current_ema20 = df["EMA20"].iloc[i]
-            current_holding_days = i + 1
-
-            # Track highest price for trailing stop
-            if row.High > highest_price:
-                highest_price = row.High
-
-            # Calculate unrealized R-multiple
-            unrealized_r = (highest_price - entry) / max(risk_amount, 0.01)
-
-            # 🎯 TRAILING STOP LOGIC (Skip for mean reversion strategies - they use specific exits)
-            if strategy not in ["Mean Reversion", "%B Mean Reversion", "BB+RSI Combo"]:
-                # Once up 1R, move stop to breakeven
-                if unrealized_r >= 1.0 and stop < entry:
-                    stop = entry
-
-                # Once up 2R, lock in 1R profit
-                if unrealized_r >= 2.0 and stop < entry + risk_amount:
-                    stop = entry + risk_amount
-
-                # Once up 3R, lock in 2R profit
-                if unrealized_r >= 3.0 and stop < entry + 2 * risk_amount:
-                    stop = entry + 2 * risk_amount
-
-            # ========================================
-            # 🆕 MINIMUM HOLDING PERIOD (Anti-Whipsaw)
-            # ========================================
-            # Skip minimum holding for:
-            # - Cascading (they don't have EMA20BD exit anymore)
-            # - Mean Reversion strategies (designed for quick 3-5 day exits)
-            # Before minimum holding days, only exit if catastrophic loss
-            if (current_holding_days < MIN_HOLDING_DAYS and
-                crossover_type != "Cascading" and
-                strategy not in ["Mean Reversion", "%B Mean Reversion", "BB+RSI Combo"]):
-                # Calculate current loss in R-multiples
-                current_loss_r = (entry - current_close) / max(risk_amount, 0.01)
-
-                # Only allow exit if catastrophic loss (> 1.5R)
-                if current_loss_r > CATASTROPHIC_LOSS_THRESHOLD and row.Low <= stop:
-                    exit_price = stop
-                    outcome = "Loss"
-                    holding_days = current_holding_days
-                    exit_reason = "CatastrophicLoss"
-                    break
-
-                # Otherwise, skip all other exit checks and continue holding
+            # Get current market data
+            df = get_historical_data(position['ticker'])
+            if df.empty:
+                remaining_positions.append(position)
                 continue
 
-            # ========================================
-            # NORMAL EXIT CONDITIONS (after min holding)
-            # ========================================
+            # Get today's bar
+            if current_date not in df.index:
+                remaining_positions.append(position)
+                continue
 
-            # ========================================
-            # MEAN REVERSION EXIT (🔧 FASTER EXITS)
-            # ========================================
-            # Exit when RSI(2) > 65 OR Close > MA5 (1 day)
-            # Faster exits to lock in gains quicker
-            if strategy == "Mean Reversion":
-                current_rsi2 = df["RSI2"].iloc[i]
-                # 🔧 Calculate MA5 on the fly since signal data may not have it
-                ma5 = df["Close"].iloc[max(0, i-4):i+1].mean() if i >= 4 else df["Close"].iloc[:i+1].mean()
+            today_data = df.loc[current_date]
+            current_close = today_data['Close']
+            current_high = today_data['High']
+            current_low = today_data['Low']
 
-                # 🔧 Exit condition 1: RSI(2) rises above 65 (was 70 - faster exit)
-                rsi_overbought = current_rsi2 > 65
+            # Update highest price
+            if current_high > position['highest_price']:
+                position['highest_price'] = current_high
 
-                # 🔧 Exit condition 2: Price closes above 5-day MA (1 close, not 2)
-                above_ma5 = current_close > ma5
+            # Calculate current R-multiple
+            current_r = (current_close - position['entry_price']) / max(position['risk_amount'], 0.01)
+            if position['direction'] == "SHORT":
+                current_r = (position['entry_price'] - current_close) / max(position['risk_amount'], 0.01)
 
-                if rsi_overbought or above_ma5:
-                    exit_price = current_close
-                    outcome = "Win" if exit_price > entry else "Loss"
-                    holding_days = current_holding_days
-                    exit_reason = "RSI2_Overbought" if rsi_overbought else "Above_MA5"
-                    break
+            # =================================================================
+            # PYRAMIDING LOGIC (add to winners on pullback)
+            # =================================================================
+            if (POSITION_PYRAMID_ENABLED and
+                current_r >= POSITION_PYRAMID_R_TRIGGER and
+                len(position['pyramid_adds']) < POSITION_PYRAMID_MAX_ADDS and
+                not position['partial_exited']):
 
-            # ========================================
-            # %B MEAN REVERSION EXIT (🔧 FASTER EXIT)
-            # ========================================
-            # Exit when %B > 0.4 (was 0.5 - faster exit)
-            # Lock in gains before full mean reversion
-            if strategy == "%B Mean Reversion":
-                current_percent_b = df["PercentB"].iloc[i]
+                # Calculate indicators for pyramiding
+                recent_df = df[df.index <= current_date].tail(50).copy()
+                if len(recent_df) >= POSITION_PYRAMID_PULLBACK_EMA:
+                    recent_df["EMA21"] = recent_df["Close"].ewm(span=POSITION_PYRAMID_PULLBACK_EMA).mean()
+                    recent_df["ATR"] = self._calculate_atr(recent_df, 14)
 
-                # 🔧 Exit condition: %B rises above 0.4 (was 0.5 - faster exit)
-                back_to_middle = current_percent_b > 0.4
+                    ema21 = recent_df["EMA21"].iloc[-1]
+                    atr = recent_df["ATR"].iloc[-1] if not pd.isna(recent_df["ATR"].iloc[-1]) else (position['entry_price'] * 0.02)
 
-                if back_to_middle:
-                    exit_price = current_close
-                    outcome = "Win" if exit_price > entry else "Loss"
-                    holding_days = current_holding_days
-                    exit_reason = "PercentB_Middle"
-                    break
+                    # Check if price is near EMA21 (within 1 ATR)
+                    pullback_distance = abs(current_close - ema21)
+                    is_near_ema21 = pullback_distance <= (POSITION_PYRAMID_PULLBACK_ATR * atr)
 
-            # ========================================
-            # BOLLINGER + RSI COMBO EXIT (🔧 FASTER EXITS)
-            # ========================================
-            # Exit when %B > 0.6 OR RSI(14) > 60 (was %B > 0.8 OR RSI14 > 70)
-            # Faster exits to lock in gains
-            if strategy == "BB+RSI Combo":
-                current_percent_b = df["PercentB"].iloc[i]
-                current_rsi14 = df["RSI14"].iloc[i]
+                    if is_near_ema21:
+                        # Add to position
+                        add_shares = int(position['initial_shares'] * POSITION_PYRAMID_SIZE)
+                        position['pyramid_adds'].append({
+                            'date': current_date,
+                            'price': current_close,
+                            'shares': add_shares,
+                            'r_at_add': current_r
+                        })
+                        position['current_shares'] += add_shares
 
-                # 🔧 Exit condition 1: %B rises above 0.6 (was 0.8 - faster exit)
-                bb_overbought = current_percent_b > 0.6
+                        # Display pyramid add
+                        print(f"   ➕ {current_date.date()} | PYRAMID {position['ticker']} @ ${current_close:.2f} (+{int(POSITION_PYRAMID_SIZE*100)}%) at {current_r:+.2f}R")
 
-                # 🔧 Exit condition 2: RSI(14) rises above 60 (was 70 - faster exit)
-                rsi_overbought = current_rsi14 > 60
+            # =================================================================
+            # PARTIAL EXIT LOGIC (take profits at strategy-specific R targets)
+            # =================================================================
+            if POSITION_PARTIAL_ENABLED and not position['partial_exited']:
+                should_partial = False
+                partial_trigger = ""
+                partial_size = POSITION_PARTIAL_SIZE
+                strategy = position['strategy']
 
-                if bb_overbought or rsi_overbought:
-                    exit_price = current_close
-                    outcome = "Win" if exit_price > entry else "Loss"
-                    holding_days = current_holding_days
-                    exit_reason = "BB_Overbought" if bb_overbought else "RSI14_Overbought"
-                    break
+                # Check strategy-specific partial exit triggers
+                if strategy == "EMA_Crossover_Position":
+                    if current_r >= EMA_CROSS_POS_PARTIAL_R:
+                        should_partial = True
+                        partial_trigger = f"{EMA_CROSS_POS_PARTIAL_R}R"
+                        partial_size = EMA_CROSS_POS_PARTIAL_SIZE
 
-            # ❌ EMA20 BREAKDOWN EXIT (DISABLED for Cascading crossovers)
-            # Cascading crossovers need time to establish trend (65% WR when allowed to run)
-            # EMA20Breakdown was killing 74% of Cascading trades on day 3
-            if (strategy == "EMA Crossover" and
-                crossover_type != "Cascading" and  # 🆕 Skip for Cascading!
-                current_close < current_ema20):
-                exit_price = current_close
-                outcome = "EMABreakdown"
-                holding_days = current_holding_days
-                exit_reason = "EMA20Breakdown"
-                break
+                elif strategy == "MeanReversion_Position":
+                    if current_r >= MR_POS_PARTIAL_R:
+                        should_partial = True
+                        partial_trigger = f"{MR_POS_PARTIAL_R}R"
 
-            # ❌ STOP LOSS HIT
-            if row.Low <= stop:
-                exit_price = stop
-                outcome = "Loss" if stop <= entry else "PartialWin"
-                holding_days = current_holding_days
-                exit_reason = "StopLoss" if stop <= entry else "TrailingStop"
-                break
+                elif strategy == "%B_MeanReversion_Position":
+                    if current_r >= PERCENT_B_POS_PARTIAL_R:
+                        should_partial = True
+                        partial_trigger = f"{PERCENT_B_POS_PARTIAL_R}R"
 
-            # ✅ TARGET HIT
-            if row.High >= target:
-                exit_price = target
-                outcome = "Win"
-                holding_days = current_holding_days
-                exit_reason = "Target"
-                break
+                elif strategy in ["High52_Position", "BigBase_Breakout_Position"]:
+                    target_r = HIGH52_POS_PARTIAL_R if strategy == "High52_Position" else BIGBASE_PARTIAL_R
+                    if current_r >= target_r:
+                        should_partial = True
+                        partial_trigger = f"{target_r}R"
+                        partial_size = HIGH52_POS_PARTIAL_SIZE if strategy == "High52_Position" else BIGBASE_PARTIAL_SIZE
 
-        r_multiple = (exit_price - entry) / max(entry - initial_stop, 0.01)
+                elif strategy == "TrendContinuation_Position":
+                    if current_r >= TREND_CONT_PARTIAL_R:
+                        should_partial = True
+                        partial_trigger = f"{TREND_CONT_PARTIAL_R}R"
+                        partial_size = TREND_CONT_PARTIAL_SIZE
 
-        position_size = CAPITAL_PER_TRADE / entry
-        risk = position_size * abs(entry - initial_stop)
-        pnl = r_multiple * risk
+                elif strategy == "RelativeStrength_Ranker_Position":
+                    if current_r >= RS_RANKER_PARTIAL_R:
+                        should_partial = True
+                        partial_trigger = f"{RS_RANKER_PARTIAL_R}R"
+                        partial_size = RS_RANKER_PARTIAL_SIZE
 
-        # 🆕 Calculate exit date (actual_entry_day + holding_days)
-        exit_date = actual_entry_day + pd.Timedelta(days=holding_days)
+                if should_partial:
+                    position['partial_exited'] = True
+                    partial_shares = int(position['current_shares'] * partial_size)
 
-        # 🆕 Add position to tracker with exit date (for future scan dates to check)
-        self.position_tracker.add_position(
-            ticker=ticker,
-            entry_date=actual_entry_day,  # Use actual entry day (could be confirmation day)
-            entry_price=entry,
-            strategy=strategy,
-            as_of_date=actual_entry_day,  # 🆕 Check for duplicates as of entry day
-            stop_loss=initial_stop,
-            target=target,
-            exit_date=exit_date  # ← Key: Store when position will close
-        )
+                    # Calculate partial exit P&L - CORRECTED for pyramiding
+                    # Partial exits are always taken from most recent shares (LIFO)
+                    # This is conservative and simpler to implement
+                    if position['direction'] == "LONG":
+                        # Calculate weighted average entry price for partial exit shares
+                        total_shares = position['current_shares']
+                        cost_basis = position['initial_shares'] * position['entry_price']
 
-        return {
-            "Date": actual_entry_day,  # Use actual entry day
-            "Year": actual_entry_day.year,
+                        # Add cost basis from pyramid adds
+                        for add in position['pyramid_adds']:
+                            cost_basis += add['shares'] * add['price']
+
+                        avg_entry_price = cost_basis / total_shares
+                        partial_pnl = partial_shares * (current_close - avg_entry_price)
+                    else:
+                        # Calculate weighted average entry price for partial exit shares
+                        total_shares = position['current_shares']
+                        cost_basis = position['initial_shares'] * position['entry_price']
+
+                        # Add cost basis from pyramid adds
+                        for add in position['pyramid_adds']:
+                            cost_basis += add['shares'] * add['price']
+
+                        avg_entry_price = cost_basis / total_shares
+                        partial_pnl = partial_shares * (avg_entry_price - current_close)
+
+                    # Create partial exit record
+                    partial_result = {
+                        "Date": position['entry_date'],
+                        "ExitDate": current_date,
+                        "Year": position['entry_date'].year,
+                        "Ticker": position['ticker'],
+                        "Strategy": strategy,
+                        "Direction": position['direction'],
+                        "PositionType": "Partial",
+                        "Entry": round(position['entry_price'], 2),
+                        "Exit": round(current_close, 2),
+                        "Outcome": "Win",
+                        "ExitReason": f"Partial_{partial_trigger}",
+                        "RMultiple": round(current_r, 2),
+                        "Shares": partial_shares,
+                        "PnL_$": round(partial_pnl, 2),
+                        "HoldingDays": position['days_held'],
+                        "PyramidAdds": 0,
+                    }
+
+                    # Store partial result in position for later
+                    position['partial_result'] = partial_result
+                    closed_positions.append(partial_result)
+
+                    # Display partial exit
+                    pnl_display = f"${partial_pnl:+,.2f}"
+                    print(f"   💵 {current_date.date()} | PARTIAL {position['ticker']} {current_r:+.2f}R ({pnl_display}) {int(partial_size*100)}% | {partial_trigger}")
+
+                    # Update position
+                    position['current_shares'] -= partial_shares
+                    position['stop_price'] = position['entry_price']  # Move stop to breakeven
+
+            # =================================================================
+            # CHECK FOR FULL EXIT
+            # =================================================================
+            exit_result = self._evaluate_exit_conditions(position, current_date, today_data, current_close, current_r, df)
+
+            if exit_result:
+                # If we had a partial exit, mark runner as "Runner", else "Full"
+                if position['partial_exited']:
+                    exit_result['PositionType'] = "Runner"
+                closed_positions.append(exit_result)
+            else:
+                remaining_positions.append(position)
+
+        # Update open positions list
+        self.open_positions = remaining_positions
+        return closed_positions
+
+    def _evaluate_exit_conditions(self, position, current_date, today_data, current_close, current_r, full_df):
+        """
+        Evaluate if position should exit based on strategy-specific conditions.
+        Returns trade result dict if exiting, None if holding.
+        """
+        ticker = position['ticker']
+        strategy = position['strategy']
+        direction = position['direction']
+        entry = position['entry_price']
+        stop = position['stop_price']
+        days_held = position['days_held']
+        max_days = position['max_days']
+
+        # Check stop loss first
+        if direction == "LONG" and today_data['Low'] <= stop:
+            return self._close_position(position, current_date, stop, "StopLoss", -1.0)
+        elif direction == "SHORT" and today_data['High'] >= stop:
+            return self._close_position(position, current_date, stop, "StopLoss", -1.0)
+
+        # Calculate indicators (need historical context)
+        recent_df = full_df[full_df.index <= current_date].tail(250).copy()
+        if len(recent_df) < 50:
+            return None  # Not enough data
+
+        recent_df["EMA21"] = recent_df["Close"].ewm(span=21).mean()
+        recent_df["MA50"] = recent_df["Close"].rolling(50).mean()
+        recent_df["MA100"] = recent_df["Close"].rolling(100).mean()
+        recent_df["MA200"] = recent_df["Close"].rolling(200).mean()
+        recent_df["RSI14"] = compute_rsi(recent_df["Close"], 14)
+
+        # Get current indicator values
+        ema21 = recent_df["EMA21"].iloc[-1] if len(recent_df) >= 21 else None
+        ma50 = recent_df["MA50"].iloc[-1] if len(recent_df) >= 50 else None
+        ma100 = recent_df["MA100"].iloc[-1] if len(recent_df) >= 100 else None
+        ma200 = recent_df["MA200"].iloc[-1] if len(recent_df) >= 200 else None
+        rsi14 = recent_df["RSI14"].iloc[-1]
+
+        # Strategy-specific exits
+        if strategy == "EMA_Crossover_Position":
+            if ma100 and pd.notna(ma100):
+                if current_close < ma100:
+                    position['closes_below_trail'] += 1
+                    if position['closes_below_trail'] >= EMA_CROSS_POS_TRAIL_DAYS:
+                        return self._close_position(position, current_date, current_close, "MA100_Trail", current_r)
+                else:
+                    position['closes_below_trail'] = 0
+
+        elif strategy == "MeanReversion_Position":
+            if ma50 and pd.notna(ma50):
+                if current_close < ma50:
+                    position['closes_below_trail'] += 1
+                    if position['closes_below_trail'] >= MR_POS_TRAIL_DAYS:
+                        return self._close_position(position, current_date, current_close, "MA50_Trail", current_r)
+                else:
+                    position['closes_below_trail'] = 0
+
+        elif strategy == "%B_MeanReversion_Position":
+            if ma50 and pd.notna(ma50):
+                if current_close < ma50:
+                    position['closes_below_trail'] += 1
+                    if position['closes_below_trail'] >= PERCENT_B_POS_TRAIL_DAYS:
+                        return self._close_position(position, current_date, current_close, "MA50_Trail", current_r)
+                else:
+                    position['closes_below_trail'] = 0
+
+        elif strategy == "High52_Position":
+            # High52: HYBRID TRAIL - EMA21 early (protect), MA100 late (let run)
+            if days_held <= 60:
+                # First 60 days: Tight EMA21 trail (cut losers fast)
+                if ema21 and pd.notna(ema21):
+                    if current_close < ema21:
+                        position['closes_below_trail'] += 1
+                        if position['closes_below_trail'] >= 5:
+                            return self._close_position(position, current_date, current_close, "EMA21_Trail_Early", current_r)
+                    else:
+                        position['closes_below_trail'] = 0
+            else:
+                # After 60 days: Loose MA100 trail (let winners run to time stop)
+                if ma100 and pd.notna(ma100):
+                    if current_close < ma100:
+                        position['closes_below_trail'] += 1
+                        if position['closes_below_trail'] >= 8:
+                            return self._close_position(position, current_date, current_close, "MA100_Trail_Late", current_r)
+                    else:
+                        position['closes_below_trail'] = 0
+
+        elif strategy == "BigBase_Breakout_Position":
+            # BigBase: HYBRID TRAIL - EMA21 early (cut failed breakouts), MA200 late (home runs)
+            if days_held <= 45:
+                # First 45 days: Tight EMA21 trail (cut failed breakouts fast)
+                if ema21 and pd.notna(ema21):
+                    if current_close < ema21:
+                        position['closes_below_trail'] += 1
+                        if position['closes_below_trail'] >= 5:
+                            return self._close_position(position, current_date, current_close, "EMA21_Trail_Early", current_r)
+                    else:
+                        position['closes_below_trail'] = 0
+            else:
+                # After 45 days: Loose MA200 trail (let home runs develop)
+                if ma200 and pd.notna(ma200):
+                    if current_close < ma200:
+                        position['closes_below_trail'] += 1
+                        if position['closes_below_trail'] >= 10:
+                            return self._close_position(position, current_date, current_close, "MA200_Trail_Late", current_r)
+                    else:
+                        position['closes_below_trail'] = 0
+
+        elif strategy == "TrendContinuation_Position":
+            if ma50 and pd.notna(ma50):
+                if current_close < ma50:
+                    position['closes_below_trail'] += 1
+                    if position['closes_below_trail'] >= TREND_CONT_TRAIL_DAYS:
+                        return self._close_position(position, current_date, current_close, "MA50_Trail", current_r)
+                else:
+                    position['closes_below_trail'] = 0
+
+        elif strategy == "RelativeStrength_Ranker_Position":
+            # RS_Ranker: HYBRID TRAIL - EMA21 early (protect), MA100 late (let run)
+            if days_held <= 60:
+                # First 60 days: Tight EMA21 trail (cut losers fast)
+                if ema21 and pd.notna(ema21):
+                    if current_close < ema21:
+                        position['closes_below_trail'] += 1
+                        if position['closes_below_trail'] >= 5:
+                            return self._close_position(position, current_date, current_close, "EMA21_Trail_Early", current_r)
+                    else:
+                        position['closes_below_trail'] = 0
+            else:
+                # After 60 days: Loose MA100 trail (let winners run to time stop)
+                if ma100 and pd.notna(ma100):
+                    if current_close < ma100:
+                        position['closes_below_trail'] += 1
+                        if position['closes_below_trail'] >= 8:
+                            return self._close_position(position, current_date, current_close, "MA100_Trail_Late", current_r)
+                    else:
+                        position['closes_below_trail'] = 0
+
+        # Time stop (SKIP for pyramided positions - let trail stops manage winners)
+        has_pyramids = len(position['pyramid_adds']) > 0
+
+        if not has_pyramids and days_held >= max_days:
+            # Only apply time stop to non-pyramided positions
+            return self._close_position(position, current_date, current_close, f"TimeStop_{max_days}d", current_r)
+
+        # Pyramided positions: No time limit, managed by trail stops only
+
+        return None  # Continue holding
+
+    def _close_position(self, position, exit_date, exit_price, exit_reason, r_multiple):
+        """
+        Close a position and return trade result.
+        """
+        ticker = position['ticker']
+        strategy = position['strategy']
+        direction = position['direction']
+        entry = position['entry_price']
+        shares = position['current_shares']
+        days_held = position['days_held']
+
+        # Calculate P&L - Use weighted average entry price for current shares
+        # This correctly handles partial exits and pyramiding
+
+        # Calculate weighted average entry price across all entries (initial + pyramids)
+        cost_basis = position['initial_shares'] * position['entry_price']
+        total_shares_entered = position['initial_shares']
+
+        for add in position['pyramid_adds']:
+            cost_basis += add['shares'] * add['price']
+            total_shares_entered += add['shares']
+
+        avg_entry_price = cost_basis / total_shares_entered if total_shares_entered > 0 else entry
+
+        # Calculate P&L for CURRENT shares (accounts for partial exits)
+        if direction == "LONG":
+            pnl = shares * (exit_price - avg_entry_price)
+        else:
+            pnl = shares * (avg_entry_price - exit_price)
+
+        outcome = "Win" if pnl > 0 else "Loss"
+
+        # Display exit
+        pnl_display = f"${pnl:+,.2f}" if pnl >= 0 else f"-${abs(pnl):,.2f}"
+        outcome_icon = "💰" if pnl > 0 else "📉"
+        print(f"   {outcome_icon} {exit_date.date()} | EXIT {ticker} {r_multiple:+.2f}R ({pnl_display}) in {days_held}d | {exit_reason}")
+
+        # Create trade result
+        result = {
+            "Date": position['entry_date'],
+            "ExitDate": exit_date,
+            "Year": position['entry_date'].year,
             "Ticker": ticker,
             "Strategy": strategy,
-            "CrossoverType": crossover_type,  # 🆕 Track which crossover type
-            "CrossoverBonus": round(crossover_bonus, 2),  # 🆕 Track bonus points
-            "Score": round(score, 2),  # 🆕 Track quality score
+            "Direction": direction,
+            "PositionType": "Full",
             "Entry": round(entry, 2),
             "Exit": round(exit_price, 2),
             "Outcome": outcome,
             "ExitReason": exit_reason,
             "RMultiple": round(r_multiple, 2),
+            "Shares": shares,
             "PnL_$": round(pnl, 2),
-            "HoldingDays": holding_days
+            "HoldingDays": days_held,
+            "PyramidAdds": len(position['pyramid_adds']),
         }
 
-        # -------------------------------------------------
-    # EVALUATION (SAFE VERSION – NO SYNTAX ERRORS)
-    # -------------------------------------------------
+        return result
+
+    def run(self):
+        """Run walk-forward backtest"""
+        end_date = pd.Timestamp.today()
+        print(f"🚀 Position Trading Backtest: {self.start_date.date()} to {end_date.date()}")
+        print(f"📅 Scan frequency: {self.scan_frequency}")
+        print(f"💰 Initial capital: ${self.initial_capital:,}")
+        print(f"⚠️  Risk per trade: {POSITION_RISK_PER_TRADE_PCT}%")
+        if isinstance(POSITION_MAX_PER_STRATEGY, dict):
+            print(f"📊 Max positions: {POSITION_MAX_TOTAL} total, per-strategy limits (3-8)")
+        else:
+            print(f"📊 Max positions: {POSITION_MAX_TOTAL} total, {POSITION_MAX_PER_STRATEGY} per strategy")
+
+        all_trades = []
+        scan_dates = pd.date_range(self.start_date, end_date, freq=self.scan_frequency)
+
+        print(f"\n🔍 Total scan dates: {len(scan_dates)}\n")
+
+        for idx, day in enumerate(scan_dates, 1):
+            # Progress indicator
+            if idx % 10 == 0:
+                open_tickers = self.position_tracker.get_open_tickers()
+                tickers_display = ", ".join(open_tickers[:5]) if open_tickers else "None"
+                if len(open_tickers) > 5:
+                    tickers_display += f" +{len(open_tickers)-5} more"
+                print(f"📅 {day.date()} | Progress: {idx}/{len(scan_dates)} | Open: {len(open_tickers)} [{tickers_display}]")
+
+            # Check open positions for exits EVERY day
+            closed_today = self._check_open_positions(day)
+            for closed_trade in closed_today:
+                all_trades.append(closed_trade)
+
+                # Update tracker - ONLY remove on full exit (not partial)
+                # Partial exits keep position open with reduced shares
+                position_type = closed_trade.get("PositionType", "Full")
+                if position_type in ["Full", "Runner"]:  # Full exit or runner exit (after partial)
+                    ticker = closed_trade["Ticker"]
+                    strategy = closed_trade["Strategy"]
+                    if ticker in self.position_tracker.positions:
+                        self.position_tracker.remove_position(ticker)
+                        self.strategy_positions[strategy] = max(0, self.strategy_positions.get(strategy, 0) - 1)
+
+            # Run scanner for new entries
+            signals = run_scan_as_of(day, self.tickers)
+
+            if signals:
+                # Pre-buy check (deduplication, formatting)
+                validated = pre_buy_check(signals, benchmark="QQQ", as_of_date=day)
+
+                if not validated.empty:
+                    # Filter out positions we already hold
+                    validated = filter_trades_by_position(validated, self.position_tracker, as_of_date=day)
+
+                    if not validated.empty:
+                        # Take trades respecting limits
+                        for _, trade in validated.iterrows():
+                            strategy = trade["Strategy"]
+
+                            # Check global position limit
+                            if len(self.position_tracker.positions) >= POSITION_MAX_TOTAL:
+                                break
+
+                            # Check per-strategy limit
+                            strategy_count = self.strategy_positions.get(strategy, 0)
+                            # Handle both dict and int for compatibility
+                            if isinstance(POSITION_MAX_PER_STRATEGY, dict):
+                                max_for_strategy = POSITION_MAX_PER_STRATEGY.get(strategy, 5)
+                            else:
+                                max_for_strategy = POSITION_MAX_PER_STRATEGY
+
+                            if strategy_count >= max_for_strategy:
+                                continue
+
+                            # Enter position
+                            success = self._enter_position(day, trade.to_dict())
+
+                            if success:
+                                # Show trade entry
+                                print(f"   ✅ {day.date()} | ENTER {trade['Ticker']} @ ${trade['Entry']:.2f} | {strategy[:20]}")
+
+                                # Update position counts
+                                self.position_tracker.add_position(
+                                    ticker=trade["Ticker"],
+                                    entry_date=day,
+                                    entry_price=trade["Entry"],
+                                    strategy=trade["Strategy"],
+                                    as_of_date=day
+                                )
+                                self.strategy_positions[strategy] = strategy_count + 1
+
+        # =================================================================
+        # Close any remaining open positions at end of backtest
+        # =================================================================
+        if self.open_positions:
+            print(f"\n⚠️  Closing {len(self.open_positions)} open position(s) at end of backtest (using last available price)...")
+
+            for position in self.open_positions:
+                ticker = position['ticker']
+
+                # Get final price - use last available data
+                df = get_historical_data(ticker)
+                if df.empty:
+                    print(f"   ⚠️  Cannot close {ticker} - no price data")
+                    continue
+
+                # Use the last available date (not necessarily end_date)
+                final_date = df.index[-1]
+                final_price = df['Close'].iloc[-1]
+
+                # Update position's days_held to final date
+                days_from_entry = (final_date - position['entry_date']).days
+                position['days_held'] = days_from_entry
+
+                # Calculate final R-multiple
+                risk_amount = position['risk_amount']
+                entry_price = position['entry_price']
+                direction = position['direction']
+
+                if direction == "LONG":
+                    final_r = (final_price - entry_price) / max(risk_amount, 0.01)
+                else:
+                    final_r = (entry_price - final_price) / max(risk_amount, 0.01)
+
+                # Close position
+                exit_result = self._close_position(
+                    position,
+                    final_date,
+                    final_price,
+                    "EndOfBacktest",
+                    final_r
+                )
+
+                # Mark as Full or Runner depending on partial exit status
+                if position['partial_exited']:
+                    exit_result['PositionType'] = "Runner"
+
+                all_trades.append(exit_result)
+
+        # Convert to DataFrame
+        if all_trades:
+            df = pd.DataFrame(all_trades)
+            print(f"\n✅ Backtest complete! Total trades: {len(df)}")
+            return df
+        else:
+            print("\n⚠️  No trades executed")
+            return pd.DataFrame()
+
+
     def evaluate(self, df):
+        """Generate performance statistics"""
         if df.empty:
             return "No trades executed"
 
@@ -430,7 +755,7 @@ class WalkForwardBacktester:
             "AvgRMultiple": round(df["RMultiple"].mean(), 2),
         }
 
-        # ---- Yearly breakdown (SAFE AGG) ----
+        # Yearly breakdown
         yearly = (
             df.groupby("Year")
             .agg({
@@ -442,30 +767,24 @@ class WalkForwardBacktester:
             .round(2)
         )
 
-        yearly.columns = [
-            "Trades",
-            "Wins",
-            "TotalPnL_$",
-            "AvgHoldingDays",
-        ]
-
+        yearly.columns = ["Trades", "Wins", "TotalPnL_$", "AvgHoldingDays"]
         summary["YearlySummary"] = yearly.to_dict("index")
 
-        # 🆕 ---- Crossover Type Analysis ----
-        if "CrossoverType" in df.columns:
-            crossover_analysis = (
-                df.groupby("CrossoverType")
+        # Strategy-wise analysis
+        if "Strategy" in df.columns:
+            strategy_analysis = (
+                df.groupby("Strategy")
                 .agg({
-                    "Ticker": "count",  # Number of trades
-                    "Outcome": lambda x: (x == "Win").sum() / len(x) * 100,  # Win rate %
-                    "RMultiple": "mean",  # Avg R-multiple
-                    "PnL_$": "sum",  # Total PnL
-                    "HoldingDays": "mean",  # Avg holding days
+                    "Ticker": "count",
+                    "Outcome": lambda x: (x == "Win").sum() / len(x) * 100,
+                    "RMultiple": "mean",
+                    "PnL_$": "sum",
+                    "HoldingDays": "mean",
                 })
                 .round(2)
             )
 
-            crossover_analysis.columns = [
+            strategy_analysis.columns = [
                 "Trades",
                 "WinRate%",
                 "AvgRMultiple",
@@ -473,11 +792,10 @@ class WalkForwardBacktester:
                 "AvgHoldingDays",
             ]
 
-            # Sort by total PnL descending to see best performing type
-            crossover_analysis = crossover_analysis.sort_values("TotalPnL_$", ascending=False)
-            summary["CrossoverAnalysis"] = crossover_analysis.to_dict("index")
+            strategy_analysis = strategy_analysis.sort_values("TotalPnL_$", ascending=False)
+            summary["StrategyAnalysis"] = strategy_analysis.to_dict("index")
 
-        # 🆕 ---- Exit Reason Analysis ----
+        # Exit reason analysis
         if "ExitReason" in df.columns:
             exit_analysis = (
                 df.groupby("ExitReason")
@@ -496,86 +814,83 @@ class WalkForwardBacktester:
         return summary
 
 
-# -------------------------------------------------
-# RUN
-# -------------------------------------------------
+# =============================================================================
+# MAIN EXECUTION
+# =============================================================================
+
 if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(description="Walk-forward backtester with configurable scan frequency")
+    parser = argparse.ArgumentParser(description="Position trading backtest")
     parser.add_argument(
         "--scan-frequency",
         type=str,
-        default="B",
+        default=BACKTEST_SCAN_FREQUENCY,
         choices=["B", "W-MON", "W-TUE", "W-WED", "W-THU", "W-FRI"],
-        help="Scan frequency: B (daily), W-MON (weekly Monday), W-FRI (weekly Friday), etc."
+        help="Scan frequency (default: W-MON for weekly)"
     )
     args = parser.parse_args()
 
-    # Example: S&P 500 tickers loaded elsewhere
-    # Using local CSV to avoid SSL certificate issues on macOS
+    # Load S&P 500 tickers
     tickers = pd.read_csv("data/sp500_constituents.csv")["Symbol"].tolist()
 
-    # -------------------------------------------------
-    # 📥 UPDATE HISTORICAL DATA (INCREMENTAL)
-    # -------------------------------------------------
+    # Check if data update needed
     print("="*60)
     print("📥 CHECKING HISTORICAL DATA")
     print("="*60)
 
-    # 🆕 Check if we already updated today
     if was_update_session_today():
         print("⚡ Data already updated today - skipping download")
-        print("   (All tickers were checked/updated earlier today)")
     else:
         print("🔄 Updating historical data for all tickers...")
-        updated_count = 0
-        skipped_count = 0
-
         for i, ticker in enumerate(tickers, 1):
-            if i % 50 == 0:  # Progress update every 50 tickers
+            if i % 50 == 0:
                 print(f"\n[Progress: {i}/{len(tickers)} tickers processed]")
             download_ticker(ticker)
 
-        # Also update SPY benchmark data
-        print("\n📊 Updating SPY benchmark data...")
+        # Update benchmarks
+        print("\n📊 Updating benchmark data...")
         download_ticker("SPY")
+        download_ticker("QQQ")
 
-        # 🆕 Mark that we completed an update session today
         mark_update_session()
         print("\n✅ Data update complete!")
 
     print("\n" + "="*60)
-    print("🚀 Starting backtest...")
+    print("🚀 Starting position trading backtest...")
     print("="*60 + "\n")
 
+    # Run backtest
     bt = WalkForwardBacktester(
         tickers=tickers,
         start_date=BACKTEST_START_DATE,
-        rr_ratio=RISK_REWARD_RATIO,
-        max_days=MAX_HOLDING_DAYS,
         scan_frequency=args.scan_frequency
     )
 
-    print(f"⚙️  CONFIG: R/R={RISK_REWARD_RATIO}:1, MaxTrades={MAX_TRADES_PER_SCAN}, Capital=${CAPITAL_PER_TRADE:,}/trade, ScanFreq={args.scan_frequency}\n")
+    print(f"⚙️  CONFIG:")
+    print(f"   Risk per trade: {POSITION_RISK_PER_TRADE_PCT}%")
+    if isinstance(POSITION_MAX_PER_STRATEGY, dict):
+        print(f"   Max positions: {POSITION_MAX_TOTAL} total")
+        print(f"   Per-strategy limits: RS_Ranker/High52=8, BigBase=6, EMA_Cross=4, Others=3")
+    else:
+        print(f"   Max positions: {POSITION_MAX_TOTAL} total, {POSITION_MAX_PER_STRATEGY} per strategy")
+    print(f"   Scan frequency: {args.scan_frequency}")
+    print(f"   Pyramiding: {'Enabled' if POSITION_PYRAMID_ENABLED else 'Disabled'}\n")
 
     trades = bt.run()
 
-    # Save results to CSV for detailed analysis
+    # Save results
     if not trades.empty:
         trades.to_csv("backtest_results.csv", index=False)
         print(f"\n💾 Results saved to: backtest_results.csv")
 
     stats = bt.evaluate(trades)
 
-    # ========================================
-    # PRINT RESULTS
-    # ========================================
+    # Print results
     print("\n" + "="*80)
-    print("📊 WALK-FORWARD BACKTEST SUMMARY")
+    print("📊 POSITION TRADING BACKTEST SUMMARY")
     print("="*80)
 
-    # Overall metrics
     print(f"\n📈 Overall Performance:")
     print(f"   Total Trades: {stats['TotalTrades']}")
     print(f"   Wins: {stats['Wins']} | Losses: {stats['Losses']}")
@@ -590,26 +905,26 @@ if __name__ == "__main__":
         for year, metrics in stats["YearlySummary"].items():
             print(f"   {year}: {metrics['Trades']} trades, {metrics['Wins']} wins, ${metrics['TotalPnL_$']:,.2f} PnL")
 
-    # 🆕 Crossover type analysis
-    if "CrossoverAnalysis" in stats:
-        print(f"\n🎯 Performance by Crossover Type:")
-        print("   " + "-"*76)
-        print(f"   {'Type':<18} {'Trades':<8} {'WinRate':<10} {'AvgR':<8} {'TotalPnL':<15} {'AvgDays':<8}")
-        print("   " + "-"*76)
-        for crossover_type, metrics in stats["CrossoverAnalysis"].items():
-            print(f"   {crossover_type:<18} {int(metrics['Trades']):<8} "
+    # Strategy-wise analysis
+    if "StrategyAnalysis" in stats:
+        print(f"\n📊 Performance by Strategy:")
+        print("   " + "-"*90)
+        print(f"   {'Strategy':<30} {'Trades':<8} {'WinRate':<10} {'AvgR':<8} {'TotalPnL':<15} {'AvgDays':<8}")
+        print("   " + "-"*90)
+        for strategy, metrics in stats["StrategyAnalysis"].items():
+            print(f"   {strategy:<30} {int(metrics['Trades']):<8} "
                   f"{metrics['WinRate%']:<9.1f}% {metrics['AvgRMultiple']:<8.2f} "
                   f"${metrics['TotalPnL_$']:>12,.2f} {metrics['AvgHoldingDays']:<8.1f}")
-        print("   " + "-"*76)
+        print("   " + "-"*90)
 
-    # 🆕 Exit reason analysis
+    # Exit reason analysis
     if "ExitReasonAnalysis" in stats:
         print(f"\n🚪 Exit Reason Breakdown:")
         print("   " + "-"*60)
-        print(f"   {'Reason':<18} {'Count':<8} {'TotalPnL':<15} {'AvgR':<8}")
+        print(f"   {'Reason':<25} {'Count':<8} {'TotalPnL':<15} {'AvgR':<8}")
         print("   " + "-"*60)
         for reason, metrics in stats["ExitReasonAnalysis"].items():
-            print(f"   {reason:<18} {int(metrics['Count']):<8} "
+            print(f"   {reason:<25} {int(metrics['Count']):<8} "
                   f"${metrics['TotalPnL_$']:>12,.2f} {metrics['AvgRMultiple']:<8.2f}")
         print("   " + "-"*60)
 

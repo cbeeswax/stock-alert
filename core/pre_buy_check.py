@@ -212,13 +212,23 @@ def pre_buy_check(combined_signals, rr_ratio=None, benchmark="SPY", as_of_date=N
     # Deduplicate by strategy priority
     # -------------------------------
     # Higher number = higher priority (if same ticker has multiple signals, use highest priority)
-    # 🔧 UPDATED: Prioritize proven high-WR strategies
+    # Updated for position trading strategies
     priority = {
-        "BB+RSI Combo": 7,           # Highest - triple confirmation, 80% WR expected
-        "Mean Reversion": 6,         # Proven 75% WR
-        "%B Mean Reversion": 5,      # Similar to Mean Reversion
-        "52-Week High": 4,           # Momentum, 50% WR expected (tightened)
-        "EMA Crossover": 3,          # Fixed but still needs proof
+        # Position Trading Strategies (NEW)
+        "BigBase_Breakout_Position": 7,           # Highest - rarest, biggest moves
+        "RelativeStrength_Ranker_Position": 6,    # Proven workhorse
+        "High52_Position": 5,                     # Momentum breakout
+        "EMA_Crossover_Position": 4,
+        "TrendContinuation_Position": 3,
+        "MeanReversion_Position": 2,
+        "%B_MeanReversion_Position": 1,
+
+        # Legacy Short-Term Strategies (OLD - for backward compatibility)
+        "BB+RSI Combo": 7,           # Triple confirmation
+        "Mean Reversion": 6,         # RSI(2) proven winner
+        "%B Mean Reversion": 5,      # BB mean reversion variant
+        "52-Week High": 4,           # Momentum breakout
+        "EMA Crossover": 3,          # Trend following
         "Consolidation Breakout": 2,
         "BB Squeeze": 1,             # Lowest
         "Relative Strength": 1,
@@ -227,7 +237,9 @@ def pre_buy_check(combined_signals, rr_ratio=None, benchmark="SPY", as_of_date=N
     best_signal = {}
     for s in combined_signals:
         t = s["Ticker"]
-        if t not in best_signal or priority[s["Strategy"]] > priority[best_signal[t]["Strategy"]]:
+        strategy = s["Strategy"]
+        # Use .get() with default to avoid KeyError if strategy not in priority dict
+        if t not in best_signal or priority.get(strategy, 0) > priority.get(best_signal[t]["Strategy"], 0):
             best_signal[t] = s
 
     signals = list(best_signal.values())
