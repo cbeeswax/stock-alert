@@ -50,8 +50,13 @@ def run_short_only_backtest():
     print(f"✅ Max short positions: {short_max}")
     print(f"\n🚀 Starting backtest...\n")
 
+    # Load S&P 500 tickers
+    tickers = pd.read_csv("data/sp500_constituents.csv")["Symbol"].tolist()
+    print(f"📋 Loaded {len(tickers)} tickers from S&P 500")
+
     # Run backtester
     backtester = WalkForwardBacktester(
+        tickers=tickers,
         start_date=BACKTEST_START_DATE,
         initial_capital=POSITION_INITIAL_EQUITY,
         scan_frequency=BACKTEST_SCAN_FREQUENCY
