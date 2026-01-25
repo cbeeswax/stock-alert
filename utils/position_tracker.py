@@ -133,6 +133,8 @@ class PositionTracker:
             'entry_date': pd.to_datetime(entry_date),
             'entry_price': entry_price,
             'strategy': strategy,
+            'pyramid_adds': 0,  # Initialize pyramid counter
+            'closes_below_trail': 0,  # Initialize trail counter
             **kwargs
         }
 
@@ -167,6 +169,34 @@ class PositionTracker:
             dict: Position data or None
         """
         return self.positions.get(ticker)
+
+    def update_position(self, ticker, **updates):
+        """
+        Update position fields (for live trading: pyramids, partials, etc.).
+
+        Args:
+            ticker: Stock ticker symbol
+            **updates: Fields to update (e.g., pyramid_adds=1)
+
+        Returns:
+            bool: True if updated, False if position not found
+
+        Example:
+            # User executes a pyramid
+            tracker.update_position('NVDA', pyramid_adds=1)
+
+            # User takes partial profit
+            tracker.update_position('AAPL', partial_taken=True)
+        """
+        if ticker not in self.positions:
+            return False
+
+        # Update fields
+        for key, value in updates.items():
+            self.positions[ticker][key] = value
+
+        self._save_positions()
+        return True
 
     def get_all_positions(self):
         """

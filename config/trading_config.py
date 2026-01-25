@@ -33,9 +33,9 @@ POSITION_MAX_TOTAL = 20            # Max 20 total positions (focused on 3 strate
 
 # Per-Strategy Position Limits (FOCUSED ON PROVEN WINNERS ONLY)
 POSITION_MAX_PER_STRATEGY = {
-    # ACTIVE STRATEGIES (2 active, 1 testing)
-    "RelativeStrength_Ranker_Position": 10,   # PROVEN: 47.5% WR, 2.04R, $362k profit
-    "High52_Position": 6,                      # TESTING: Ultra-selective filters (30% RS, 2.5x vol, ADX 30+)
+    # ACTIVE STRATEGIES (1 proven winner)
+    "RelativeStrength_Ranker_Position": 10,   # PROVEN: 48.5% WR, 2.52R, $497k profit
+    "High52_Position": 0,                      # DISABLED: 33% WR, negative expectancy (even ultra-selective)
     "BigBase_Breakout_Position": 0,           # DISABLED: 10% WR, negative expectancy
 
     # DISABLED STRATEGIES (broken - churning or insufficient data)

@@ -30,10 +30,17 @@ ema_data/
 
 # Backtest results (temporary - regenerated on each run)
 backtest_results.csv
+*_output.txt
+*.output
 
-# Test files (optional - uncomment if you want to exclude)
-# test_*.py
-# verify_*.py
+# Test files (kept in tests/ directory)
+# tests/ directory is tracked
+
+# Backup files
+*_OLD_*.py
+*_BACKUP*.py
+*.bak
+*.old
 
 # Environment variables
 .env
