@@ -58,7 +58,7 @@ from config.trading_config import (
     PERCENT_B_POS_MAX_DAYS,
 
     # Strategy 4: High52_Position
-    HIGH52_POS_RS_PERCENTILE,
+    HIGH52_POS_RS_MIN,
     HIGH52_POS_VOLUME_MULT,
     HIGH52_POS_STOP_ATR_MULT,
     HIGH52_POS_MAX_DAYS,
@@ -461,16 +461,11 @@ def run_scan_as_of(as_of_date, tickers):
         # =====================================================================
         # STRATEGY 4: HIGH52_POSITION (ACTIVE)
         # =====================================================================
-        # Entry: Top 30% RS, new 52-week high, 2.5x volume, ADX 30+, all MAs rising
+        # Entry: 20% RS, new 52-week high, 1.8x 5-day vol, stacked MAs
+        # Note: NO ADX or volatility filters (breakouts SHOULD be volatile)
         # =====================================================================
         if is_bull_regime and len(df) >= 252 and rs_6mo is not None:
             try:
-                # VOLATILITY FILTER (Skip overly volatile stocks prone to whipsaw)
-                daily_returns = close.pct_change()
-                volatility_20d = daily_returns.rolling(20).std().iloc[-1] if len(daily_returns) >= 20 else 0
-                if volatility_20d > 0.04:  # More than 4% daily volatility
-                    continue  # Too volatile, skip
-
                 # MULTI-MONTH TREND FILTERS
                 # Stacked MAs: Price > 50 > 100 > 200
                 stacked_mas = (last_close > ma50.iloc[-1] and
@@ -481,22 +476,22 @@ def run_scan_as_of(as_of_date, tickers):
                 high_52w = high.rolling(252).max().iloc[-1]
                 is_new_52w_high = last_close >= high_52w * 0.998  # Within 0.2%
 
-                # UNIVERSAL FILTERS (STRONGER)
-                strong_rs = rs_6mo >= UNIVERSAL_RS_MIN  # 30% minimum
+                # RS requirement - strong performers (20%+ outperformance)
+                strong_rs = rs_6mo >= HIGH52_POS_RS_MIN
 
-                # Volume surge (HIGHER)
+                # Volume confirmation: 5-day average (sustained, not spike)
                 avg_vol_50d = volume.rolling(50).mean().iloc[-1] if len(volume) >= 50 else avg_vol_20d
-                vol_ratio = volume.iloc[-1] / max(avg_vol_50d, 1)
-                volume_surge = vol_ratio >= UNIVERSAL_VOLUME_MULT  # 2.5x minimum
+                vol_5d_avg = volume.iloc[-5:].mean() if len(volume) >= 5 else volume.iloc[-1]
+                vol_ratio = vol_5d_avg / max(avg_vol_50d, 1)
+                volume_surge = vol_ratio >= HIGH52_POS_VOLUME_MULT  # 1.8x 5-day avg (sustained interest)
 
-                # RELAXED: Removed all_mas_rising filter (was too restrictive - only 2 trades in 3+ years)
-                if all([stacked_mas, is_new_52w_high, strong_rs,
-                       volume_surge, strong_adx]):
+                # RELAXED: Removed volatility, ADX, and all_mas_rising filters
+                if all([stacked_mas, is_new_52w_high, strong_rs, volume_surge]):
                     # Stop
                     stop_price = last_close - (HIGH52_POS_STOP_ATR_MULT * atr20.iloc[-1])
 
                     # Quality score
-                    score = min(rs_6mo / 0.30 * 50, 70)  # Max 70
+                    score = min(rs_6mo / 0.20 * 50, 70)  # Max 70
                     score += min((vol_ratio / HIGH52_POS_VOLUME_MULT) * 30, 30)
 
                     signals.append({

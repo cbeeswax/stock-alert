@@ -126,8 +126,8 @@ PERCENT_B_POS_MAX_DAYS = 90
 # 4. HIGH52_POSITION (60-120 DAYS)
 # =============================================================================
 
-HIGH52_POS_RS_PERCENTILE = 0.30           # Top 30% RS vs QQQ (STRONGER - was 0.20)
-HIGH52_POS_VOLUME_MULT = 2.5              # Volume ≥ 2.5× 50-day avg (HIGHER - was 2.0)
+HIGH52_POS_RS_MIN = 0.20                  # Minimum 20% RS vs QQQ (STRONG - was 0.30)
+HIGH52_POS_VOLUME_MULT = 1.8              # 5-day avg ≥ 1.8× 50-day avg (SUSTAINED - was 2.5 single-day)
 HIGH52_POS_STOP_ATR_MULT = 4.5            # Stop: entry - 4.5× ATR(20) (WIDER - was 3.5)
 HIGH52_POS_PARTIAL_R = 2.5                # Partial at 2.5R
 HIGH52_POS_PARTIAL_SIZE = 0.3             # 30% (runner = 70%)
