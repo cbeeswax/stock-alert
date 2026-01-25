@@ -10,7 +10,7 @@ Usage:
 
 import pandas as pd
 from datetime import datetime
-from backtester_walkforward import Backtester
+from backtester_walkforward import WalkForwardBacktester
 from config.trading_config import (
     BACKTEST_START_DATE,
     BACKTEST_SCAN_FREQUENCY,
@@ -51,7 +51,7 @@ def run_short_only_backtest():
     print(f"\n🚀 Starting backtest...\n")
 
     # Run backtester
-    backtester = Backtester(
+    backtester = WalkForwardBacktester(
         start_date=BACKTEST_START_DATE,
         initial_capital=POSITION_INITIAL_EQUITY,
         scan_frequency=BACKTEST_SCAN_FREQUENCY
