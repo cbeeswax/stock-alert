@@ -518,7 +518,7 @@ def run_scan_as_of(as_of_date, tickers):
         # =====================================================================
         # STRATEGY 5: BIGBASE_BREAKOUT_POSITION (ACTIVE - RARE HOME RUNS)
         # =====================================================================
-        # Entry: 14+ week consolidation (≤20% range), 6-mo high breakout, RS 20%+, 1.8x 5-day vol
+        # Entry: 14+ week consolidation (≤22% range), 6-mo high breakout, RS 15%+, 1.5x 5-day vol
         # Note: NO ADX requirement (consolidations have low ADX by definition)
         # =====================================================================
         if is_bull_regime and len(df) >= 140:  # 14+ weeks * 5 days + buffer
@@ -530,14 +530,14 @@ def run_scan_as_of(as_of_date, tickers):
                     base_low = low.iloc[-lookback_days:].min()
                     base_range_pct = (base_high - base_low) / base_low
 
-                    # Tight base (≤18% range - true consolidation)
+                    # Tight base (≤22% range - controlled consolidation)
                     is_tight_base = base_range_pct <= BIGBASE_MAX_RANGE_PCT
 
                     # MULTI-MONTH TREND FILTERS
                     # Base must be above 200-day MA (long-term uptrend)
                     above_200ma = last_close > ma200.iloc[-1]
 
-                    # RS requirement - leaders only (20%+ outperformance)
+                    # RS requirement - strong performers (15%+ outperformance)
                     strong_rs = rs_6mo is not None and rs_6mo >= BIGBASE_RS_MIN
 
                     # New 6-month high breakout
@@ -548,7 +548,7 @@ def run_scan_as_of(as_of_date, tickers):
                     avg_vol_50d = volume.rolling(50).mean().iloc[-1] if len(volume) >= 50 else avg_vol_20d
                     vol_5d_avg = volume.iloc[-5:].mean() if len(volume) >= 5 else volume.iloc[-1]
                     vol_ratio = vol_5d_avg / max(avg_vol_50d, 1)
-                    volume_surge = vol_ratio >= BIGBASE_VOLUME_MULT  # 1.8x 5-day avg (avoids blow-offs)
+                    volume_surge = vol_ratio >= BIGBASE_VOLUME_MULT  # 1.5x 5-day avg (sustained interest)
 
                     # RELAXED: Removed all_mas_rising and ADX filters
                     # ADX is LOW during consolidation, rises AFTER breakout (catches it too late)
