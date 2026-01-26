@@ -422,6 +422,7 @@ class WalkForwardBacktester:
             return None  # Not enough data
 
         recent_df["EMA21"] = recent_df["Close"].ewm(span=21).mean()
+        recent_df["EMA50"] = recent_df["Close"].ewm(span=50).mean()
         recent_df["MA50"] = recent_df["Close"].rolling(50).mean()
         recent_df["MA100"] = recent_df["Close"].rolling(100).mean()
         recent_df["MA200"] = recent_df["Close"].rolling(200).mean()
@@ -429,6 +430,7 @@ class WalkForwardBacktester:
 
         # Get current indicator values
         ema21 = recent_df["EMA21"].iloc[-1] if len(recent_df) >= 21 else None
+        ema50 = recent_df["EMA50"].iloc[-1] if len(recent_df) >= 50 else None
         ma50 = recent_df["MA50"].iloc[-1] if len(recent_df) >= 50 else None
         ma100 = recent_df["MA100"].iloc[-1] if len(recent_df) >= 100 else None
         ma200 = recent_df["MA200"].iloc[-1] if len(recent_df) >= 200 else None
@@ -535,13 +537,14 @@ class WalkForwardBacktester:
                         position['closes_below_trail'] = 0
 
         elif strategy == "ShortWeakRS_Retrace_Position":
-            # SHORT strategy: Trail with EMA21 (INVERTED - exit if price rises above)
+            # SHORT strategy: Trail with EMA50 (INVERTED - exit if price rises above)
             # For shorts, we exit if price closes ABOVE trail (opposite of longs)
-            if ema21 and pd.notna(ema21):
-                if current_close > ema21:  # Price rising above trail = exit short
+            # Looser trail (EMA50 vs EMA21) gives winners more room to breathe
+            if ema50 and pd.notna(ema50):
+                if current_close > ema50:  # Price rising above trail = exit short
                     position['closes_below_trail'] += 1
-                    if position['closes_below_trail'] >= SHORT_TRAIL_DAYS:  # Default 3 days
-                        return self._close_position(position, current_date, current_close, "EMA21_Trail_Short", current_r)
+                    if position['closes_below_trail'] >= SHORT_TRAIL_DAYS:  # Default 5 days
+                        return self._close_position(position, current_date, current_close, "EMA50_Trail_Short", current_r)
                 else:
                     position['closes_below_trail'] = 0
 

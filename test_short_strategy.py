@@ -276,9 +276,6 @@ if __name__ == "__main__":
         # Analyze results
         short_trades = analyze_short_results(results)
 
-        # Compare long vs short
-        compare_long_vs_short(results)
-
         # Save results
         output_file = "backtest_results_short.csv"
         results.to_csv(output_file, index=False)

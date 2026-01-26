@@ -341,9 +341,9 @@ SHORT_STOP_BUFFER_ATR = 0.5             # Additional buffer above swing high
 # Exit rules
 SHORT_PARTIAL_R = 2.5                   # Partial profit at +2.5R
 SHORT_PARTIAL_SIZE = 0.4                # 40% partial (more aggressive than longs)
-SHORT_TRAIL_EMA = 21                    # Trail with 21-EMA
-SHORT_TRAIL_DAYS = 3                    # Exit if 3 consecutive closes above EMA21
-SHORT_MAX_DAYS = 45                     # Hard time stop at 45 days
+SHORT_TRAIL_EMA = 50                    # Trail with 50-EMA (looser - let winners run)
+SHORT_TRAIL_DAYS = 5                    # Exit if 5 consecutive closes above EMA50 (more confirmation)
+SHORT_MAX_DAYS = 60                     # Hard time stop at 60 days (was 45, letting winners run longer)
 
 # Strategy priority (lowest - shorts filled after all longs)
 STRATEGY_PRIORITY["ShortWeakRS_Retrace_Position"] = 100
