@@ -292,8 +292,16 @@ def pre_buy_check(combined_signals, rr_ratio=None, benchmark="SPY", as_of_date=N
         entry = close
 
         # 🔧 Use strategy-specific stop/target helpers
-        stop = get_stop_loss(strategy, entry, atr)
-        target = get_target(strategy, entry, stop)
+        # For position trading strategies, preserve stop/target from scanner (already calculated correctly)
+        # This is critical for SHORT strategies where stop must be ABOVE entry
+        if s.get("StopLoss") and s.get("Target"):
+            # Position trading strategy with pre-calculated stop/target from scanner
+            stop = s["StopLoss"]
+            target = s["Target"]
+        else:
+            # Legacy strategies - calculate stop/target here
+            stop = get_stop_loss(strategy, entry, atr)
+            target = get_target(strategy, entry, stop)
 
         # -------------------------------
         # EMA strategy extra filters (NOW DONE IN SCANNER - kept for other strategies)
