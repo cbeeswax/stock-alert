@@ -588,10 +588,16 @@ class WalkForwardBacktester:
 
         outcome = "Win" if pnl > 0 else "Loss"
 
+        # Calculate ACTUAL R-multiple from real P&L (don't use passed r_multiple which may be hardcoded)
+        # R = (P&L per share) / (initial risk per share)
+        risk_per_share = position['risk_amount']
+        pnl_per_share = pnl / shares if shares > 0 else 0
+        actual_r_multiple = pnl_per_share / risk_per_share if risk_per_share > 0 else 0
+
         # Display exit
         pnl_display = f"${pnl:+,.2f}" if pnl >= 0 else f"-${abs(pnl):,.2f}"
         outcome_icon = "💰" if pnl > 0 else "📉"
-        print(f"   {outcome_icon} {exit_date.date()} | EXIT {ticker} {r_multiple:+.2f}R ({pnl_display}) in {days_held}d | {exit_reason}")
+        print(f"   {outcome_icon} {exit_date.date()} | EXIT {ticker} {actual_r_multiple:+.2f}R ({pnl_display}) in {days_held}d | {exit_reason}")
 
         # Create trade result
         result = {
@@ -606,7 +612,7 @@ class WalkForwardBacktester:
             "Exit": round(exit_price, 2),
             "Outcome": outcome,
             "ExitReason": exit_reason,
-            "RMultiple": round(r_multiple, 2),
+            "RMultiple": round(actual_r_multiple, 2),  # Use ACTUAL R-multiple from P&L, not passed parameter
             "Shares": shares,
             "PnL_$": round(pnl, 2),
             "HoldingDays": days_held,
