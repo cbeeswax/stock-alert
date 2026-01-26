@@ -294,7 +294,7 @@ def pre_buy_check(combined_signals, rr_ratio=None, benchmark="SPY", as_of_date=N
         # 🔧 Use strategy-specific stop/target helpers
         # For position trading strategies, preserve stop/target from scanner (already calculated correctly)
         # This is critical for SHORT strategies where stop must be ABOVE entry
-        if s.get("StopLoss") and s.get("Target"):
+        if s.get("StopLoss") is not None and s.get("Target") is not None and not pd.isna(s.get("StopLoss")) and not pd.isna(s.get("Target")):
             # Position trading strategy with pre-calculated stop/target from scanner
             stop = s["StopLoss"]
             target = s["Target"]
@@ -319,6 +319,18 @@ def pre_buy_check(combined_signals, rr_ratio=None, benchmark="SPY", as_of_date=N
 
         # Calculate Van Tharp Expectancy
         expectancy = (win_rate * avg_win_r) - ((1 - win_rate) * abs(avg_loss_r))
+
+        # Validate stop and target are valid numbers (must be positive prices, not NaN)
+        if pd.isna(stop) or pd.isna(target) or stop <= 0 or target <= 0 or entry <= 0:
+            continue
+
+        # For SHORT: stop must be above entry (if price rises, we lose)
+        # For LONG: stop must be below entry (if price falls, we lose)
+        direction = s.get("Direction", "LONG")
+        if direction == "SHORT" and stop <= entry:
+            continue  # Invalid SHORT stop (must be above entry)
+        elif direction == "LONG" and stop >= entry:
+            continue  # Invalid LONG stop (must be below entry)
 
         trades.append({
             "Ticker": ticker,
