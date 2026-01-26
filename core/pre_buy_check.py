@@ -222,6 +222,7 @@ def pre_buy_check(combined_signals, rr_ratio=None, benchmark="SPY", as_of_date=N
         "TrendContinuation_Position": 3,
         "MeanReversion_Position": 2,
         "%B_MeanReversion_Position": 1,
+        "ShortWeakRS_Retrace_Position": 0,        # Shorts LOSE to longs in deduplication (priority 0)
 
         # Legacy Short-Term Strategies (OLD - for backward compatibility)
         "BB+RSI Combo": 7,           # Triple confirmation
@@ -322,6 +323,8 @@ def pre_buy_check(combined_signals, rr_ratio=None, benchmark="SPY", as_of_date=N
             "Expectancy": round(expectancy, 2),     # Van Tharp Expectancy (R per trade)
             "CrossoverType": s.get("CrossoverType", "Unknown"),
             "CrossoverBonus": s.get("CrossoverBonus", 0),
+            "Direction": s.get("Direction", "LONG"),  # Preserve direction from scanner (SHORT or LONG)
+            "MaxDays": s.get("MaxDays"),             # Preserve max holding period
         })
 
     df_trades = pd.DataFrame(trades)

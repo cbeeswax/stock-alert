@@ -29,7 +29,7 @@ def run_short_only_backtest():
     print("="*80)
     print("Strategy: ShortWeakRS_Retrace_Position")
     print("Testing period: 2022-01-01 to present")
-    print("Scan frequency: Weekly (Monday)")
+    print("Scan frequency: Daily")
     print("="*80 + "\n")
 
     # Check if short strategy is enabled
@@ -54,12 +54,12 @@ def run_short_only_backtest():
     tickers = pd.read_csv("data/sp500_constituents.csv")["Symbol"].tolist()
     print(f"📋 Loaded {len(tickers)} tickers from S&P 500")
 
-    # Run backtester
+    # Run backtester with DAILY scans (override config)
     backtester = WalkForwardBacktester(
         tickers=tickers,
         start_date=BACKTEST_START_DATE,
         initial_capital=POSITION_INITIAL_EQUITY,
-        scan_frequency=BACKTEST_SCAN_FREQUENCY
+        scan_frequency="D"  # Daily scans instead of weekly
     )
 
     results = backtester.run()

@@ -45,7 +45,7 @@ POSITION_MAX_PER_STRATEGY = {
     "%B_MeanReversion_Position": 0,           # 0.05R avg, essentially breakeven
 
     # EXPERIMENTAL SHORT STRATEGY (disabled by default - testing phase)
-    "ShortWeakRS_Retrace_Position": 0,        # EXPERIMENTAL: Not yet backtested
+    "ShortWeakRS_Retrace_Position": 5,        # EXPERIMENTAL: Not yet backtested
 }
 
 # Fallback for compatibility
@@ -318,7 +318,7 @@ RISK MANAGEMENT:
 """
 
 # Main switch (DISABLED by default - enable only after thorough backtesting)
-SHORT_ENABLED = False
+SHORT_ENABLED = True
 
 # Portfolio limits
 SHORT_MAX_POSITIONS = 5                 # Max 5 concurrent short positions
