@@ -71,6 +71,7 @@ from config.trading_config import (
     SHORT_ENABLED,
     SHORT_PARTIAL_R,
     SHORT_PARTIAL_SIZE,
+    SHORT_TRAIL_EMA,
     SHORT_TRAIL_DAYS,
     SHORT_MAX_DAYS,
 
@@ -537,16 +538,20 @@ class WalkForwardBacktester:
                         position['closes_below_trail'] = 0
 
         elif strategy == "ShortWeakRS_Retrace_Position":
-            # SHORT strategy: Trail with EMA50 (INVERTED - exit if price rises above)
+            # SHORT strategy: Trail stop (OPTIONAL - can be disabled)
             # For shorts, we exit if price closes ABOVE trail (opposite of longs)
-            # Looser trail (EMA50 vs EMA21) gives winners more room to breathe
-            if ema50 and pd.notna(ema50):
-                if current_close > ema50:  # Price rising above trail = exit short
-                    position['closes_below_trail'] += 1
-                    if position['closes_below_trail'] >= SHORT_TRAIL_DAYS:  # Default 5 days
-                        return self._close_position(position, current_date, current_close, "EMA50_Trail_Short", current_r)
-                else:
-                    position['closes_below_trail'] = 0
+            # Trail is DISABLED by default (SHORT_TRAIL_EMA = None) because:
+            # - Weak stocks are choppy in bull markets
+            # - Trails cut winners too early (losing -0.22R avg)
+            # - Time stops are much more profitable (+1.24R avg)
+            if SHORT_TRAIL_EMA is not None and SHORT_TRAIL_DAYS is not None:
+                if ema50 and pd.notna(ema50):
+                    if current_close > ema50:  # Price rising above trail = exit short
+                        position['closes_below_trail'] += 1
+                        if position['closes_below_trail'] >= SHORT_TRAIL_DAYS:
+                            return self._close_position(position, current_date, current_close, "EMA50_Trail_Short", current_r)
+                    else:
+                        position['closes_below_trail'] = 0
 
         # Time stop (SKIP for pyramided positions - let trail stops manage winners)
         has_pyramids = len(position['pyramid_adds']) > 0

@@ -54,6 +54,21 @@ def run_short_only_backtest():
     tickers = pd.read_csv("data/sp500_constituents.csv")["Symbol"].tolist()
     print(f"📋 Loaded {len(tickers)} tickers from S&P 500")
 
+    # IMPORTANT: Temporarily disable ALL long strategies to test SHORT in isolation
+    # Save original config
+    original_max_per_strategy = POSITION_MAX_PER_STRATEGY.copy()
+
+    # Disable all long strategies
+    POSITION_MAX_PER_STRATEGY["RelativeStrength_Ranker_Position"] = 0
+    POSITION_MAX_PER_STRATEGY["High52_Position"] = 0
+    POSITION_MAX_PER_STRATEGY["BigBase_Breakout_Position"] = 0
+    POSITION_MAX_PER_STRATEGY["EMA_Crossover_Position"] = 0
+    POSITION_MAX_PER_STRATEGY["TrendContinuation_Position"] = 0
+    POSITION_MAX_PER_STRATEGY["MeanReversion_Position"] = 0
+    POSITION_MAX_PER_STRATEGY["%B_MeanReversion_Position"] = 0
+
+    print(f"🚫 Disabled all LONG strategies for isolated SHORT testing")
+
     # Run backtester with DAILY scans (override config)
     backtester = WalkForwardBacktester(
         tickers=tickers,
@@ -62,7 +77,11 @@ def run_short_only_backtest():
         scan_frequency="D"  # Daily scans instead of weekly
     )
 
-    results = backtester.run()
+    try:
+        results = backtester.run()
+    finally:
+        # Restore original config (even if backtest fails)
+        POSITION_MAX_PER_STRATEGY.update(original_max_per_strategy)
 
     return results
 
