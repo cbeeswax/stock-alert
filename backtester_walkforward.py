@@ -11,6 +11,7 @@ from core.pre_buy_check import pre_buy_check
 from utils.market_data import get_historical_data
 from utils.position_tracker import PositionTracker, filter_trades_by_position
 from utils.ema_utils import compute_rsi, compute_bollinger_bands, compute_percent_b
+from utils.regime_classifier import get_regime_config
 from scripts.download_history import download_ticker, was_update_session_today, mark_update_session
 from config.trading_config import (
     # Position trading settings
@@ -24,6 +25,7 @@ from config.trading_config import (
     POSITION_PARTIAL_R_TRIGGER_HIGH,
     POSITION_MAX_DAYS_SHORT,
     POSITION_MAX_DAYS_LONG,
+    SHORT_RISK_PER_TRADE_PCT,
 
     # Pyramiding
     POSITION_PYRAMID_ENABLED,
@@ -67,13 +69,13 @@ from config.trading_config import (
     RS_RANKER_TRAIL_MA,
     RS_RANKER_TRAIL_DAYS,
 
-    # Short strategy (experimental)
+    # Short strategies (regime-based)
     SHORT_ENABLED,
-    SHORT_PARTIAL_R,
-    SHORT_PARTIAL_SIZE,
-    SHORT_TRAIL_EMA,
-    SHORT_TRAIL_DAYS,
-    SHORT_MAX_DAYS,
+    SHORT_CFG_BULL,
+    SHORT_CFG_SIDEWAYS,
+    SHORT_CFG_BEAR,
+    LEADER_SHORT_CFG_BULL,
+    MEGACAP_WEEKLY_SLIDE_CFG,
 
     # Backtest settings
     BACKTEST_START_DATE,
@@ -114,6 +116,10 @@ class WalkForwardBacktester:
 
         # All completed trades
         self.completed_trades = []
+
+        # Cooldown tracker for strategies that need symbol-level cooldowns
+        # Structure: {strategy: {ticker: exit_date}}
+        self.cooldown_tracker = {}
 
     def _calculate_atr(self, df, period=14):
         """Calculate ATR"""
@@ -165,9 +171,20 @@ class WalkForwardBacktester:
         stop_price = trade["StopLoss"]
         direction = trade.get("Direction", "LONG")
         max_days = trade.get("MaxDays", POSITION_MAX_DAYS_LONG)
+        regime = trade.get("Regime", None)  # Track regime for SHORT positions
 
-        # Position sizing
-        shares = self._calculate_position_size(entry_price, stop_price)
+        # Position sizing (use strategy-specific risk %)
+        risk_pct = None  # Default: use POSITION_RISK_PER_TRADE_PCT (2.0%)
+
+        # Weak-RS shorts use 1.5% risk
+        if strategy == "ShortWeakRS_Retrace_Position":
+            risk_pct = SHORT_RISK_PER_TRADE_PCT  # 1.5%
+
+        # Leader Pullback Shorts use smaller size (0.5% risk)
+        elif strategy == "LeaderPullback_Short_Position":
+            risk_pct = LEADER_SHORT_CFG_BULL["RISK_PER_TRADE_PCT"]  # 0.5%
+
+        shares = self._calculate_position_size(entry_price, stop_price, risk_pct=risk_pct)
         if shares == 0:
             return False
 
@@ -191,6 +208,7 @@ class WalkForwardBacktester:
             'partial_result': None,
             'pyramid_adds': [],
             'closes_below_trail': 0,
+            'regime': regime,  # Track market regime for regime-based strategies
         }
 
         self.open_positions.append(position)
@@ -314,10 +332,29 @@ class WalkForwardBacktester:
                         partial_size = RS_RANKER_PARTIAL_SIZE
 
                 elif strategy == "ShortWeakRS_Retrace_Position":
-                    if current_r >= SHORT_PARTIAL_R:  # +2.5R for shorts
+                    # Use regime-specific config for partial exits
+                    regime = position.get('regime', 'sideways')
+                    cfg = get_regime_config(regime)
+                    if current_r >= cfg["PARTIAL_R"]:
                         should_partial = True
-                        partial_trigger = f"{SHORT_PARTIAL_R}R"
-                        partial_size = SHORT_PARTIAL_SIZE  # 40% partial (more aggressive)
+                        partial_trigger = f"{cfg['PARTIAL_R']}R"
+                        partial_size = cfg["PARTIAL_SIZE"]
+
+                elif strategy == "LeaderPullback_Short_Position":
+                    # Use leader short config for partial exits
+                    cfg = LEADER_SHORT_CFG_BULL
+                    if current_r >= cfg["PARTIAL_R"]:
+                        should_partial = True
+                        partial_trigger = f"{cfg['PARTIAL_R']}R"
+                        partial_size = cfg["PARTIAL_SIZE"]
+
+                elif strategy == "MegaCap_WeeklySlide_Short":
+                    # Use signal-specific partial exit parameters
+                    partial_r = position.get('PartialR', 2.0)
+                    if current_r >= partial_r:
+                        should_partial = True
+                        partial_trigger = f"{partial_r}R"
+                        partial_size = position.get('PartialSize', 0.5)
 
                 if should_partial:
                     position['partial_exited'] = True
@@ -379,7 +416,11 @@ class WalkForwardBacktester:
 
                     # Update position
                     position['current_shares'] -= partial_shares
-                    position['stop_price'] = position['entry_price']  # Move stop to breakeven
+
+                    # Move stop to breakeven (if enabled for this position)
+                    breakeven_enabled = position.get('BreakevenAfterPartial', True)  # Default True for backwards compatibility
+                    if breakeven_enabled:
+                        position['stop_price'] = position['entry_price']  # Move stop to breakeven
 
             # =================================================================
             # CHECK FOR FULL EXIT
@@ -538,20 +579,87 @@ class WalkForwardBacktester:
                         position['closes_below_trail'] = 0
 
         elif strategy == "ShortWeakRS_Retrace_Position":
-            # SHORT strategy: Trail stop (OPTIONAL - can be disabled)
+            # REGIME-BASED: SHORT strategy with regime-specific exit parameters
             # For shorts, we exit if price closes ABOVE trail (opposite of longs)
-            # Trail is DISABLED by default (SHORT_TRAIL_EMA = None) because:
-            # - Weak stocks are choppy in bull markets
-            # - Trails cut winners too early (losing -0.22R avg)
-            # - Time stops are much more profitable (+1.24R avg)
-            if SHORT_TRAIL_EMA is not None and SHORT_TRAIL_DAYS is not None:
-                if ema50 and pd.notna(ema50):
-                    if current_close > ema50:  # Price rising above trail = exit short
-                        position['closes_below_trail'] += 1
-                        if position['closes_below_trail'] >= SHORT_TRAIL_DAYS:
-                            return self._close_position(position, current_date, current_close, "EMA50_Trail_Short", current_r)
+            regime = position.get('regime', 'sideways')
+            cfg = get_regime_config(regime)
+
+            # Trailing stop (regime-specific)
+            trail_ema = cfg.get("TRAIL_EMA")
+            trail_days = cfg.get("TRAIL_DAYS")
+            trail_only_after_partial = cfg.get("TRAIL_ONLY_AFTER_PARTIAL", True)
+
+            if trail_ema is not None and trail_days is not None:
+                # Only trail if partial was taken (protect winners only)
+                should_trail = True
+                if trail_only_after_partial:
+                    should_trail = position.get('partial_exited', False)
+
+                if should_trail:
+                    # Use regime-specific EMA for trailing
+                    ema_trail = recent_df['Close'].ewm(span=trail_ema, adjust=False).mean().iloc[-1] if len(recent_df) >= trail_ema else None
+
+                    if ema_trail and pd.notna(ema_trail):
+                        if current_close > ema_trail:  # Price rising above trail = exit short
+                            position['closes_below_trail'] += 1
+                            if position['closes_below_trail'] >= trail_days:
+                                return self._close_position(position, current_date, current_close, f"EMA{trail_ema}_Trail_Short", current_r)
+                        else:
+                            position['closes_below_trail'] = 0
+
+            # Early time stop (regime-specific)
+            early_exit_days = cfg.get("EARLY_EXIT_DAYS")
+            early_exit_r_threshold = cfg.get("EARLY_EXIT_R_THRESHOLD")
+
+            if early_exit_days is not None and early_exit_r_threshold is not None:
+                if days_held >= early_exit_days:
+                    if current_r < early_exit_r_threshold:
+                        return self._close_position(position, current_date, current_close, f"TimeStop_Early_{early_exit_days}d", current_r)
+
+        elif strategy == "LeaderPullback_Short_Position":
+            # LEADER PULLBACK SHORT: Fast tactical exits
+            # For shorts, we exit if price closes ABOVE trail (opposite of longs)
+            cfg = LEADER_SHORT_CFG_BULL
+
+            # Trailing stop (leader-specific)
+            trail_ema = cfg.get("TRAIL_EMA")
+            trail_days = cfg.get("TRAIL_DAYS")
+            trail_only_after_partial = cfg.get("TRAIL_ONLY_AFTER_PARTIAL", True)
+
+            if trail_ema is not None and trail_days is not None:
+                # Only trail if partial was taken (protect winners only)
+                should_trail = True
+                if trail_only_after_partial:
+                    should_trail = position.get('partial_exited', False)
+
+                if should_trail:
+                    # Use leader-specific EMA for trailing
+                    ema_trail = recent_df['Close'].ewm(span=trail_ema, adjust=False).mean().iloc[-1] if len(recent_df) >= trail_ema else None
+
+                    if ema_trail and pd.notna(ema_trail):
+                        if current_close > ema_trail:  # Price rising above trail = exit short
+                            position['closes_below_trail'] += 1
+                            if position['closes_below_trail'] >= trail_days:
+                                return self._close_position(position, current_date, current_close, f"EMA{trail_ema}_Trail_Leader", current_r)
+                        else:
+                            position['closes_below_trail'] = 0
+
+            # Early time stop (leader-specific - faster than trend shorts)
+            # Only exit if R <= 0 AND price hasn't moved much (avoiding premature exit on working trades)
+            early_exit_days = cfg.get("EARLY_EXIT_DAYS")
+            early_exit_r_threshold = cfg.get("EARLY_EXIT_R_THRESHOLD")
+
+            if early_exit_days is not None and early_exit_r_threshold is not None:
+                if days_held >= early_exit_days:
+                    # For SHORT: exit if R <= 0 AND close hasn't dropped much (close >= entry * 0.99)
+                    # This avoids cutting trades that are working but haven't reached 0R yet due to wide stops
+                    if direction == "SHORT":
+                        if current_r <= early_exit_r_threshold and current_close >= position['entry_price'] * 0.99:
+                            return self._close_position(position, current_date, current_close, f"TimeStop_Early_{early_exit_days}d_Leader", current_r)
                     else:
-                        position['closes_below_trail'] = 0
+                        # For LONG: keep original logic
+                        if current_r < early_exit_r_threshold:
+                            return self._close_position(position, current_date, current_close, f"TimeStop_Early_{early_exit_days}d_Leader", current_r)
 
         # Time stop (SKIP for pyramided positions - let trail stops manage winners)
         has_pyramids = len(position['pyramid_adds']) > 0
@@ -627,6 +735,12 @@ class WalkForwardBacktester:
             "PyramidAdds": len(position['pyramid_adds']),
         }
 
+        # Track cooldown for strategies that need it
+        if strategy == "MegaCap_WeeklySlide_Short":
+            if strategy not in self.cooldown_tracker:
+                self.cooldown_tracker[strategy] = {}
+            self.cooldown_tracker[strategy][ticker] = exit_date
+
         return result
 
     def run(self):
@@ -674,12 +788,29 @@ class WalkForwardBacktester:
             signals = run_scan_as_of(day, self.tickers)
 
             if signals:
+                # DEBUG: Log signal count
+                short_signals = [s for s in signals if s.get("Direction") == "SHORT"]
+                if short_signals:
+                    print(f"   📊 {day.date()} | {len(short_signals)} SHORT signals generated")
+
                 # Pre-buy check (deduplication, formatting)
                 validated = pre_buy_check(signals, benchmark="QQQ", as_of_date=day)
 
+                # DEBUG: Log after pre_buy_check
+                if short_signals and validated.empty:
+                    print(f"   ❌ {day.date()} | All SHORT signals filtered by pre_buy_check")
+
                 if not validated.empty:
+                    short_validated = validated[validated.get("Direction", "LONG") == "SHORT"]
+                    if len(short_validated) > 0:
+                        print(f"   ✅ {day.date()} | {len(short_validated)} SHORT signals passed pre_buy_check")
+
                     # Filter out positions we already hold
                     validated = filter_trades_by_position(validated, self.position_tracker, as_of_date=day)
+
+                    # DEBUG: Log after filter_trades_by_position
+                    if len(short_validated) > 0 and validated.empty:
+                        print(f"   ❌ {day.date()} | All SHORT signals filtered by filter_trades_by_position")
 
                     if not validated.empty:
                         # Take trades respecting limits
@@ -700,6 +831,16 @@ class WalkForwardBacktester:
 
                             if strategy_count >= max_for_strategy:
                                 continue
+
+                            # Check cooldown for strategies that need it
+                            if strategy == "MegaCap_WeeklySlide_Short":
+                                ticker = trade["Ticker"]
+                                if strategy in self.cooldown_tracker and ticker in self.cooldown_tracker[strategy]:
+                                    exit_date = self.cooldown_tracker[strategy][ticker]
+                                    days_since_exit = (day - exit_date).days
+                                    cooldown_days = MEGACAP_WEEKLY_SLIDE_CFG.get("COOLDOWN_DAYS", 10)
+                                    if days_since_exit < cooldown_days:
+                                        continue  # Still in cooldown period
 
                             # Enter position
                             success = self._enter_position(day, trade.to_dict())

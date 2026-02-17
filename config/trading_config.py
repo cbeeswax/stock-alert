@@ -44,8 +44,10 @@ POSITION_MAX_PER_STRATEGY = {
     "MeanReversion_Position": 0,              # 0.26R avg, 135 trades churning
     "%B_MeanReversion_Position": 0,           # 0.05R avg, essentially breakeven
 
-    # EXPERIMENTAL SHORT STRATEGY (disabled by default - testing phase)
-    "ShortWeakRS_Retrace_Position": 5,        # EXPERIMENTAL: Not yet backtested
+    # EXPERIMENTAL SHORT STRATEGIES (testing phase)
+    "ShortWeakRS_Retrace_Position": 5,        # Weak-RS trend shorts (bear/sideways)
+    "LeaderPullback_Short_Position": 10,      # Leader pullback shorts (bull only)
+    "MegaCap_WeeklySlide_Short": 2,           # Mega-cap weekly slide shorts (max 2 concurrent)
 }
 
 # Fallback for compatibility
@@ -277,73 +279,376 @@ EXPECTED OUTCOMES:
 """
 
 # =============================================================================
-# SHORT STRATEGY CONFIGURATION (EXPERIMENTAL - DISABLED BY DEFAULT)
+# SHORT STRATEGY CONFIGURATION - REGIME-BASED (EXPERIMENTAL)
 # =============================================================================
 
 """
-SHORT STRATEGY: ShortWeakRS_Retrace_Position
-============================================
-Counter-trend short strategy for bull/sideways markets.
-Targets weak stocks (low RS) that rally into resistance and fail.
+SHORT STRATEGY: ShortWeakRS_Retrace_Position (Regime-Based)
+===========================================================
+Adaptive short strategy with different parameters for BULL, SIDEWAYS, and BEAR regimes.
+
+REGIME CLASSIFICATION:
+----------------------
+1. BULL: QQQ > 200-MA AND 200-MA rising
+   - Most selective shorts (hedge/tactical only)
+   - Tightest stops, fastest exits, highest RSI threshold
+
+2. SIDEWAYS: QQQ ADX < 25 (low trend strength)
+   - Range-bound mean reversion
+   - Medium selectivity, quick profit-taking
+
+3. BEAR: QQQ < 200-MA AND 200-MA declining AND ADX >= 25
+   - Primary offensive shorting
+   - Broadest participation, widest stops, longer holds
+
+ADAPTIVE BEHAVIOR:
+------------------
+• BULL regime: Only short extremely weak names (RS ≤ -15%), very overbought (RSI 70-80)
+  Exit fast (1.5R partial, 20d early exit, 30d max)
+
+• SIDEWAYS regime: Short weak names (RS ≤ -10%), moderate overbought (RSI 65-75)
+  Quick profit-taking (1.2R partial, 15d early exit, 20d max)
+
+• BEAR regime: Broadly short weak names (RS ≤ -5%), normal overbought (RSI 55-70)
+  Let winners run (2.0R partial, 30d early exit, 45d max)
+"""
+
+# Main switch
+SHORT_ENABLED = True
+
+# Portfolio limits (apply across all regimes)
+SHORT_MAX_POSITIONS = 5                 # Max 5 concurrent short positions
+SHORT_MAX_EQUITY_PCT = 0.30             # Max 30% of equity in shorts
+SHORT_RISK_PER_TRADE_PCT = 1.5          # 1.5% risk per short (lower than longs)
+
+# =============================================================================
+# REGIME CLASSIFICATION PARAMETERS
+# =============================================================================
+
+SHORT_REGIME_INDEX = "QQQ"              # Index to classify (QQQ or SPY)
+SHORT_REGIME_MA_PERIOD = 200            # Long-term trend MA
+SHORT_REGIME_SLOPE_LOOKBACK = 20        # Slope window (days)
+
+SHORT_REGIME_ADX_PERIOD = 14            # ADX calculation period
+SHORT_REGIME_ADX_SMOOTH = 14            # ADX smoothing period
+SHORT_REGIME_SIDEWAYS_ADX_MAX = 25      # ADX threshold for sideways market
+
+# Common entry parameters (apply to all regimes)
+SHORT_REJECTION_MA = 50                 # Rally to 50-MA rejection point
+SHORT_REJECTION_TOLERANCE = 0.02        # Within 2% of 50-MA
+
+# =============================================================================
+# BULL REGIME CONFIG (Extremely Selective - Hedge/Tactical Only)
+# =============================================================================
+
+SHORT_CFG_BULL = {
+    "RS_MAX": -0.15,                    # Stock must underperform QQQ by ≥15%
+
+    "MA_PERIOD": 100,
+    "MA_DECLINING_DAYS": 5,             # ma100 declining over 5 days
+
+    "REQUIRE_WICK": False,              # Not required initially
+    "WICK_MIN": 0.01,                   # 1% upper wick if enabled
+    "REQUIRE_LOWER_HIGH": False,        # Not required initially
+
+    "RSI_MIN": 70,                      # Classic overbought
+    "RSI_MAX": 80,
+
+    "MAX_ATR_PCT": 0.05,                # ATR/price ≤ 5%
+    "MIN_VOL_MULT": 1.0,                # Volume ≥ 1.0× 50d avg
+
+    "STOP_ATR_MULT": 1.5,               # Tight stop
+    "STOP_BUFFER_ATR": 0.25,
+
+    "PARTIAL_R": 1.5,                   # Fast profit-taking
+    "PARTIAL_SIZE": 0.5,
+
+    "TRAIL_EMA": 20,
+    "TRAIL_DAYS": 3,
+    "TRAIL_ONLY_AFTER_PARTIAL": True,
+
+    "EARLY_EXIT_DAYS": 20,              # Exit if not working by day 20
+    "EARLY_EXIT_R_THRESHOLD": 1.0,      # Must be +1R to stay past 20 days
+
+    "MAX_DAYS": 30,                     # Quick exits in bull market
+}
+
+# =============================================================================
+# SIDEWAYS REGIME CONFIG (Range-Trade Mean Reversion)
+# =============================================================================
+
+SHORT_CFG_SIDEWAYS = {
+    "RS_MAX": -0.10,                    # Broader participation
+
+    "MA_PERIOD": 100,
+    "MA_DECLINING_DAYS": 0,             # Allow flat ma100
+
+    "REQUIRE_WICK": False,
+    "WICK_MIN": 0.0,
+    "REQUIRE_LOWER_HIGH": False,
+
+    "RSI_MIN": 65,
+    "RSI_MAX": 75,
+
+    "MAX_ATR_PCT": 0.07,                # ATR/price ≤ 7%
+    "MIN_VOL_MULT": 1.0,
+
+    "STOP_ATR_MULT": 1.5,
+    "STOP_BUFFER_ATR": 0.25,
+
+    "PARTIAL_R": 1.2,                   # Very fast profit-taking
+    "PARTIAL_SIZE": 0.5,
+
+    "TRAIL_EMA": 20,
+    "TRAIL_DAYS": 3,
+    "TRAIL_ONLY_AFTER_PARTIAL": True,
+
+    "EARLY_EXIT_DAYS": 15,              # Quick exits in range
+    "EARLY_EXIT_R_THRESHOLD": 0.5,      # Lower threshold
+
+    "MAX_DAYS": 20,                     # Very short holds
+}
+
+# =============================================================================
+# BEAR REGIME CONFIG (Primary Offensive Shorting)
+# =============================================================================
+
+SHORT_CFG_BEAR = {
+    "RS_MAX": -0.05,                    # Broad participation
+
+    "MA_PERIOD": 100,
+    "MA_DECLINING_DAYS": 10,            # ma100 declining over 10 days
+
+    "REQUIRE_WICK": False,
+    "WICK_MIN": 0.0,
+    "REQUIRE_LOWER_HIGH": False,
+
+    "RSI_MIN": 55,                      # Lower threshold in bear market
+    "RSI_MAX": 70,
+
+    "MAX_ATR_PCT": 0.10,                # ATR/price ≤ 10% (allow more volatility)
+    "MIN_VOL_MULT": 1.0,
+
+    "STOP_ATR_MULT": 2.0,               # Wider stop
+    "STOP_BUFFER_ATR": 0.25,
+
+    "PARTIAL_R": 2.0,                   # Let winners run
+    "PARTIAL_SIZE": 0.5,
+
+    "TRAIL_EMA": 20,
+    "TRAIL_DAYS": 3,
+    "TRAIL_ONLY_AFTER_PARTIAL": True,
+
+    "EARLY_EXIT_DAYS": 30,
+    "EARLY_EXIT_R_THRESHOLD": 1.0,
+
+    "MAX_DAYS": 45,                     # Longer holds in bear market
+}
+
+# =============================================================================
+# LEADER PULLBACK SHORT CONFIG (Bull/Sideways Markets - Tactical Overlay)
+# =============================================================================
+
+"""
+LEADER PULLBACK SHORT: Catch exhaustion in extended leaders
+============================================================
+Targets strong stocks (RS ≥ +5%) that are extended above MA50 and showing
+exhaustion at resistance. This is a TACTICAL OVERLAY that runs in BULL and
+SIDEWAYS markets and is completely separate from the weak-RS trend shorts.
 
 CONCEPT:
 --------
-• Only run in bull/sideways markets (not deep bear)
-• Short weak stocks (RS ≤ -15%) that rally to 50-MA and reject
-• Take partial profits at +2.5R, trail remainder with EMA21
-• Hard time stop at 45 days (don't sit short forever in bull market)
-• Max 30% portfolio exposure to shorts (remain long-biased)
+• Active in BULL/SIDEWAYS regimes (configurable)
+• Target LEADERS (RS ≥ +5%), not laggards
+• Stock must be extended (≥15% above MA50)
+• RSI overbought (>70) then crosses down
+• Failed breakout at resistance (high > prior high, close back below)
+• Enter on first close below 20-day MA
 
-ENTRY CONDITIONS:
------------------
-1. Market: QQQ above rising 100-MA (bull/sideways)
-2. Stock: Price < declining 100-MA (downtrend)
-3. Weakness: RS ≤ -15% vs QQQ (underperforming)
-4. Rally: High touches 50-MA but close below
-5. Rejection: RSI 55-65 (mild overbought in downtrend)
+RISK PROFILE:
+-------------
+• Smaller size: 0.5% risk (vs 1.5% for trend shorts)
+• Max 2 positions (tactical overlay, not core strategy)
+• Fast exits: 15 day max hold
+• Quick profit-taking: 1.5R partial
 
-EXIT CONDITIONS:
-----------------
-1. Stop Loss: Above recent swing high or 50-MA + 3× ATR
-2. Partial: 40% at +2.5R
-3. Trail: 3 consecutive closes above EMA21 (inverted)
-4. Time: Hard stop at 45 days
-
-RISK MANAGEMENT:
-----------------
-• Lower risk per trade: 1.5% (vs 2.0% for longs)
-• Max positions: 5 concurrent shorts
-• Max exposure: 30% of equity
-• No shorts on tickers already held long
+EXAMPLES:
+---------
+• MSFT rallies 20% in 2 months, extends 18% above MA50, fails breakout at $420
+• ORCL runs to new highs, RSI 78, fails to hold breakout, closes below 20-MA
+• NVDA parabolic move exhausts at $500, closes below 20-MA after failed breakout
 """
 
-# Main switch (DISABLED by default - enable only after thorough backtesting)
-SHORT_ENABLED = True
+LEADER_SHORT_CFG_BULL = {
+    # Strategy control
+    "ENABLED": True,                    # Only active when regime == "bull"
+    "DEBUG_MODE": False,                # Set to True for debugging (disables context & variants)
 
-# Portfolio limits
-SHORT_MAX_POSITIONS = 5                 # Max 5 concurrent short positions
-SHORT_MAX_EQUITY_PCT = 0.30             # Max 30% of equity in shorts (remain long-biased)
-SHORT_RISK_PER_TRADE_PCT = 1.5          # 1.5% risk per short (lower than longs)
+    # =============================================================================
+    # UNIVERSE FILTERS (Large, liquid leaders only)
+    # =============================================================================
+    "MIN_MARKET_CAP": 20_000_000_000,   # Min $20B market cap (Perplexity: large cap)
+    "MIN_DOLLAR_VOLUME": 100_000_000,   # Min $100M daily dollar volume (Perplexity: high liquidity)
+    "MIN_PRICE": 30,                    # Min $30 price (avoid low-price stocks)
 
-# Entry filters
-SHORT_RS_MAX = -0.15                    # RS ≤ -15% (weak vs QQQ)
-SHORT_MA_PERIOD = 100                   # Price < declining 100-MA
-SHORT_MA_DECLINING_DAYS = 10            # MA must be declining over 10 days
-SHORT_REJECTION_MA = 50                 # Rally to 50-MA rejection point
-SHORT_REJECTION_TOLERANCE = 0.02        # Within 2% of 50-MA counts as "touch"
-SHORT_REJECTION_RSI_MIN = 55            # RSI 55-65 for rally rejection
-SHORT_REJECTION_RSI_MAX = 65
+    # Sector whitelist (offensive/cyclical sectors that lead and fall hard)
+    "SECTOR_WHITELIST": [
+        "Technology",
+        "Communication Services",
+        "Consumer Discretionary",
+        "Financials",              # Banks, brokers, asset managers only
+        "Industrials",             # Cyclical industrials
+    ],
 
-# Position sizing & stops
-SHORT_STOP_ATR_MULT = 3.0               # Stop: entry + 3× ATR(14) (tighter than longs)
-SHORT_STOP_BUFFER_ATR = 0.5             # Additional buffer above swing high
+    # Sector blacklist (defensive sectors - avoid slow movers)
+    "SECTOR_BLACKLIST": [
+        "Energy",                  # e.g., CVX - too slow, mean-reverting
+        "Consumer Staples",        # Defensive
+        "Utilities",               # Defensive, low volatility
+        "Real Estate",             # REITs - different dynamics
+        "Healthcare",              # Too defensive (e.g., MCK)
+        "Materials",               # Gold miners (e.g., NEM), commodities
+    ],
 
-# Exit rules
-SHORT_PARTIAL_R = 2.5                   # Partial profit at +2.5R
-SHORT_PARTIAL_SIZE = 0.5                # 50% partial (was 40% - take more off at 2.5R)
-SHORT_TRAIL_EMA = None                  # DISABLED - No trail (trails kill choppy short performance)
-SHORT_TRAIL_DAYS = None                 # DISABLED - No trail
-SHORT_MAX_DAYS = 90                     # Hard time stop at 90 days (was 60 - let winners run to max)
+    # =============================================================================
+    # LEADER CONTEXT (Relative strength)
+    # =============================================================================
+    "RS_MIN": 0.00,                     # Baseline RS (will use percentile instead)
+    "RS_PERCENTILE_MIN": 80,            # Top 20% relative strength (Perplexity: >= 80)
+    "RS_LOOKBACK": 100,                 # 100-day RS calculation
+
+    # =============================================================================
+    # HISTORICAL EXTENSION (Must have been extended recently)
+    # =============================================================================
+    "EXTENSION_MA50": 50,
+    "EXTENSION_MA100": 100,
+    "EXTENSION_HISTORICAL_MIN_MA50": 1.08,  # Was ≥ 8% above MA50 in last 30 bars
+    "EXTENSION_HISTORICAL_MIN_MA100": 1.12, # OR was ≥ 12% above MA100 in last 30 bars
+    "EXTENSION_LOOKBACK": 30,           # Check last 30 bars for extension
+
+    # Current bar: just need to be above MAs (not hugely extended)
+    "EXTENSION_CURRENT_MIN_MA50": 1.00, # Close >= MA50
+    "EXTENSION_CURRENT_MIN_MA100": 1.00,# OR close >= MA100
+
+    # =============================================================================
+    # LIQUIDITY ZONE DETECTION (Consolidation before breakdown)
+    # =============================================================================
+    "ZONE_LOOKBACK": 20,                # Last 20 bars to define zone high/low
+    "ZONE_COMPRESSION_ATR_MULT": 10.0,  # Zone range must be <= 10 * ATR20 (loose filter)
+    "ZONE_MIN_BARS": 0,                 # Keep disabled - too strict
+    "ZONE_CONSOLIDATION_THRESHOLD": 0.8,# Bar range < 0.8 * ATR20 to count as consolidating
+
+    # =============================================================================
+    # ENTRY SIGNALS (Flexible OR-based variants)
+    # =============================================================================
+
+    # CORE CONDITIONS (always required):
+    # 1. close < zone_low (zone break)
+    # 2. volume_today >= 1.2 * avgVol20 (base volume requirement)
+    # 3. Not a hammer (close not in top 30% of range)
+
+    "CORE_VOLUME_MULT": 1.2,            # Today's volume >= 1.2x avg (core requirement)
+
+    # ENTRY VARIANTS (need core + ANY ONE of these):
+
+    # Variant A: Core only (simplest - just zone break with volume)
+    "VARIANT_A_ENABLED": True,
+
+    # Variant B: Core + impulsive weakness
+    "VARIANT_B_ENABLED": True,
+    "GAP_BELOW_ZONE": True,             # Gap open below zone_low
+    "WIDE_RANGE_ATR_MULT": 1.2,         # True range >= 1.2 * ATR20
+    "CLOSE_BELOW_OPEN": True,           # Red bar (close < open)
+
+    # Variant C: Core + big volume spike (RSI already in context, no need to duplicate)
+    "VARIANT_C_ENABLED": True,
+    "RSI_PERIOD": 14,
+    "RSI_CLIMAX": 65,                   # Used in context filter (not variant C)
+    "RSI_LOOKBACK": 20,                 # Used in context filter (not variant C)
+    "BIG_VOLUME_MULT": 1.5,             # Today's volume >= 1.5x avg
+
+    # Reject hammer reversals (applies to all variants)
+    "REJECT_HAMMER": True,              # Reject if close in top 30% of range
+    "HAMMER_THRESHOLD": 0.70,           # (close - low) / (high - low) > 0.70
+
+    # =============================================================================
+    # STOP PLACEMENT (Logical level above zone)
+    # =============================================================================
+    "STOP_ABOVE_ZONE_HIGH": True,       # Initial stop above zone_high
+    "STOP_BUFFER_PCT": 0.01,            # 1% buffer above zone_high
+    "STOP_ALSO_MA20": True,             # Also consider MA20 for stop
+    "STOP_ALSO_SWING_HIGH": True,       # Also consider recent swing high
+
+    # =============================================================================
+    # EXITS (Keep existing - working well)
+    # =============================================================================
+    "PARTIAL_R": 2.0,                   # Take 50% off at +2R
+    "PARTIAL_SIZE": 0.5,                # 50% partial (runner = 50%)
+
+    "TRAIL_EMA": None,                  # DISABLED - trail cuts winners
+    "TRAIL_DAYS": None,
+    "TRAIL_ATR_BUFFER": None,
+
+    "EARLY_EXIT_DAYS": 20,              # Exit at 20d if R <= 0
+    "EARLY_EXIT_R_THRESHOLD": 0.0,      # Must be profitable to continue
+
+    "MAX_DAYS": 40,                     # Hard time stop at 40 days
+
+    # Portfolio limits
+    "MAX_POSITIONS": 10,                # Max 3 concurrent (Perplexity: 2-3)
+    "RISK_PER_TRADE_PCT": 0.35,         # 0.25-0.5% risk per trade (Perplexity recommendation)
+}
+
+# Allowed regimes for leader pullback shorts
+LEADER_SHORT_ALLOWED_REGIMES = ("bull", "sideways")
 
 # Strategy priority (lowest - shorts filled after all longs)
 STRATEGY_PRIORITY["ShortWeakRS_Retrace_Position"] = 100
+STRATEGY_PRIORITY["LeaderPullback_Short_Position"] = 101  # Even lower (fill last)
+STRATEGY_PRIORITY["MegaCap_WeeklySlide_Short"] = 102  # Lowest priority
+
+# ============================================================================
+# Strategy 10: MegaCap Weekly Slide SHORT (New Module)
+# ============================================================================
+MEGACAP_WEEKLY_SLIDE_CFG = {
+    # Strategy control
+    "ENABLED": True,
+    "DEBUG_MODE": False,
+
+    # Universe (hard-coded mega-caps)
+    "SYMBOLS": ["MSFT", "ORCL", "META", "AAPL", "NVDA", "GOOGL", "AMZN", "AVGO", "ADBE", "CRM"],
+    "MIN_PRICE": 30,
+    "MIN_DOLLAR_VOLUME": 100_000_000,  # $100M
+
+    # Weekly context indicators
+    "WEEKLY_MA10": 10,
+    "WEEKLY_MA20": 20,
+    "WEEKLY_RSI_PERIOD": 14,
+    "WEEKLY_RSI_THRESHOLD": 50,
+    "WEEKLY_OFF_HIGH_PCT": 0.90,  # 10% off 52-week high
+    "WEEKLY_HIGH_LOOKBACK": 52,   # weeks
+
+    # Daily entry conditions
+    "DAILY_MA20": 20,
+    "DAILY_LOW_LOOKBACK": 10,  # days (exclude today)
+    "DAILY_VOLUME_MULT": 1.1,
+    "DAILY_VOLUME_PERIOD": 20,
+
+    # Position sizing & limits
+    "RISK_PER_TRADE_PCT": 0.5,  # 0.5% risk
+    "MAX_POSITIONS": 2,  # Max 2 concurrent in this module
+    "ONE_PER_SYMBOL": True,
+    "COOLDOWN_DAYS": 10,  # Days to wait after exit before re-entering same symbol
+
+    # Stop placement
+    "STOP_SWING_HIGH_LOOKBACK": 10,  # days
+    "STOP_BUFFER_PCT": 0.01,  # 1% above stop level
+
+    # Exits
+    "PARTIAL_R": 2.0,
+    "PARTIAL_SIZE": 0.5,  # 50% at +2R
+    "BREAKEVEN_AFTER_PARTIAL": True,
+    "MAX_DAYS": 50,  # Hard time stop
+    "TRAIL_EMA": None,  # No trailing stop
+    "EARLY_EXIT_DAYS": None,  # No 20d early exit
+}
