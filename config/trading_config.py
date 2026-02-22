@@ -44,10 +44,10 @@ POSITION_MAX_PER_STRATEGY = {
     "MeanReversion_Position": 0,              # 0.26R avg, 135 trades churning
     "%B_MeanReversion_Position": 0,           # 0.05R avg, essentially breakeven
 
-    # EXPERIMENTAL SHORT STRATEGIES (testing phase)
-    "ShortWeakRS_Retrace_Position": 5,        # Weak-RS trend shorts (bear/sideways)
-    "LeaderPullback_Short_Position": 10,      # Leader pullback shorts (bull only)
-    "MegaCap_WeeklySlide_Short": 2,           # Mega-cap weekly slide shorts (max 2 concurrent)
+    # EXPERIMENTAL SHORT STRATEGIES (disabled for now)
+    "ShortWeakRS_Retrace_Position": 0,        # Weak-RS trend shorts (bear/sideways)
+    "LeaderPullback_Short_Position": 0,       # Leader pullback shorts (bull only)
+    "MegaCap_WeeklySlide_Short": 0,           # Mega-cap weekly slide shorts (max 2 concurrent)
 }
 
 # Fallback for compatibility
@@ -217,7 +217,7 @@ TECH_SECTORS = ["Information Technology", "Communication Services"]
 # =============================================================================
 
 BACKTEST_START_DATE = "2022-01-01"
-BACKTEST_SCAN_FREQUENCY = "W-MON"         # Weekly Monday (position trading)
+BACKTEST_SCAN_FREQUENCY = "B"             # Daily business days
                                           # Options: "B" (daily), "W-MON", "W-FRI"
 
 # =============================================================================
@@ -314,7 +314,7 @@ ADAPTIVE BEHAVIOR:
 """
 
 # Main switch
-SHORT_ENABLED = True
+SHORT_ENABLED = False
 
 # Portfolio limits (apply across all regimes)
 SHORT_MAX_POSITIONS = 5                 # Max 5 concurrent short positions

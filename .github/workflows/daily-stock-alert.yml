@@ -44,3 +44,26 @@ jobs:
         with:
           name: ema-data
           path: ema_data/
+
+      # 🚨 Send failure alert email if any step above failed
+      - name: Send failure alert
+        if: failure()
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          secure: true
+          username: ${{ secrets.EMAIL_SENDER }}
+          password: ${{ secrets.EMAIL_PASSWORD }}
+          subject: "🚨 Stock Alert GitHub Action FAILED – ${{ github.run_id }}"
+          to: ${{ secrets.EMAIL_FAILURE_RECEIVER }}
+          from: ${{ secrets.EMAIL_SENDER }}
+          body: |
+            The daily stock alert workflow failed.
+
+            Workflow: ${{ github.workflow }}
+            Run ID:   ${{ github.run_id }}
+            Branch:   ${{ github.ref_name }}
+            Commit:   ${{ github.sha }}
+
+            View logs: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}

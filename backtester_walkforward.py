@@ -5,6 +5,7 @@ Walk-forward backtester for 8 position strategies (60-120 day holds).
 Features: Strategy-specific exits, pyramiding, per-strategy position limits.
 """
 
+import time
 import pandas as pd
 from scanners.scanner_walkforward import run_scan_as_of
 from core.pre_buy_check import pre_buy_check
@@ -1006,7 +1007,7 @@ if __name__ == "__main__":
         type=str,
         default=BACKTEST_SCAN_FREQUENCY,
         choices=["B", "W-MON", "W-TUE", "W-WED", "W-THU", "W-FRI"],
-        help="Scan frequency (default: W-MON for weekly)"
+        help="Scan frequency (default: B for daily)"
     )
     args = parser.parse_args()
 
@@ -1021,16 +1022,29 @@ if __name__ == "__main__":
     if was_update_session_today():
         print("⚡ Data already updated today - skipping download")
     else:
+        import gc
         print("🔄 Updating historical data for all tickers...")
+        batch_size = 10  # Smaller batches to release file handles more frequently
+
         for i, ticker in enumerate(tickers, 1):
             if i % 50 == 0:
                 print(f"\n[Progress: {i}/{len(tickers)} tickers processed]")
+
             download_ticker(ticker)
+
+            # Force gc + brief pause every batch to release yfinance HTTP connections
+            if i % batch_size == 0:
+                gc.collect()
+                time.sleep(0.2)
+
+        # Final garbage collection
+        gc.collect()
 
         # Update benchmarks
         print("\n📊 Updating benchmark data...")
         download_ticker("SPY")
         download_ticker("QQQ")
+        gc.collect()
 
         mark_update_session()
         print("\n✅ Data update complete!")

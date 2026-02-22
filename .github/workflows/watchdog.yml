@@ -1,0 +1,59 @@
+name: Watchdog – Alert if Daily Scan Missed
+
+on:
+  schedule:
+    - cron: "30 23 * * 1-5"  # 11:30 PM UTC weekdays (1.5h after main workflow)
+  workflow_dispatch:
+
+jobs:
+  check-daily-ran:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check if daily scan ran today
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Get the last run of the daily workflow
+          LAST_RUN=$(gh api \
+            "repos/${{ github.repository }}/actions/workflows/daily-stock-alert.yml/runs?per_page=1&status=completed" \
+            --jq '.workflow_runs[0].created_at')
+
+          echo "Last run: $LAST_RUN"
+
+          # Compare date (UTC)
+          TODAY=$(date -u +%Y-%m-%d)
+          RUN_DATE=$(echo "$LAST_RUN" | cut -c1-10)
+
+          echo "Today: $TODAY | Last run date: $RUN_DATE"
+
+          if [ "$RUN_DATE" != "$TODAY" ]; then
+            echo "missed=true" >> $GITHUB_OUTPUT
+          else
+            echo "missed=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Send missed-run alert
+        if: steps.check.outputs.missed == 'true'
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          secure: true
+          username: ${{ secrets.EMAIL_SENDER }}
+          password: ${{ secrets.EMAIL_PASSWORD }}
+          subject: "⚠️ Stock Alert DID NOT RUN today – ${{ github.run_id }}"
+          to: ${{ secrets.EMAIL_FAILURE_RECEIVER }}
+          from: ${{ secrets.EMAIL_SENDER }}
+          body: |
+            WARNING: The daily stock alert workflow did not run today.
+
+            This could mean:
+            - The scheduled workflow was skipped (repo inactive > 60 days)
+            - GitHub Actions had an outage
+            - The workflow was manually disabled
+
+            Check here: https://github.com/${{ github.repository }}/actions/workflows/daily-stock-alert.yml
+
+            You may want to trigger it manually:
+            https://github.com/${{ github.repository }}/actions/workflows/daily-stock-alert.yml
