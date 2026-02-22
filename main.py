@@ -70,23 +70,7 @@ if __name__ == "__main__":
     is_bullish = check_market_regime()
 
     if not is_bullish:
-        print("\n⚠️  BEARISH MARKET - No new positions will be entered")
-        print("📧 Sending status email...\n")
-
-        # Monitor existing positions even in bearish market
-        action_signals = {'exits': [], 'partials': [], 'pyramids': [], 'warnings': []}
-        if position_tracker.get_position_count() > 0:
-            action_signals = monitor_positions(position_tracker)
-
-        # Send email with current positions only
-        send_email_alert(
-            trade_df=pd.DataFrame(),
-            all_signals=[],
-            subject_prefix="⚠️ BEARISH MARKET - No New Trades",
-            position_tracker=position_tracker,
-            action_signals=action_signals
-        )
-        exit(0)
+        print("\n⚠️  BEARISH MARKET - Bull-only strategies will be skipped by scanner")
 
     # --------------------------------------------------
     # Step 2: Monitor Open Positions for Exits/Actions
