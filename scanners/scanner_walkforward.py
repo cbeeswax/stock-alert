@@ -19,8 +19,10 @@ import numpy as np
 from utils.market_data import get_historical_data
 from utils.ema_utils import compute_rsi, compute_bollinger_bands, compute_percent_b
 from utils.sector_utils import get_ticker_sector
+from utils.regime_classifier import get_regime_label, get_regime_config, is_short_regime_ok
 from config.trading_config import (
     # Global settings
+    POSITION_INITIAL_EQUITY,
     POSITION_RISK_PER_TRADE_PCT,
     POSITION_MAX_PER_STRATEGY,
     POSITION_MAX_TOTAL,
@@ -88,6 +90,19 @@ from config.trading_config import (
     RS_RANKER_RS_THRESHOLD,
     RS_RANKER_STOP_ATR_MULT,
     RS_RANKER_MAX_DAYS,
+
+    # Short Strategies (regime-based)
+    SHORT_ENABLED,
+    SHORT_REJECTION_MA,
+    SHORT_REJECTION_TOLERANCE,
+    SHORT_CFG_BULL,
+    SHORT_CFG_SIDEWAYS,
+    SHORT_CFG_BEAR,
+    LEADER_SHORT_CFG_BULL,
+    LEADER_SHORT_ALLOWED_REGIMES,
+
+    # Strategy 10: MegaCap Weekly Slide SHORT
+    MEGACAP_WEEKLY_SLIDE_CFG,
 )
 
 
@@ -207,6 +222,150 @@ def check_all_mas_rising(df, lookback_days=20):
     return ma50_rising and ma100_rising and ma200_rising
 
 
+def get_sector_for_ticker(ticker):
+    """
+    Get sector for a ticker. Returns sector name or None if not found.
+
+    In production, this would query from a data provider.
+    For now, uses hardcoded mappings for common S&P 500 stocks.
+    """
+    # Sector mapping for major S&P 500 stocks
+    SECTOR_MAP = {
+        # Technology
+        "AAPL": "Technology", "MSFT": "Technology", "NVDA": "Technology", "AVGO": "Technology",
+        "ORCL": "Technology", "CRM": "Technology", "ADBE": "Technology", "AMD": "Technology",
+        "INTC": "Technology", "QCOM": "Technology", "TXN": "Technology", "AMAT": "Technology",
+        "LRCX": "Technology", "KLAC": "Technology", "MCHP": "Technology", "MU": "Technology",
+        "ANET": "Technology", "PANW": "Technology", "CRWD": "Technology", "SNPS": "Technology",
+        "CDNS": "Technology", "ON": "Technology", "PLTR": "Technology", "HPE": "Technology",
+
+        # Communication Services
+        "META": "Communication Services", "GOOGL": "Communication Services", "GOOG": "Communication Services",
+        "NFLX": "Communication Services", "DIS": "Communication Services", "CMCSA": "Communication Services",
+        "T": "Communication Services", "VZ": "Communication Services", "TMUS": "Communication Services",
+
+        # Consumer Discretionary
+        "AMZN": "Consumer Discretionary", "TSLA": "Consumer Discretionary", "HD": "Consumer Discretionary",
+        "NKE": "Consumer Discretionary", "MCD": "Consumer Discretionary", "SBUX": "Consumer Discretionary",
+        "TGT": "Consumer Discretionary", "LOW": "Consumer Discretionary", "TJX": "Consumer Discretionary",
+        "BKNG": "Consumer Discretionary", "MAR": "Consumer Discretionary", "RCL": "Consumer Discretionary",
+        "EXPE": "Consumer Discretionary", "YUM": "Consumer Discretionary", "CMG": "Consumer Discretionary",
+
+        # Financials
+        "JPM": "Financials", "BAC": "Financials", "WFC": "Financials", "GS": "Financials",
+        "MS": "Financials", "C": "Financials", "BLK": "Financials", "SPGI": "Financials",
+        "CME": "Financials", "ICE": "Financials", "AXP": "Financials", "SCHW": "Financials",
+        "COIN": "Financials",
+
+        # Industrials
+        "BA": "Industrials", "CAT": "Industrials", "DE": "Industrials", "GE": "Industrials",
+        "RTX": "Industrials", "LMT": "Industrials", "UPS": "Industrials", "FDX": "Industrials",
+        "UNP": "Industrials", "NSC": "Industrials", "CSX": "Industrials",
+
+        # Energy (BLACKLIST)
+        "XOM": "Energy", "CVX": "Energy", "COP": "Energy", "SLB": "Energy",
+        "EOG": "Energy", "MPC": "Energy", "PSX": "Energy", "VLO": "Energy",
+
+        # Consumer Staples (BLACKLIST)
+        "WMT": "Consumer Staples", "PG": "Consumer Staples", "KO": "Consumer Staples",
+        "PEP": "Consumer Staples", "COST": "Consumer Staples", "WBA": "Consumer Staples",
+        "CL": "Consumer Staples", "KMB": "Consumer Staples", "GIS": "Consumer Staples",
+
+        # Utilities (BLACKLIST)
+        "NEE": "Utilities", "DUK": "Utilities", "SO": "Utilities", "D": "Utilities",
+        "AEP": "Utilities", "EXC": "Utilities", "XEL": "Utilities",
+
+        # Real Estate (BLACKLIST)
+        "AMT": "Real Estate", "PLD": "Real Estate", "CCI": "Real Estate", "EQIX": "Real Estate",
+        "PSA": "Real Estate", "SPG": "Real Estate", "O": "Real Estate",
+
+        # Healthcare (BLACKLIST - mostly defensive)
+        "UNH": "Healthcare", "JNJ": "Healthcare", "LLY": "Healthcare", "ABBV": "Healthcare",
+        "MRK": "Healthcare", "TMO": "Healthcare", "ABT": "Healthcare", "DHR": "Healthcare",
+        "PFE": "Healthcare", "CVS": "Healthcare", "MCK": "Healthcare", "CI": "Healthcare",
+        "HUM": "Healthcare", "ELV": "Healthcare",
+
+        # Materials (BLACKLIST - gold, commodities)
+        "NEM": "Materials", "FCX": "Materials", "NUE": "Materials", "DOW": "Materials",
+        "LIN": "Materials", "APD": "Materials", "ECL": "Materials", "SHW": "Materials",
+
+        # Tobacco/Defensive (BLACKLIST)
+        "PM": "Consumer Staples", "MO": "Consumer Staples", "BTI": "Consumer Staples",
+
+        # Utilities (power/energy)
+        "CEG": "Utilities", "VST": "Utilities", "AES": "Utilities",
+
+        # Semiconductors (Technology - high priority)
+        "ASML": "Technology", "TSM": "Technology", "STX": "Technology", "WDC": "Technology",
+        "SMCI": "Technology", "ARM": "Technology",
+
+        # Tech Hardware
+        "IBM": "Technology", "DELL": "Technology", "HPQ": "Technology", "NTAP": "Technology",
+
+        # Aerospace/Defense (Industrials)
+        "NOC": "Industrials", "GD": "Industrials", "HII": "Industrials",
+
+        # Pharma/Biotech (Healthcare - defensive)
+        "GILD": "Healthcare", "AMGN": "Healthcare", "BMY": "Healthcare", "REGN": "Healthcare",
+        "VRTX": "Healthcare", "BIIB": "Healthcare", "MRNA": "Healthcare",
+
+        # Software (Technology)
+        "NOW": "Technology", "INTU": "Technology", "WDAY": "Technology", "TEAM": "Technology",
+        "ZM": "Technology", "ZS": "Technology", "DDOG": "Technology", "SNOW": "Technology",
+        "OKTA": "Technology", "SHOP": "Technology",
+    }
+
+    return SECTOR_MAP.get(ticker, None)
+
+
+def detect_liquidity_zone(df, cfg):
+    """
+    Detect liquidity/consolidation zone over the lookback period.
+
+    Returns:
+        dict with:
+            - zone_high: float
+            - zone_low: float
+            - zone_detected: bool (True if valid consolidation zone found)
+            - consolidation_bars: int (number of bars in consolidation)
+    """
+    lookback = cfg.get("ZONE_LOOKBACK", 20)
+    compression_mult = cfg.get("ZONE_COMPRESSION_ATR_MULT", 3.0)
+    min_bars = cfg.get("ZONE_MIN_BARS", 8)
+    consol_threshold = cfg.get("ZONE_CONSOLIDATION_THRESHOLD", 0.8)
+
+    if len(df) < lookback + 20:  # Need ATR data too
+        return {"zone_high": None, "zone_low": None, "zone_detected": False, "consolidation_bars": 0}
+
+    # Get recent data - EXCLUDE today's bar (use previous 20 bars only)
+    # This is critical! If we include today, close < zone_low is often impossible
+    recent_df = df.iloc[-lookback-1:-1]  # Previous 20 bars, NOT including current bar
+    zone_high = recent_df["High"].max()
+    zone_low = recent_df["Low"].min()
+    zone_range = zone_high - zone_low
+
+    # Calculate ATR20
+    atr20 = calculate_atr(df, 20)
+    if atr20 is None or len(atr20) == 0:
+        return {"zone_high": zone_high, "zone_low": zone_low, "zone_detected": False, "consolidation_bars": 0}
+
+    current_atr = atr20.iloc[-1]
+
+    # DEBUG MODE: Drastically simplified zone detection
+    # Just check if range <= 5 * ATR20, no other filters
+    zone_detected = zone_range <= (compression_mult * current_atr)
+    consolidation_bars = 0  # Not used in debug mode
+
+    return {
+        "zone_high": zone_high,
+        "zone_low": zone_low,
+        "zone_range": zone_range,
+        "atr20": current_atr,
+        "zone_detected": zone_detected,
+        "consolidation_bars": consolidation_bars,
+    }
+
+
 # =============================================================================
 # MAIN SCANNER FUNCTION
 # =============================================================================
@@ -255,6 +414,7 @@ def run_scan_as_of(as_of_date, tickers):
         high = df["High"]
         low = df["Low"]
         volume = df["Volume"]
+        open_col = df["Open"] if "Open" in df.columns else close
         last_close = close.iloc[-1]
 
         # Skip if price too low/high
@@ -702,6 +862,481 @@ def run_scan_as_of(as_of_date, tickers):
             except Exception:
                 pass
 
+        # =====================================================================
+        # =====================================================================
+        # STRATEGY 8: SHORT_WEAKRS_RETRACE_POSITION (REGIME-BASED)
+        # =====================================================================
+        # Adaptive short strategy with different parameters for each regime:
+        # - BULL: Extremely selective (RS ≤ -15%, RSI 70-80, 30d max hold)
+        # - SIDEWAYS: Range-trade mean reversion (RS ≤ -10%, RSI 65-75, 20d max)
+        # - BEAR: Primary offensive (RS ≤ -5%, RSI 55-70, 45d max hold)
+        # =====================================================================
+        if rs_6mo is not None and SHORT_ENABLED and POSITION_MAX_PER_STRATEGY.get("ShortWeakRS_Retrace_Position", 0) > 0:
+            try:
+                # REGIME CLASSIFICATION
+                regime = get_regime_label(as_of_date)
+                cfg = get_regime_config(regime)
+                short_regime_ok = is_short_regime_ok(regime, allow_bull_shorts=True)
+
+                if not short_regime_ok:
+                    pass  # Skip this ticker (regime doesn't allow shorts)
+                else:
+                    # ENTRY FILTERS (using regime-specific config)
+
+                    # Filter 1: Weak relative strength
+                    weak_rs = rs_6mo <= cfg["RS_MAX"]
+
+                    # Filter 2: Downtrend - price below declining MA
+                    if len(df) >= cfg["MA_PERIOD"]:
+                        ma_short = close.rolling(cfg["MA_PERIOD"]).mean()
+                        below_ma = last_close < ma_short.iloc[-1]
+
+                        # Check if MA is declining (if required)
+                        if cfg["MA_DECLINING_DAYS"] > 0 and len(ma_short) >= cfg["MA_DECLINING_DAYS"]:
+                            ma_declining = ma_short.iloc[-1] <= ma_short.iloc[-cfg["MA_DECLINING_DAYS"]]
+                        else:
+                            ma_declining = True  # No decline requirement
+                    else:
+                        below_ma = False
+                        ma_declining = False
+
+                    # Filter 3: Rally to 50-MA with rejection
+                    if len(df) >= 50:
+                        ma50_short = close.rolling(50).mean()
+                        ma50_val = ma50_short.iloc[-1]
+
+                        # High touched 50-MA (within tolerance band)
+                        tol = SHORT_REJECTION_TOLERANCE
+                        high_touched_ma50 = (
+                            high.iloc[-1] >= ma50_val * (1 - tol) and
+                            high.iloc[-1] <= ma50_val * (1 + tol)
+                        )
+
+                        # Close below 50-MA (rejection)
+                        close_below_ma50 = last_close < ma50_val
+
+                        # Optional upper wick (strong rejection)
+                        upper_wick_pct = (high.iloc[-1] - last_close) / last_close if last_close > 0 else 0.0
+                        if cfg["REQUIRE_WICK"]:
+                            strong_rejection = upper_wick_pct >= cfg["WICK_MIN"]
+                        else:
+                            strong_rejection = True  # Not required
+                    else:
+                        high_touched_ma50 = False
+                        close_below_ma50 = False
+                        strong_rejection = False
+
+                    # Filter 4: Lower high (structure confirmation)
+                    if cfg["REQUIRE_LOWER_HIGH"] and len(high) >= 10:
+                        # Find peaks in last 10 bars
+                        recent_peaks = []
+                        for i in range(-10, -2):
+                            if i >= -len(high) + 1:
+                                if high.iloc[i] > high.iloc[i-1] and high.iloc[i] > high.iloc[i+1]:
+                                    recent_peaks.append(high.iloc[i])
+
+                        # Check most recent bar separately
+                        if len(high) >= 2:
+                            if high.iloc[-1] > high.iloc[-2]:
+                                recent_peaks.append(high.iloc[-1])
+
+                        if len(recent_peaks) >= 2:
+                            lower_high = recent_peaks[-1] < recent_peaks[-2]
+                        else:
+                            lower_high = True  # Not enough peaks
+                    else:
+                        lower_high = True  # Not required
+
+                    # Filter 5: RSI (regime-specific thresholds)
+                    current_rsi = rsi14.iloc[-1]
+                    rsi_in_range = cfg["RSI_MIN"] <= current_rsi <= cfg["RSI_MAX"]
+
+                    # Filter 6: Volatility filter
+                    atr_pct = (atr14.iloc[-1] / last_close) if last_close > 0 else 999
+                    if cfg["MAX_ATR_PCT"] is not None:
+                        volatility_ok = atr_pct <= cfg["MAX_ATR_PCT"]
+                    else:
+                        volatility_ok = True
+
+                    # Filter 7: Volume filter
+                    if len(volume) >= 50:
+                        volume_ok = volume.iloc[-1] >= volume.iloc[-50:].mean() * cfg["MIN_VOL_MULT"]
+                    else:
+                        volume_ok = True
+
+                    # ALL conditions must be TRUE for short entry
+                    if all([weak_rs, below_ma, ma_declining,
+                            high_touched_ma50, close_below_ma50, strong_rejection,
+                            lower_high, rsi_in_range,
+                            volatility_ok, volume_ok]):
+
+                        # Calculate stop loss (regime-specific)
+                        recent_high = high.iloc[-5:].max()
+                        ma50_stop = ma50_val if 'ma50_val' in locals() else recent_high
+                        stop_above_resistance = max(recent_high, ma50_stop)
+
+                        # Add ATR buffer
+                        stop_price = stop_above_resistance + (
+                            cfg["STOP_ATR_MULT"] * atr14.iloc[-1]
+                        ) + (
+                            cfg["STOP_BUFFER_ATR"] * atr14.iloc[-1]
+                        )
+
+                        # Target for partial (regime-specific R-multiple)
+                        risk_per_share = stop_price - last_close
+                        target_price = last_close - (cfg["PARTIAL_R"] * risk_per_share)
+
+                        # Score: Higher for weaker RS
+                        score = abs(rs_6mo) * 100
+
+                        signals.append({
+                            "Ticker": ticker,
+                            "Strategy": "ShortWeakRS_Retrace_Position",
+                            "Entry": last_close,
+                            "StopLoss": stop_price,
+                            "Target": target_price,
+                            "Score": score,
+                            "RS": rs_6mo,
+                            "MaxDays": cfg["MAX_DAYS"],
+                            "Direction": "SHORT",
+                            "Priority": STRATEGY_PRIORITY.get("ShortWeakRS_Retrace_Position", 100),
+                            "Regime": regime,  # NEW: Track regime for this entry
+                        })
+            except Exception:
+                pass
+
+        # =====================================================================
+        # STRATEGY 9: LEADERPULLBACK_SHORT_POSITION (BULL/SIDEWAYS REGIMES)
+        # =====================================================================
+        # Leader Pullback Short - Liquidity Zone Breakdown (Perplexity v2.0)
+        #
+        # Entry Logic:
+        # 1. Universe: Large cap ($20B+), liquid ($100M+ volume), sector whitelist
+        # 2. Leader: RS percentile >= 80 (top 20%), was extended in last 30 bars
+        # 3. Liquidity zone: 20-bar consolidation with compressed range
+        # 4. Signal: Close breaks below zone_low with impulsive weakness + volume
+        # 5. Stop: Above zone_high (logical level)
+        #
+        # Exit: 50% at +2R, early stop at 20d if R<=0, hard stop at 40d
+        # Portfolio: Max 3 positions, 0.35% risk per trade
+        # =====================================================================
+        if rs_6mo is not None and SHORT_ENABLED and POSITION_MAX_PER_STRATEGY.get("LeaderPullback_Short_Position", 0) > 0:
+            try:
+                # Active in configured regimes (bull/sideways)
+                regime = get_regime_label(as_of_date)
+                cfg = LEADER_SHORT_CFG_BULL
+
+                # DEBUG: Track filtering stages
+                debug_counters = getattr(run_scan_as_of, '_debug_counters', None)
+                if debug_counters is None and cfg.get("DEBUG_MODE", False):
+                    debug_counters = {
+                        'total_checked': 0,
+                        'failed_price': 0,
+                        'failed_dollar_vol': 0,
+                        'failed_sector': 0,
+                        'failed_zone': 0,
+                        'failed_entry': 0,
+                        'passed_all': 0,
+                    }
+                    run_scan_as_of._debug_counters = debug_counters
+
+                if regime in LEADER_SHORT_ALLOWED_REGIMES and cfg["ENABLED"]:
+                    if cfg.get("DEBUG_MODE", False) and debug_counters:
+                        debug_counters['total_checked'] += 1
+
+                    # Require minimum bars
+                    if len(df) < 100:
+                        pass  # Skip
+                    else:
+                        # ==============================================================
+                        # UNIVERSE FILTERS
+                        # ==============================================================
+
+                        # 1. Price filter
+                        min_price = cfg.get("MIN_PRICE", 30)
+                        if last_close < min_price:
+                            if cfg.get("DEBUG_MODE", False) and debug_counters:
+                                debug_counters['failed_price'] += 1
+                            continue
+
+                        # 2. Dollar volume filter (liquidity)
+                        dollar_vol_20d = avg_vol_20d * last_close
+                        min_dollar_vol = cfg.get("MIN_DOLLAR_VOLUME", 100_000_000)
+                        if dollar_vol_20d < min_dollar_vol:
+                            if cfg.get("DEBUG_MODE", False) and debug_counters:
+                                debug_counters['failed_dollar_vol'] += 1
+                            continue
+
+                        # 3. Sector filter (whitelist/blacklist)
+                        sector = get_sector_for_ticker(ticker)
+                        sector_whitelist = cfg.get("SECTOR_WHITELIST", [])
+                        sector_blacklist = cfg.get("SECTOR_BLACKLIST", [])
+
+                        # If sector unknown, allow (benefit of doubt)
+                        if sector is not None:
+                            # Check blacklist first
+                            if sector in sector_blacklist:
+                                if cfg.get("DEBUG_MODE", False) and debug_counters:
+                                    debug_counters['failed_sector'] += 1
+                                continue  # Skip blacklisted sectors
+
+                            # Check whitelist (if defined)
+                            if sector_whitelist and sector not in sector_whitelist:
+                                if cfg.get("DEBUG_MODE", False) and debug_counters:
+                                    debug_counters['failed_sector'] += 1
+                                continue  # Skip if not in whitelist
+
+                        # ==============================================================
+                        # LEADER CONTEXT
+                        # ==============================================================
+
+                        if not cfg.get("DEBUG_MODE", False):
+                            # Full context filters (only when not in debug mode)
+
+                            # 1. RS percentile >= 80 (top 20%)
+                            context_strong_rs = rs_6mo >= 0.10
+
+                            # 2. Historical extension check
+                            context_extended = False
+                            lookback_ext = cfg.get("EXTENSION_LOOKBACK", 30)
+                            if len(close) >= cfg["EXTENSION_MA50"] + lookback_ext:
+                                ma50_series = close.rolling(cfg["EXTENSION_MA50"]).mean()
+                                recent_closes = close.iloc[-lookback_ext:]
+                                recent_ma50 = ma50_series.iloc[-lookback_ext:]
+                                ext_ratios_ma50 = recent_closes / recent_ma50
+                                was_extended_ma50 = (ext_ratios_ma50 >= cfg.get("EXTENSION_HISTORICAL_MIN_MA50", 1.08)).any()
+                            else:
+                                was_extended_ma50 = False
+
+                            if len(close) >= cfg["EXTENSION_MA100"] + lookback_ext:
+                                ma100_series = close.rolling(cfg["EXTENSION_MA100"]).mean()
+                                recent_closes = close.iloc[-lookback_ext:]
+                                recent_ma100 = ma100_series.iloc[-lookback_ext:]
+                                ext_ratios_ma100 = recent_closes / recent_ma100
+                                was_extended_ma100 = (ext_ratios_ma100 >= cfg.get("EXTENSION_HISTORICAL_MIN_MA100", 1.12)).any()
+                            else:
+                                was_extended_ma100 = False
+
+                            context_extended = was_extended_ma50 or was_extended_ma100
+
+                            # 3. Currently above MA50 or MA100
+                            if len(close) >= cfg["EXTENSION_MA50"]:
+                                ma50_series = close.rolling(cfg["EXTENSION_MA50"]).mean()
+                                ma50_val = ma50_series.iloc[-1]
+                                above_ma50 = last_close >= ma50_val * cfg.get("EXTENSION_CURRENT_MIN_MA50", 1.00)
+                            else:
+                                above_ma50 = False
+
+                            if len(close) >= cfg["EXTENSION_MA100"]:
+                                ma100_series = close.rolling(cfg["EXTENSION_MA100"]).mean()
+                                ma100_val = ma100_series.iloc[-1]
+                                above_ma100 = last_close >= ma100_val * cfg.get("EXTENSION_CURRENT_MIN_MA100", 1.00)
+                            else:
+                                above_ma100 = False
+
+                            context_above_ma = above_ma50 or above_ma100
+
+                            # 4. Was overbought recently (RSI >= 65 in last 20 bars)
+                            rsi14 = compute_rsi(close, cfg["RSI_PERIOD"])
+                            if len(rsi14) >= cfg.get("RSI_LOOKBACK", 20):
+                                max_rsi = rsi14.iloc[-cfg.get("RSI_LOOKBACK", 20):].max()
+                                context_was_overbought = max_rsi >= cfg.get("RSI_CLIMAX", 65)
+                            else:
+                                context_was_overbought = False
+
+                            # All context must pass
+                            context_ok = all([
+                                context_strong_rs,
+                                context_extended,
+                                context_above_ma,
+                                context_was_overbought,
+                            ])
+
+                            if not context_ok:
+                                continue
+
+                        # ==============================================================
+                        # LIQUIDITY ZONE DETECTION
+                        # ==============================================================
+
+                        zone = detect_liquidity_zone(df, cfg)
+
+                        if not zone["zone_detected"]:
+                            if cfg.get("DEBUG_MODE", False) and debug_counters:
+                                debug_counters['failed_zone'] += 1
+                            continue  # No valid consolidation zone found
+
+                        zone_high = zone["zone_high"]
+                        zone_low = zone["zone_low"]
+                        atr20 = zone["atr20"]
+
+                        # ==============================================================
+                        # ENTRY SIGNALS
+                        # ==============================================================
+
+                        # Get today's OHLC
+                        today_high = df["High"].iloc[-1]
+                        today_low = df["Low"].iloc[-1]
+                        today_volume = df["Volume"].iloc[-1]
+
+                        # Calculate average volume
+                        vol_20 = df["Volume"].iloc[-20:].mean() if len(df) >= 20 else df["Volume"].mean()
+
+                        if cfg.get("DEBUG_MODE", False):
+                            # DEBUG MODE: Ultra-simplified entry (no RSI, no variants)
+                            zone_break = last_close < zone_low
+                            enter_short = zone_break
+                            signal_type = "zone_break_debug"
+
+                            # DEBUG: Log details for specific date and tickers
+                            debug_date = pd.to_datetime("2024-06-27")
+                            debug_tickers = ["MU", "NVDA", "MSFT", "AAPL", "TSLA", "META", "GOOGL", "AMZN", "NFLX", "AMD"]
+                            if as_of_date.date() == debug_date.date() and ticker in debug_tickers:
+                                print(f"[DEBUG] {as_of_date.date()} {ticker}: close={last_close:.2f}, zone_low={zone_low:.2f}, zone_high={zone_high:.2f}, close<zone_low={zone_break}, enter={enter_short}")
+
+                        else:
+                            # FULL ENTRY LOGIC (OR-based variants)
+                            today_open = df["Open"].iloc[-1] if "Open" in df.columns else last_close
+                            vol_50 = df["Volume"].iloc[-50:].mean() if len(df) >= 50 else df["Volume"].mean()
+
+                            # Core conditions (always required)
+                            core_zone_break = last_close < zone_low
+                            core_volume = today_volume >= (vol_50 * cfg.get("CORE_VOLUME_MULT", 1.2))
+
+                            # Not a hammer
+                            core_not_hammer = True
+                            if cfg.get("REJECT_HAMMER", True):
+                                day_range = today_high - today_low
+                                if day_range > 0:
+                                    close_position = (last_close - today_low) / day_range
+                                    if close_position > cfg.get("HAMMER_THRESHOLD", 0.70):
+                                        core_not_hammer = False
+
+                            core_ok = core_zone_break and core_volume and core_not_hammer
+                            if not core_ok:
+                                continue
+
+                            # Entry variants (need core + ANY ONE)
+                            # Variant A: Core only (simplest)
+                            variant_A = cfg.get("VARIANT_A_ENABLED", True)
+
+                            # Variant B: Core + impulsive weakness (gap down OR wide range)
+                            variant_B = False
+                            if cfg.get("VARIANT_B_ENABLED", True):
+                                gap_down = today_open < zone_low and today_open < df["Close"].iloc[-2]
+                                true_range = today_high - today_low
+                                wide_range = true_range >= (cfg.get("WIDE_RANGE_ATR_MULT", 1.2) * atr20)
+                                close_below_open = last_close < today_open
+                                impulsive_weakness = gap_down or (wide_range and close_below_open)
+                                variant_B = impulsive_weakness
+
+                            # Variant C: Core + big volume spike only
+                            # (RSI already checked in context, no need to duplicate)
+                            variant_C = False
+                            if cfg.get("VARIANT_C_ENABLED", True):
+                                # Big volume spike
+                                big_volume = today_volume >= (vol_50 * cfg.get("BIG_VOLUME_MULT", 1.5))
+                                variant_C = big_volume
+
+                            # Entry if ANY variant passes
+                            enter_short = variant_A or variant_B or variant_C
+
+                            # Determine which variant triggered
+                            if variant_C:
+                                signal_type = "zone_big_volume"
+                            elif variant_B:
+                                gap_down = today_open < zone_low and today_open < df["Close"].iloc[-2]
+                                if gap_down:
+                                    signal_type = "zone_gap_down"
+                                else:
+                                    signal_type = "zone_wide_range"
+                            else:
+                                signal_type = "zone_break_simple"
+
+                        if not enter_short:
+                            if cfg.get("DEBUG_MODE", False) and debug_counters:
+                                debug_counters['failed_entry'] += 1
+                            continue
+
+                        # ==============================================================
+                        # STOP PLACEMENT (Logical level above zone)
+                        # ==============================================================
+
+                        # Start with zone_high
+                        stop_price = zone_high * (1 + cfg.get("STOP_BUFFER_PCT", 0.01))
+
+                        # Also consider MA20 if configured
+                        if cfg.get("STOP_ALSO_MA20", True) and len(close) >= 20:
+                            ma20 = close.rolling(20).mean().iloc[-1]
+                            stop_price = max(stop_price, ma20 * 1.01)
+
+                        # Also consider recent swing high if configured
+                        if cfg.get("STOP_ALSO_SWING_HIGH", True) and len(df) >= 10:
+                            recent_swing_high = df["High"].iloc[-10:].max()
+                            stop_price = max(stop_price, recent_swing_high * 1.005)
+
+                        # Calculate stop distance
+                        stop_distance = stop_price - last_close  # Positive value for short
+                        if stop_distance <= 0:
+                            continue  # Invalid stop (price already above stop)
+
+                        # Calculate ATR-based risk (for position sizing)
+                        atr14 = calculate_atr(df, 14)
+                        if atr14 is None or len(atr14) == 0:
+                            continue
+                        current_atr = atr14.iloc[-1]
+
+                        # Position size based on stop distance
+                        risk_per_trade = cfg.get("RISK_PER_TRADE_PCT", 0.35) / 100
+                        risk_dollars = POSITION_INITIAL_EQUITY * risk_per_trade
+                        shares = int(risk_dollars / stop_distance)
+
+                        if shares <= 0:
+                            continue
+
+                        # ==============================================================
+                        # GENERATE SIGNAL
+                        # ==============================================================
+
+                        entry_price = last_close
+                        score = rs_6mo * 100  # Use RS as score
+
+                        # Calculate target for SHORT position
+                        # For shorts: target is BELOW entry (profit on downside)
+                        # Use 2:1 reward:risk ratio
+                        risk_per_share = stop_price - entry_price  # Positive value (stop is above entry)
+                        target_price = entry_price - (2.0 * risk_per_share)  # Target below entry
+
+                        # signal_type already determined above in variant logic
+
+                        if cfg.get("DEBUG_MODE", False) and debug_counters:
+                            debug_counters['passed_all'] += 1
+
+                        signals.append({
+                            "Ticker": ticker,
+                            "Date": as_of_date,
+                            "Strategy": "LeaderPullback_Short_Position",
+                            "PositionType": "Full",
+                            "Entry": entry_price,
+                            "StopLoss": stop_price,
+                            "Target": target_price,  # REQUIRED by pre_buy_check
+                            "Shares": shares,
+                            "Score": score,
+                            "RS": rs_6mo,
+                            "MaxDays": cfg["MAX_DAYS"],
+                            "Direction": "SHORT",
+                            "Priority": STRATEGY_PRIORITY.get("LeaderPullback_Short_Position", 101),
+                            "Regime": regime,
+                            "StrategyType": signal_type,  # Track which signal triggered
+                            "ZoneHigh": zone_high,
+                            "ZoneLow": zone_low,
+                            "ConsolidationBars": zone["consolidation_bars"],
+                        })
+            except Exception as e:
+                print(f"❌ ERROR in LeaderPullback_Short for {ticker}: {e}")
+                import traceback
+                traceback.print_exc()
+
     # -------------------------------------------------
     # Post-processing: Sort by priority then score
     # -------------------------------------------------
@@ -713,5 +1348,187 @@ def run_scan_as_of(as_of_date, tickers):
             ascending=[True, False]
         )
         signals = signals_df.to_dict("records")
+
+    # DEBUG: Print filtering summary if debug mode was active
+    debug_counters = getattr(run_scan_as_of, '_debug_counters', None)
+    if debug_counters and debug_counters['total_checked'] > 0:
+        print(f"\n🔍 DEBUG SUMMARY for {as_of_date.date()}:")
+        print(f"   Total stocks checked: {debug_counters['total_checked']}")
+        print(f"   Failed price filter (<$30): {debug_counters['failed_price']}")
+        print(f"   Failed dollar volume (<$100M): {debug_counters['failed_dollar_vol']}")
+        print(f"   Failed sector filter: {debug_counters['failed_sector']}")
+        print(f"   Failed zone detection (range > 5×ATR): {debug_counters['failed_zone']}")
+        print(f"   Failed entry conditions: {debug_counters['failed_entry']}")
+        print(f"   ✅ PASSED ALL: {debug_counters['passed_all']}")
+        # Reset counters for next day
+        run_scan_as_of._debug_counters = None
+
+    # =========================================================================
+    # Strategy 10: MegaCap Weekly Slide SHORT
+    # =========================================================================
+    cfg_mega = MEGACAP_WEEKLY_SLIDE_CFG
+    if cfg_mega.get("ENABLED", True):
+        for ticker in cfg_mega.get("SYMBOLS", []):
+            try:
+                # Load daily data
+                df = get_historical_data(ticker)
+                if df is None or len(df) < 300:
+                    continue
+
+                df = df[df.index <= as_of_date]
+                if len(df) < 100:
+                    continue
+
+                # Universe filters
+                last_close = df["Close"].iloc[-1]
+                today_high = df["High"].iloc[-1]
+                today_low = df["Low"].iloc[-1]
+                today_volume = df["Volume"].iloc[-1]
+
+                # Price filter
+                if last_close < cfg_mega.get("MIN_PRICE", 30):
+                    continue
+
+                # Dollar volume filter
+                avg_vol_20 = df["Volume"].iloc[-20:].mean()
+                dollar_vol = last_close * avg_vol_20
+                if dollar_vol < cfg_mega.get("MIN_DOLLAR_VOLUME", 100_000_000):
+                    continue
+
+                # Load weekly data
+                df_weekly = df.resample('W-FRI').agg({
+                    'Open': 'first',
+                    'High': 'max',
+                    'Low': 'min',
+                    'Close': 'last',
+                    'Volume': 'sum'
+                }).dropna()
+
+                if len(df_weekly) < 60:
+                    continue
+
+                # Calculate weekly indicators
+                weekly_ma10 = df_weekly["Close"].rolling(cfg_mega.get("WEEKLY_MA10", 10)).mean()
+                weekly_ma20 = df_weekly["Close"].rolling(cfg_mega.get("WEEKLY_MA20", 20)).mean()
+
+                rsi_period = cfg_mega.get("WEEKLY_RSI_PERIOD", 14)
+                weekly_rsi = compute_rsi(df_weekly["Close"], rsi_period)
+
+                high_lookback = cfg_mega.get("WEEKLY_HIGH_LOOKBACK", 52)
+                highest_close_52w = df_weekly["Close"].rolling(high_lookback).max()
+
+                # Check weekly context (use last completed week)
+                weekly_close = df_weekly["Close"].iloc[-1]
+                weekly_ma10_val = weekly_ma10.iloc[-1]
+                weekly_ma20_val = weekly_ma20.iloc[-1]
+                weekly_rsi_val = weekly_rsi.iloc[-1]
+                weekly_high_52w = highest_close_52w.iloc[-1]
+
+                if pd.isna(weekly_ma10_val) or pd.isna(weekly_ma20_val) or pd.isna(weekly_rsi_val) or pd.isna(weekly_high_52w):
+                    continue
+
+                # Weekly slide context
+                weekly_trend_break = (weekly_close < weekly_ma10_val) and (weekly_close < weekly_ma20_val)
+                weekly_momentum_down = weekly_rsi_val < cfg_mega.get("WEEKLY_RSI_THRESHOLD", 50)
+                weekly_off_high = weekly_close <= (cfg_mega.get("WEEKLY_OFF_HIGH_PCT", 0.90) * weekly_high_52w)
+
+                weekly_slide_context = weekly_trend_break and weekly_momentum_down and weekly_off_high
+
+                if not weekly_slide_context:
+                    continue
+
+                # Daily entry conditions
+                daily_ma20 = df["Close"].rolling(cfg_mega.get("DAILY_MA20", 20)).mean()
+                daily_ma20_val = daily_ma20.iloc[-1]
+
+                if pd.isna(daily_ma20_val):
+                    continue
+
+                # Condition 1: close < MA20_day
+                below_ma20 = last_close < daily_ma20_val
+
+                # Condition 2: close < lowest_low_10d (exclude today)
+                lookback = cfg_mega.get("DAILY_LOW_LOOKBACK", 10)
+                if len(df) < lookback + 1:
+                    continue
+
+                lowest_low_10d = df["Low"].iloc[-(lookback+1):-1].min()  # Exclude current bar
+                below_lowest = last_close < lowest_low_10d
+
+                # Condition 3: volume >= 1.1 * avg_volume_20d
+                vol_period = cfg_mega.get("DAILY_VOLUME_PERIOD", 20)
+                avg_vol = df["Volume"].iloc[-vol_period:].mean()
+                vol_mult = cfg_mega.get("DAILY_VOLUME_MULT", 1.1)
+                volume_ok = today_volume >= (vol_mult * avg_vol)
+
+                # All daily conditions must pass
+                if not (below_ma20 and below_lowest and volume_ok):
+                    continue
+
+                # Calculate stop loss
+                swing_lookback = cfg_mega.get("STOP_SWING_HIGH_LOOKBACK", 10)
+                swing_high = df["High"].iloc[-swing_lookback:].max()
+                stop_buffer = cfg_mega.get("STOP_BUFFER_PCT", 0.01)
+
+                # Stop is max of swing high and MA20, plus buffer
+                stop_price = max(swing_high, daily_ma20_val) * (1 + stop_buffer)
+
+                # Entry price (use close)
+                entry_price = last_close
+
+                # Validate stop (must be above entry for SHORT)
+                if stop_price <= entry_price:
+                    continue
+
+                # Calculate position size
+                risk_per_share = stop_price - entry_price
+                risk_pct = cfg_mega.get("RISK_PER_TRADE_PCT", 0.5) / 100.0
+                equity = POSITION_INITIAL_EQUITY
+                risk_dollars = equity * risk_pct
+                shares = int(risk_dollars / risk_per_share)
+
+                if shares <= 0:
+                    continue
+
+                # Calculate target (2R for partial)
+                partial_r = cfg_mega.get("PARTIAL_R", 2.0)
+                target_price = entry_price - (partial_r * risk_per_share)
+
+                # Create signal
+                signals.append({
+                    "Ticker": ticker,
+                    "Date": as_of_date,
+                    "Strategy": "MegaCap_WeeklySlide_Short",
+                    "Entry": entry_price,
+                    "StopLoss": stop_price,
+                    "Target": target_price,
+                    "Shares": shares,
+                    "Direction": "SHORT",
+                    "MaxDays": cfg_mega.get("MAX_DAYS", 50),
+                    "PartialR": cfg_mega.get("PARTIAL_R", 2.0),
+                    "PartialSize": cfg_mega.get("PARTIAL_SIZE", 0.5),
+                    "BreakevenAfterPartial": cfg_mega.get("BREAKEVEN_AFTER_PARTIAL", True),
+                    "TrailEMA": cfg_mega.get("TRAIL_EMA"),
+                    "EarlyExitDays": cfg_mega.get("EARLY_EXIT_DAYS"),
+                    "WeeklyContext": {
+                        "weekly_close": weekly_close,
+                        "weekly_ma10": weekly_ma10_val,
+                        "weekly_ma20": weekly_ma20_val,
+                        "weekly_rsi": weekly_rsi_val,
+                        "weekly_52w_high": weekly_high_52w,
+                    },
+                    "DailyContext": {
+                        "daily_ma20": daily_ma20_val,
+                        "lowest_low_10d": lowest_low_10d,
+                        "volume": today_volume,
+                        "avg_volume_20d": avg_vol,
+                    },
+                })
+
+            except Exception as e:
+                # Skip on errors (data issues, etc.)
+                if cfg_mega.get("DEBUG_MODE", False):
+                    print(f"❌ ERROR in MegaCap_WeeklySlide_Short for {ticker}: {e}")
+                continue
 
     return signals

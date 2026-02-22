@@ -241,21 +241,32 @@ if __name__ == "__main__":
         print("   - Either no setups found or all slots filled\n")
 
     # --------------------------------------------------
-    # Step 6: Send Email Alert
+    # Step 6: Send Email Alert (only if there is something actionable)
     # --------------------------------------------------
-    print("="*80)
-    print("📧 Sending Email Alert...")
-    print("="*80 + "\n")
-
-    send_email_alert(
-        trade_df=trade_ready,
-        all_signals=signals if signals else [],
-        subject_prefix="📊 Position Trading Scan",
-        position_tracker=position_tracker,
-        action_signals=action_signals
+    has_new_trades = not trade_ready.empty
+    has_action_signals = (
+        len(action_signals.get('exits', [])) > 0
+        or len(action_signals.get('partials', [])) > 0
+        or len(action_signals.get('pyramids', [])) > 0
     )
 
-    print("✅ Email sent successfully!")
+    if has_new_trades or has_action_signals:
+        print("="*80)
+        print("📧 Sending Email Alert...")
+        print("="*80 + "\n")
+
+        send_email_alert(
+            trade_df=trade_ready,
+            all_signals=signals if signals else [],
+            subject_prefix="📊 Position Trading Scan",
+            position_tracker=position_tracker,
+            action_signals=action_signals
+        )
+
+        print("✅ Email sent successfully!")
+    else:
+        print("📭 No actionable signals — email skipped")
+
     print("\n" + "="*80)
     print("✨ Scan Complete")
     print("="*80)

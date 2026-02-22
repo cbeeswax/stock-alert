@@ -1,10 +1,21 @@
 import time
+import gc
+import resource
 import pandas as pd
 import yfinance as yf
 from pathlib import Path
 from datetime import datetime, timedelta
 from config.config import SP500_SOURCE
 import os
+
+# Raise file descriptor limit to avoid "Too many open files" with 500+ tickers
+try:
+    soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+    target = min(8192, hard)
+    if soft < target:
+        resource.setrlimit(resource.RLIMIT_NOFILE, (target, hard))
+except Exception:
+    pass
 
 # ----------------------------
 # Folders and settings
@@ -140,14 +151,18 @@ def download_ticker(ticker: str, force: bool = False):
             # Append new data to existing
             existing_df = pd.read_csv(file, index_col=0, parse_dates=True)
             combined = pd.concat([existing_df, df])
+            del existing_df, df
             combined = combined[~combined.index.duplicated(keep='last')]  # Remove duplicates
             combined = combined.sort_index()
             combined.to_csv(file, index_label="Date")
-            print(f"✅ {ticker}: Added {len(df)} new rows (total: {len(combined)})")
+            print(f"✅ {ticker}: Added new rows (total: {len(combined)})")
+            del combined
         else:
             # Save new file
+            row_count = len(df)
             df.to_csv(file, index_label="Date")
-            print(f"✅ {ticker}: Saved {len(df)} rows")
+            del df
+            print(f"✅ {ticker}: Saved {row_count} rows")
 
         # 🆕 Touch file to update modification time (marks as updated today)
         file.touch()
