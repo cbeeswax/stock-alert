@@ -354,7 +354,7 @@ def pre_buy_check(combined_signals, rr_ratio=None, benchmark="SPY", as_of_date=N
             "Entry": round(entry, 2),
             "StopLoss": round(stop, 2),
             "Target": round(target, 2),
-            "RawScore": s.get("Score", 0),
+            "Score": s.get("Score", 0),
             "FinalScore": final_score,
             "Expectancy": round(expectancy, 2),
             "CrossoverType": s.get("CrossoverType", "Unknown"),

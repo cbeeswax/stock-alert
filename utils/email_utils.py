@@ -261,14 +261,14 @@ def send_email_alert(
                     shares = int(risk_amount / risk_per_share) if risk_per_share > 0 else 0
                     position_size = shares * entry
 
-                    # Color code by score
+                    # Color code by score (0-100 scale for position trading)
                     score = row.get('Score', 0)
-                    if score >= 8:
-                        row_color = "#c6efce"  # green
-                    elif score >= 6:
-                        row_color = "#ffeb9c"  # yellow
+                    if score >= 80:
+                        row_color = "#c6efce"  # green  — strong RS
+                    elif score >= 50:
+                        row_color = "#ffeb9c"  # yellow — moderate RS
                     else:
-                        row_color = "#f4c7c3"  # red
+                        row_color = "#f4c7c3"  # red    — weak RS
 
                     body_html += f"<tr style='background-color:{row_color};'>"
                     body_html += f"<td><strong>{ticker}</strong></td>"
