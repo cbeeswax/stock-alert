@@ -289,17 +289,26 @@ def pre_buy_check(combined_signals, rr_ratio=None, benchmark="SPY", as_of_date=N
         if atr == 0:
             atr = close * 0.02
 
-        entry = close
+        # Use scanner's price if available (more consistent than re-fetching)
+        entry = s.get("Price") or s.get("Entry") or close
 
-        # 🔧 Use strategy-specific stop/target helpers
-        # For position trading strategies, preserve stop/target from scanner (already calculated correctly)
-        # This is critical for SHORT strategies where stop must be ABOVE entry
-        if s.get("StopLoss") is not None and s.get("Target") is not None and not pd.isna(s.get("StopLoss")) and not pd.isna(s.get("Target")):
-            # Position trading strategy with pre-calculated stop/target from scanner
-            stop = s["StopLoss"]
-            target = s["Target"]
+        # 🔧 Use stop/target from scanner — supports both field naming conventions:
+        #   - Position trading strategies: StopLoss / Target
+        #   - Long position strategies:    StopPrice (no Target — calculate 2R)
+        #   - Legacy short-term:           fall back to ATR-based helpers
+        stop_val  = s.get("StopLoss") or s.get("StopPrice")
+        target_val = s.get("Target")
+
+        if stop_val is not None and not pd.isna(stop_val) and stop_val > 0:
+            stop = stop_val
+            if target_val is not None and not pd.isna(target_val):
+                target = target_val
+            else:
+                # Calculate 2R target from scanner's stop
+                risk = abs(entry - stop)
+                target = entry + 2.0 * risk
         else:
-            # Legacy strategies - calculate stop/target here
+            # Legacy strategies — calculate stop/target from ATR
             stop = get_stop_loss(strategy, entry, atr)
             target = get_target(strategy, entry, stop)
 
@@ -338,13 +347,14 @@ def pre_buy_check(combined_signals, rr_ratio=None, benchmark="SPY", as_of_date=N
             "Entry": round(entry, 2),
             "StopLoss": round(stop, 2),
             "Target": round(target, 2),
-            "RawScore": s.get("Score", 0),          # Original strategy score
-            "FinalScore": final_score,              # Quality × Expectancy × 10
-            "Expectancy": round(expectancy, 2),     # Van Tharp Expectancy (R per trade)
+            "RawScore": s.get("Score", 0),
+            "FinalScore": final_score,
+            "Expectancy": round(expectancy, 2),
             "CrossoverType": s.get("CrossoverType", "Unknown"),
             "CrossoverBonus": s.get("CrossoverBonus", 0),
-            "Direction": s.get("Direction", "LONG"),  # Preserve direction from scanner (SHORT or LONG)
-            "MaxDays": s.get("MaxDays"),             # Preserve max holding period
+            "Direction": s.get("Direction", "LONG"),
+            "Priority": s.get("Priority"),           # Preserve Priority for email position-trading detection
+            "MaxDays": s.get("MaxDays"),
         })
 
     df_trades = pd.DataFrame(trades)
