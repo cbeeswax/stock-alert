@@ -36,14 +36,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: historical-data
-          path: historical_data/
-
-      # 📈 Upload EMA cache data (incrementally updated daily)
-      - name: Upload EMA data
-        uses: actions/upload-artifact@v4
-        with:
-          name: ema-data
-          path: ema_data/
+          path: data/historical/
 
       # 🚨 Send failure alert email if any step above failed
       - name: Send failure alert
