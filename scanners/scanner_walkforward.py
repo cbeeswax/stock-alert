@@ -804,7 +804,7 @@ def run_scan_as_of(as_of_date, tickers):
         # =====================================================================
         # Entry: Tech stocks, RS > +30%, new 3-mo high or pullback, ADX 30+, all MAs rising
         # =====================================================================
-        if is_bull_regime and rs_6mo is not None:
+        if rs_6mo is not None and POSITION_MAX_PER_STRATEGY.get("RelativeStrength_Ranker_Position", 0) > 0:
             try:
                 # Check if ticker is in tech sectors
                 ticker_sector = get_ticker_sector(ticker)
@@ -839,7 +839,7 @@ def run_scan_as_of(as_of_date, tickers):
                         close_above_prior = False
                     pullback_breakout = near_ema21 and close_above_prior
 
-                    if all([stacked_mas, all_mas_rising, strong_rs,
+                    if all([stacked_mas, strong_rs,
                            (is_3mo_high or pullback_breakout), strong_adx]):
                         # Stop
                         stop_price = last_close - (RS_RANKER_STOP_ATR_MULT * atr20.iloc[-1])
