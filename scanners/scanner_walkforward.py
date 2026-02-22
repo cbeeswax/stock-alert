@@ -1367,7 +1367,7 @@ def run_scan_as_of(as_of_date, tickers):
     # Strategy 10: MegaCap Weekly Slide SHORT
     # =========================================================================
     cfg_mega = MEGACAP_WEEKLY_SLIDE_CFG
-    if cfg_mega.get("ENABLED", True):
+    if cfg_mega.get("ENABLED", True) and SHORT_ENABLED and POSITION_MAX_PER_STRATEGY.get("MegaCap_WeeklySlide_Short", 0) > 0:
         for ticker in cfg_mega.get("SYMBOLS", []):
             try:
                 # Load daily data
