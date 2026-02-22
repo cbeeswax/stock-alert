@@ -246,8 +246,6 @@ if __name__ == "__main__":
             position_tracker=position_tracker,
             action_signals=action_signals
         )
-
-        print("✅ Email sent successfully!")
     else:
         print("📭 No actionable signals — email skipped")
 

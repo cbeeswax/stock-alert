@@ -612,7 +612,7 @@ STRATEGY_PRIORITY["MegaCap_WeeklySlide_Short"] = 102  # Lowest priority
 # ============================================================================
 MEGACAP_WEEKLY_SLIDE_CFG = {
     # Strategy control
-    "ENABLED": True,
+    "ENABLED": False,  # Disabled with all other short strategies
     "DEBUG_MODE": False,
 
     # Universe (hard-coded mega-caps)

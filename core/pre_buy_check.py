@@ -259,10 +259,12 @@ def pre_buy_check(combined_signals, rr_ratio=None, benchmark="SPY", as_of_date=N
             "52-Week High",
             "Consolidation Breakout"
         ]:
+            print(f"   ❌ {ticker} [{strategy}]: filtered — bearish regime")
             continue
 
         df = get_historical_data(ticker)
         if df.empty:
+            print(f"   ❌ {ticker} [{strategy}]: filtered — no historical data")
             continue
 
         # 🔒 CRITICAL: Filter to as_of_date for backtesting (prevents look-ahead bias)
@@ -270,6 +272,7 @@ def pre_buy_check(combined_signals, rr_ratio=None, benchmark="SPY", as_of_date=N
             df = df[df.index <= as_of_date]
 
         if len(df) < 60:
+            print(f"   ❌ {ticker} [{strategy}]: filtered — insufficient history ({len(df)} bars)")
             continue
 
         df = df.tail(60)
@@ -280,6 +283,7 @@ def pre_buy_check(combined_signals, rr_ratio=None, benchmark="SPY", as_of_date=N
         # -------------------------------
         avg_dollar_vol = (df["Close"] * df["Volume"]).rolling(20).mean().iloc[-1]
         if avg_dollar_vol < MIN_LIQUIDITY_USD:
+            print(f"   ❌ {ticker} [{strategy}]: filtered — low liquidity (${avg_dollar_vol/1e6:.1f}M < ${MIN_LIQUIDITY_USD/1e6:.0f}M)")
             continue
 
         # -------------------------------
@@ -304,11 +308,9 @@ def pre_buy_check(combined_signals, rr_ratio=None, benchmark="SPY", as_of_date=N
             if target_val is not None and not pd.isna(target_val):
                 target = target_val
             else:
-                # Calculate 2R target from scanner's stop
                 risk = abs(entry - stop)
                 target = entry + 2.0 * risk
         else:
-            # Legacy strategies — calculate stop/target from ATR
             stop = get_stop_loss(strategy, entry, atr)
             target = get_target(strategy, entry, stop)
 
@@ -316,8 +318,8 @@ def pre_buy_check(combined_signals, rr_ratio=None, benchmark="SPY", as_of_date=N
         # EMA strategy extra filters (NOW DONE IN SCANNER - kept for other strategies)
         # -------------------------------
         if strategy == "EMA Crossover":
-            # Filters already applied in scanner, just verify data quality
             if not s.get("ADX14") or s.get("ADX14") < ADX_THRESHOLD:
+                print(f"   ❌ {ticker} [{strategy}]: filtered — ADX too low")
                 continue
 
         # Calculate final score using Van Tharp Expectancy
@@ -331,15 +333,20 @@ def pre_buy_check(combined_signals, rr_ratio=None, benchmark="SPY", as_of_date=N
 
         # Validate stop and target are valid numbers (must be positive prices, not NaN)
         if pd.isna(stop) or pd.isna(target) or stop <= 0 or target <= 0 or entry <= 0:
+            print(f"   ❌ {ticker} [{strategy}]: filtered — invalid stop/target (entry={entry}, stop={stop}, target={target})")
             continue
 
         # For SHORT: stop must be above entry (if price rises, we lose)
         # For LONG: stop must be below entry (if price falls, we lose)
         direction = s.get("Direction", "LONG")
         if direction == "SHORT" and stop <= entry:
-            continue  # Invalid SHORT stop (must be above entry)
+            print(f"   ❌ {ticker} [{strategy}]: filtered — SHORT stop ${stop:.2f} not above entry ${entry:.2f}")
+            continue
         elif direction == "LONG" and stop >= entry:
-            continue  # Invalid LONG stop (must be below entry)
+            print(f"   ❌ {ticker} [{strategy}]: filtered — LONG stop ${stop:.2f} not below entry ${entry:.2f}")
+            continue
+
+        print(f"   ✅ {ticker} [{strategy}]: passed pre_buy_check (entry=${entry:.2f}, stop=${stop:.2f}, target=${target:.2f})")
 
         trades.append({
             "Ticker": ticker,
@@ -347,7 +354,7 @@ def pre_buy_check(combined_signals, rr_ratio=None, benchmark="SPY", as_of_date=N
             "Entry": round(entry, 2),
             "StopLoss": round(stop, 2),
             "Target": round(target, 2),
-            "RawScore": s.get("Score", 0),
+            "Score": s.get("Score", 0),
             "FinalScore": final_score,
             "Expectancy": round(expectancy, 2),
             "CrossoverType": s.get("CrossoverType", "Unknown"),
