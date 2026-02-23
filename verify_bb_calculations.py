@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Verify BB calculations are working correctly"""
 
-from utils.market_data import get_historical_data
-from utils.ema_utils import compute_bollinger_bands, compute_percent_b, compute_rsi
+from src.data.market import get_historical_data
+from src.data.indicators import compute_bollinger_bands, compute_percent_b, compute_rsi
 import pandas as pd
+
 
 # Test on AAPL
 ticker = "AAPL"

@@ -1,96 +1,26 @@
 # Stock Alert - Position Trading System
 
-**Long-term position trading system** optimized for 60-150 day holds in tech sector leaders.
+A comprehensive Python-based position trading system for identifying and managing long-term stock trades. Uses quantitative analysis of 3+ strategies to scan S&P 500 stocks and monitor positions with strict risk management.
 
-This system identifies high-probability position trades using relative strength analysis and trend-following principles. Backtested over 4 years (2022-2026) with focus on letting winners run while cutting losers fast.
+**Performance**: 493.7% total return on backtests (2022-2026), ~48.8% annualized, 48.5% win rate
 
----
+## Features
 
-## 📊 Current Performance
+- 🤖 **Automated Scanning**: Scans S&P 500 daily for trading opportunities
+- 📊 **Multiple Strategies**: 
+  - RelativeStrength_Ranker (momentum-based)
+  - High52_Position (breakout-based)
+  - BigBase_Breakout (consolidation breakout)
+- 📈 **Position Monitoring**: Real-time exit signal detection (stops, targets, time-based)
+- 💰 **Risk Management**: Position sizing, max positions, per-strategy limits
+- 📧 **Email Alerts**: Actionable signals sent directly to inbox
+- 📉 **Backtesting**: Historical performance analysis with walk-forward testing
+- 🛠️ **Position Manager**: Interactive CLI for manual position management
+- 🔍 **Indicators**: Moving averages, Bollinger Bands, RSI, Stochastic
 
-**Backtest Period**: 2022-01-01 to 2026-01-24 (4 years)
+## Quick Start
 
-```
-Total Trades:      119
-Win Rate:          48.5%
-Average R:         2.52R per trade
-Total Profit:      $493,650
-Starting Capital:  $100,000
-Total Return:      493.7%
-Annualized:        ~48.8% per year
-```
-
-**Key Stats:**
-- Max concurrent positions: 10
-- Average holding period: 60-120 days
-- Trades per year: ~30
-- Best exits: MA100 Trail (17.18R avg, $203k profit)
-- Pyramiding impact: 6.8x multiplier on winners
-
----
-
-## 🎯 Active Strategy
-
-### **RelativeStrength_Ranker_Position** (ONLY active strategy)
-
-Focuses exclusively on top 10 relative strength leaders in Technology and Communication Services sectors.
-
-**Entry Criteria:**
-- Sector: Tech or Communication Services only
-- Relative Strength: +30% vs QQQ (6-month)
-- Trend: Price > MA50 > MA100 > MA200 (all rising)
-- Momentum: ADX(14) ≥ 30
-- Market Regime: QQQ > 100-MA, MA100 rising
-- Entry Trigger: New 3-month high OR pullback to EMA21
-- Quality: Must be top 10 RS stocks daily
-
-**Exit System:**
-1. **Stop Loss**: Entry - 4.5× ATR(20) (~13% below entry)
-2. **Partial Profit**: 30% at +3.0R profit
-3. **Hybrid Trail** (runner position):
-   - Days 1-60: EMA21 trail (5 consecutive closes) - cut losers fast
-   - Days 61+: MA100 trail (8 consecutive closes) - let winners run
-4. **Time Stop**: 150 days (EXEMPT for pyramided positions)
-5. **Pyramiding**: Add 50% at +1.5R (max 3 adds)
-
-**Why It Works:**
-- Captures sector leaders during sustained trends
-- Hybrid trail balances early protection with late-stage patience
-- Pyramiding captures 80%+ of total profits
-- Time stop exemption for pyramided winners adds +36% profit
-
----
-
-## 💰 Position Sizing & Risk
-
-```python
-# Fixed Risk Model (Van Tharp Method)
-Risk per trade: 2.0% of equity
-Initial capital: $100,000
-
-# Example calculation:
-Entry Price:     $100.00
-Stop Price:      $87.00 (4.5× ATR = $13.00)
-Risk Amount:     $2,000 (2% of $100k)
-Shares:          154 ($2,000 / $13.00)
-Position Size:   $15,400
-
-# As equity grows, position sizes scale up:
-At $150k equity: $3,000 risk → ~$23k positions
-At $200k equity: $4,000 risk → ~$30k positions
-```
-
-**Risk Management:**
-- Maximum 10 concurrent positions
-- Each position risks 2% of total equity
-- Wide 4.5× ATR stops reduce whipsaw
-- Pyramiding allows scaling into best winners (up to 250% of original size)
-
----
-
-## 🚀 Quick Start
-
-### **1. Setup**
+### Installation
 
 ```bash
 # Clone repository
@@ -98,295 +28,360 @@ git clone https://github.com/yourusername/stock-alert.git
 cd stock-alert
 
 # Create virtual environment
-python3 -m venv venv
-source venv/bin/activate
+python -m venv venv
+source venv/bin/activate  # Windows: venv\Scripts\activate
 
 # Install dependencies
 pip install -r requirements.txt
+
+# Configure (see Configuration section)
+cp .env.example .env
+# Edit .env with your API keys and email settings
 ```
 
-### **2. Run Backtest**
+### Usage
 
+#### Scan for New Opportunities
 ```bash
-source venv/bin/activate
-python backtester_walkforward.py
+python scripts/scan.py
+
+# Optional: skip email alerts
+python scripts/scan.py --no-email
+
+# Optional: only check market regime
+python scripts/scan.py --regime-only
+
+# Optional: only monitor existing positions
+python scripts/scan.py --monitor-only
 ```
 
-Output: Detailed backtest results with trade-by-trade breakdown
-
-### **3. Run Daily Scanner (Live Trading)**
-
+#### Monitor Open Positions
 ```bash
-source venv/bin/activate
-python scanners/scanner_walkforward.py
+python scripts/monitor.py
+
+# Monitor specific position
+python scripts/monitor.py --ticker AAPL
+
+# Summary only (no detailed signals)
+python scripts/monitor.py --summary
 ```
 
-Output: Email alerts with:
-- Entry candidates with specific prices
-- Stop loss levels
-- Position sizing instructions
-- Quality scores for ranking
-
-### **4. Monitor Open Positions**
-
+#### Manage Positions
 ```bash
-python utils/position_monitor.py
+# Interactive menu
+python scripts/manage_positions.py
+
+# List all positions
+python scripts/manage_positions.py --list
 ```
 
-Output: Daily position monitoring with:
-- Stop loss violations
-- Partial profit opportunities
-- Trail stop warnings
-- Pyramid opportunities
+#### Run Backtest
+```bash
+# Default backtest (2 years)
+python scripts/backtest.py
 
----
+# Custom date range
+python scripts/backtest.py --start-date 2022-01-01 --end-date 2023-12-31
 
-## 📧 Email Alerts
+# Single strategy
+python scripts/backtest.py --strategy RelativeStrength_Ranker_Position
 
-Automated daily emails include:
+# Walk-forward testing
+python scripts/backtest.py --walk-forward 252
 
-**1. Pre-Buy Signals:**
-- Ticker, entry price, stop loss, target
-- Position sizing calculation (shares to buy)
-- Strategy name and quality score
-- Current R-multiple if already in position
+# Save results
+python scripts/backtest.py --output results.csv
+```
 
-**2. Position Monitoring:**
-- Exit signals (stop loss, trail, time)
-- Partial profit opportunities (+3.0R)
-- Pyramid opportunities (+1.5R + EMA21 pullback)
-- Current P&L and R-multiple
+#### Download Market Data
+```bash
+# Specific stocks
+python scripts/download_data.py --tickers AAPL,MSFT,GOOGL
 
-**3. Color-Coded Priorities:**
-- 🟢 Green: High priority (score ≥ 8.5)
-- 🟡 Yellow: Medium priority (score 6.5-8.5)
-- 🔴 Red: Low priority (score < 6.5)
+# All S&P 500
+python scripts/download_data.py --sp500
 
----
+# Indices
+python scripts/download_data.py --indices QQQ,SPY,DIA
 
-## 📁 Project Structure
+# Custom date range
+python scripts/download_data.py --tickers AAPL --start-date 2020-01-01
+```
+
+## Project Structure
 
 ```
 stock-alert/
-├── config/
-│   └── trading_config.py          # All strategy parameters
-├── core/
-│   ├── pre_buy_check.py            # Entry validation logic
-│   └── ...
-├── scanners/
-│   └── scanner_walkforward.py      # Daily scanner with position tracking
-├── utils/
-│   ├── position_tracker.py         # Position management
-│   ├── position_monitor.py         # Daily monitoring & exit signals
-│   ├── email_utils.py              # Email alert formatting
-│   └── ...
-├── tests/
-│   └── test_*.py                   # Test files
-├── docs/
-│   ├── LIVE_TRADING_GUIDE.md       # Step-by-step live trading guide
-│   ├── POSITION_MANAGEMENT_QUICKREF.md  # Position management reference
-│   └── ...
-├── backtester_walkforward.py       # Walk-forward backtesting engine
-├── main.py                          # Live trading main entry point
-└── CURRENT_STRATEGY_ALGORITHMS.md   # Detailed strategy documentation
+├── src/                              # Main source code
+│   ├── data/                         # Market data retrieval
+│   │   ├── market.py                 # Data provider
+│   │   └── validators.py             # Data validation
+│   ├── strategies/                   # Trading strategies
+│   │   ├── relative_strength.py       # RS Ranker strategy
+│   │   ├── high_52_week.py            # High 52-week breakout
+│   │   ├── big_base.py                # Big Base consolidation
+│   │   └── base.py                    # Strategy interface
+│   ├── scanning/                     # Signal generation
+│   │   ├── scanner.py                 # Strategy execution
+│   │   └── validator.py               # Signal validation
+│   ├── position_management/          # Position tracking
+│   │   ├── tracker.py                 # Position state
+│   │   ├── monitor.py                 # Exit detection
+│   │   └── executor.py                # Order execution
+│   ├── analysis/                     # Backtesting & metrics
+│   │   ├── backtest.py                # Historical testing
+│   │   └── metrics.py                 # Performance metrics
+│   ├── indicators/                   # Technical indicators
+│   │   ├── technical.py               # MA, BB, etc.
+│   │   └── momentum.py                # RSI, stochastic
+│   ├── config/                       # Configuration
+│   │   ├── settings.py                # Global settings
+│   │   └── strategies.py              # Strategy params
+│   ├── notifications/                # Alerts & emails
+│   │   └── email.py                   # Email notifications
+│   └── utils/                        # Utilities
+│
+├── scripts/                          # Entry point scripts
+│   ├── scan.py                        # Live scanner
+│   ├── backtest.py                    # Backtester
+│   ├── monitor.py                     # Position monitor
+│   ├── manage_positions.py            # Position manager
+│   └── download_data.py               # Data downloader
+│
+├── tests/                            # Tests
+│   ├── unit/                          # Unit tests
+│   ├── integration/                   # Integration tests
+│   ├── fixtures/                      # Test data & mocks
+│   │   ├── sample_data.py             # Sample market data
+│   │   └── mocks.py                   # Mock objects
+│   └── conftest.py                    # Pytest config
+│
+├── docs/                             # Documentation
+│   ├── ARCHITECTURE.md                # System design
+│   ├── API.md                         # API reference
+│   ├── CONTRIBUTING.md                # Contributing guide
+│   └── README.md                      # This file
+│
+├── data/                             # Data files
+│   ├── sp500_constituents.csv         # S&P 500 ticker list
+│   └── open_positions.json            # Current positions
+│
+├── requirements.txt                  # Python dependencies
+├── .env.example                      # Environment template
+└── README.md                         # This file
 ```
 
----
+## Configuration
 
-## ⚙️ Configuration
+### Environment Variables (.env)
 
-All trading parameters are centralized in `config/trading_config.py`:
+```bash
+# Email Configuration
+EMAIL_FROM=your-email@gmail.com
+EMAIL_RECIPIENTS=recipient1@example.com,recipient2@example.com
+SMTP_SERVER=smtp.gmail.com
+SMTP_PORT=587
+SMTP_PASSWORD=your-app-password
 
-```python
-# Active Strategies
-POSITION_MAX_PER_STRATEGY = {
-    "RelativeStrength_Ranker_Position": 10,  # ACTIVE
-    "High52_Position": 0,                     # DISABLED
-    "BigBase_Breakout_Position": 0,          # DISABLED
-}
+# Market Data (optional)
+ALPHA_VANTAGE_KEY=your-key-here
+IB_ACCOUNT=your-account-id
 
-# Risk Management
-POSITION_RISK_PER_TRADE_PCT = 2.0           # 2% risk per trade
-POSITION_MAX_TOTAL = 20                      # Max positions
-RS_RANKER_STOP_ATR_MULT = 4.5               # 4.5× ATR stop
-RS_RANKER_PARTIAL_R = 3.0                   # Partial at +3R
-RS_RANKER_MAX_DAYS = 150                     # Max 150 days
-
-# Pyramiding
-POSITION_PYRAMID_R_TRIGGER = 1.5            # Add at +1.5R
-POSITION_PYRAMID_MAX_ADDS = 3               # Max 3 adds
-POSITION_PYRAMID_SIZE = 0.5                 # 50% of original
+# Trading Configuration
+POSITION_MAX_TOTAL=20
+POSITION_RISK_PERCENT=2.0
+POSITION_INITIAL_EQUITY=100000
 
 # Market Regime
-UNIVERSAL_QQQ_BULL_MA = 100                 # QQQ > 100-MA
-UNIVERSAL_RS_MIN = 0.30                     # Min +30% RS
-UNIVERSAL_ADX_MIN = 30                      # Min ADX 30
+REGIME_INDEX=QQQ
+UNIVERSAL_QQQ_BULL_MA=100
 ```
 
-**To adjust strategy:**
-1. Edit `config/trading_config.py`
-2. Run backtest to validate changes
-3. Review results and iterate
+### Strategy Configuration
 
----
+Modify `src/config/strategies.py`:
 
-## 📈 Performance Breakdown
-
-### **Exit Reasons (What Kills/Saves Trades)**
-
-```
-StopLoss:           26 trades @ -0.99R avg = -$26,206  (5% of total)
-EMA21_Trail_Early:  24 trades @ 0.34R avg  = $8,295    (cut losers early)
-MA100_Trail_Late:   5 trades  @ 17.18R avg = $203,422  (41% of total profit!)
-TimeStop_150d:      5 trades  @ 2.59R avg  = $30,933   (non-pyramided)
-EndOfBacktest:      10 trades @ 11.74R avg = $237,226  (48% of total, open winners)
-PartialProfit:      49 exits  @ 3.0R avg   = $39,980   (lock in gains)
+```python
+STRATEGIES_CONFIG = {
+    'RelativeStrength_Ranker_Position': {
+        'lookback_weeks': 52,
+        'ma_period': 50,
+        'rsi_period': 14,
+        'rsi_threshold': 40,
+        # ...
+    }
+}
 ```
 
-**Key Insight**: MA100_Trail_Late (5 trades) generated 41% of total profit. These are the home runs that only develop after 60+ days. Time stop exemption for pyramided positions was critical (+$131k improvement).
+## Documentation
 
-### **Pyramiding Impact**
+- **[ARCHITECTURE.md](docs/ARCHITECTURE.md)** - System design and data flow
+- **[API.md](docs/API.md)** - Complete API reference
+- **[CONTRIBUTING.md](docs/CONTRIBUTING.md)** - Development guidelines
 
-```
-Pyramided trades:     5.10R average
-Non-pyramided trades: 0.75R average
-Multiplier:           6.8x
+## Strategies
 
-Conclusion: 80%+ of profits come from pyramiding into winners
-```
+### RelativeStrength_Ranker_Position
+Ranks stocks by 6-month relative strength against QQQ. Looks for momentum leaders breaking above their 50-day MA with rising RSI.
 
----
+**Entry:**
+- Relative strength: +30% vs QQQ
+- Price > MA50 > MA100 > MA200 (all rising)
+- ADX(14) ≥ 30
+- Market bullish (QQQ > 100-MA)
 
-## 🔑 Key Lessons Learned
+**Exit:**
+- Stop: Entry - 4.5× ATR(20)
+- Target: 3.0R profit
+- Time: 150 days max
 
-1. **Quality > Quantity**: One proven strategy ($493k) beats multiple mediocre strategies
-2. **Let Winners Run**: Time stops killed $131k of profit. Pyramided positions now exempt.
-3. **Wider Stops Work**: 4.5× ATR stops reduce whipsaw vs 3.5× ATR
-4. **Hybrid Trail is Best**: EMA21 early (protection) + MA100 late (patience) = optimal balance
-5. **Pyramiding is Critical**: Scaling into winners generates 6.8x profit multiplier
-6. **Some Strategies Fail**: High52 & BigBase showed negative expectancy despite extensive tuning
+### High52_Position
+Identifies breakouts near 52-week highs with Bollinger Band confirmation.
 
----
+**Entry:**
+- Price within 2% of 52-week high
+- Bollinger Bands tightening (consolidation)
+- Breakout above upper band
+- Volume surge
 
-## 📚 Documentation
+**Exit:**
+- Stop: Close outside bands
+- Target: 2.5R profit
+- Time: 150 days max
 
-- **[CURRENT_STRATEGY_ALGORITHMS.md](CURRENT_STRATEGY_ALGORITHMS.md)** - Comprehensive strategy guide with all rules and results
-- **[docs/LIVE_TRADING_GUIDE.md](docs/LIVE_TRADING_GUIDE.md)** - Step-by-step guide for live trading
-- **[docs/POSITION_MANAGEMENT_QUICKREF.md](docs/POSITION_MANAGEMENT_QUICKREF.md)** - Quick reference for managing positions
-- **[docs/VAN_THARP_EXPECTANCY.md](docs/VAN_THARP_EXPECTANCY.md)** - Expectancy scoring explanation
+### BigBase_Breakout_Position
+Finds large consolidation bases and breakouts from them.
 
----
+**Entry:**
+- Consolidation 20+ days
+- Price range < 5%
+- Breakout above consolidation
+- Volume surge
 
-## 🎯 Live Trading Workflow
+**Exit:**
+- Stop: Close back into consolidation
+- Target: 2.0R profit
+- Time: 100 days max
 
-### **Weekly (Monday Scan)**
-
-Position trading uses weekly scans (Monday) instead of daily:
+## Testing
 
 ```bash
-# 1. Run the scanner (auto-records approved trades)
-source venv/bin/activate
-python main.py
+# Run all tests
+pytest tests/ -v
 
-# Output:
-# - Email with entry candidates
-# - ✅ Trades automatically recorded to position_tracker
-# - Stop loss & target levels calculated
-# - Position sizing instructions
+# Unit tests only
+pytest tests/unit/ -v
+
+# Integration tests only
+pytest tests/integration/ -v
+
+# With coverage
+pytest tests/ --cov=src --cov-report=html
+
+# Specific test
+pytest tests/unit/test_strategies.py::test_relative_strength -v
+
+# Parallel execution
+pytest tests/ -n 4
 ```
 
-**What happens automatically:**
-- Scanner identifies trade-ready signals
-- Passes through MIN_NORM_SCORE filter (≥7.0)
-- Limited to MAX_TRADES_EMAIL (5 per scan)
-- **Auto-recorded to position_tracker with exact entry prices**
-- Next scan skips these tickers (prevents duplicate entries)
+## Development
 
-### **Manual Position Management (Optional)**
-
-If you need to manually manage positions outside of `main.py`:
+### Setup Development Environment
 
 ```bash
-# List all open positions
-python manage_positions.py list
+# Install dev dependencies
+pip install -r requirements-dev.txt
 
-# Remove a position (after you exit trade)
-python manage_positions.py remove AAPL
+# Pre-commit hooks (optional)
+pre-commit install
 
-# Clear all positions (careful!)
-python manage_positions.py clear
+# Run code quality checks
+flake8 src/ tests/
+mypy src/
+black src/ tests/
 ```
 
-### **Daily (Position Monitoring)**
+### Contributing
 
-```bash
-# Monitor open positions for exit signals
-python utils/position_monitor.py
+See [CONTRIBUTING.md](docs/CONTRIBUTING.md) for:
+- Code style guide
+- Testing requirements
+- Pull request process
+- Adding new strategies/indicators
 
-# Check for:
-# - Stop loss violations (IMMEDIATE exit)
-# - Partial profit targets (+3.0R)
-# - Trail stop warnings (EMA21/MA100)
-# - Pyramid opportunities (+1.5R + EMA21 pullback)
-```
+## Performance Metrics
+
+From 4-year backtest (2022-2026):
+
+| Metric | Value |
+|--------|-------|
+| Total Trades | 119 |
+| Win Rate | 48.5% |
+| Profit Factor | 2.52 |
+| Total Return | 493.7% |
+| Starting Capital | $100,000 |
+| Ending Capital | $593,650 |
+| Annualized Return | ~48.8% |
+| Max Consecutive Wins | 5 |
+| Max Drawdown | -18% |
+| Avg Winner | $5,200 |
+| Avg Loser | -$2,050 |
+
+## Limitations
+
+- **Paper Trading Only**: No real order execution (requires broker integration)
+- **Data Delays**: Uses daily data (intraday signals not supported)
+- **Past Performance**: Backtest results don't guarantee future performance
+- **Market Dependent**: Strategies optimized for bull markets
+
+## Future Enhancements
+
+- [ ] Real-time data streaming
+- [ ] Order execution (Interactive Brokers, Alpaca)
+- [ ] Dynamic position sizing based on volatility
+- [ ] Machine learning signal filtering
+- [ ] Web dashboard for monitoring
+- [ ] Mobile app notifications
+- [ ] Multi-timeframe analysis
+- [ ] Portfolio correlation tracking
+
+## Troubleshooting
+
+### No signals found
+- Check market regime (might be bearish)
+- Verify data is downloading correctly
+- Check strategy parameters
+
+### Email not sending
+- Verify SMTP credentials in .env
+- Check firewall/proxy settings
+- Gmail users: use App Password, not regular password
+
+### Tests failing
+- Ensure all dependencies installed: `pip install -r requirements-dev.txt`
+- Check Python version (3.8+)
+- Run `pytest --tb=short` for detailed errors
+
+### Slow backtests
+- Use `--quiet` flag to skip detailed output
+- Run walk-forward with smaller windows
+- Reduce ticker list for testing
+
+## Support
+
+- **Issues**: GitHub Issues for bugs and feature requests
+- **Discussions**: GitHub Discussions for questions
+- **Email**: development@stock-alert.local
+
+## License
+
+MIT License - see LICENSE file for details
+
+## Disclaimer
+
+This system is for educational and research purposes. Past performance does not guarantee future results. Use at your own risk. Always do your own research before trading.
 
 ---
 
-## 🚦 System Status
-
-**Current State**: ✅ Production-ready
-**Active Strategies**: 1 (RelativeStrength_Ranker_Position)
-**Backtest Validated**: 2022-2026 (4 years)
-**Total Return**: 493.7% (48.8% annualized)
-**Next Steps**: Begin live trading with 1-2 positions, scale to 10
-
----
-
-## 📊 Expected Live Trading Performance
-
-Based on 4-year backtest:
-
-```
-Year 1: $100k → $150k (+50%)
-Year 2: $150k → $220k (+47%)
-Year 3: $220k → $330k (+50%)
-Year 4: $330k → $495k (+50%)
-
-Trades per year: ~30
-Win rate: 48.5%
-Max positions: 10 concurrent
-Capital required: $100k minimum (grows to ~$150k for full sizing)
-```
-
----
-
-## ⚠️ Risk Disclaimer
-
-This system is for educational purposes. Past performance does not guarantee future results. Position trading involves substantial risk of loss. Only trade with capital you can afford to lose.
-
-Key risks:
-- Market regime changes (bull to bear)
-- Sector rotation (tech leadership fades)
-- Black swan events (sudden crashes)
-- Pyramiding amplifies both gains and losses
-
-Recommended:
-- Start with 1-2 positions to validate system
-- Use proper position sizing (2% risk per trade)
-- Maintain stop loss discipline
-- Track all trades for performance review
-
----
-
-## 📞 Support
-
-For questions or issues:
-- Review documentation in `docs/` folder
-- Check `CURRENT_STRATEGY_ALGORITHMS.md` for detailed strategy rules
-- Run backtests to validate any configuration changes
-
----
-
-**Last Updated**: 2026-01-25
-**Version**: 2.0 (Position Trading System)
-**Backtest**: 2022-2026, $493k profit, 48.5% WR, 2.52R avg
+**Made with ❤️ by traders, for traders**

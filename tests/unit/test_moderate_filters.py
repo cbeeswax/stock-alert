@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Test moderate filters - verify signal reduction"""
 
-from scanners.scanner_walkforward import run_scan_as_of
-from core.pre_buy_check import pre_buy_check
+from src.scanning.scanner import run_scan_as_of
+from src.scanning.validator import pre_buy_check
 import pandas as pd
+
 
 test_date = "2024-01-15"
 

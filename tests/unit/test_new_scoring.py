@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Test the new Expected Value weighted scoring system"""
 
-from core.pre_buy_check import normalize_score, STRATEGY_METRICS
+from src.scanning.validator import normalize_score, STRATEGY_METRICS
+
 
 print("=" * 80)
 print("IMPROVED SCORING SYSTEM TEST")

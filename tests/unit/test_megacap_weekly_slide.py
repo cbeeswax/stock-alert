@@ -6,7 +6,7 @@ Run backtest from 2015-01-01 to latest on hard-coded mega-cap list
 import pandas as pd
 from datetime import datetime
 from backtester_walkforward import WalkForwardBacktester
-from config.trading_config import MEGACAP_WEEKLY_SLIDE_CFG
+from src.config.settings import MEGACAP_WEEKLY_SLIDE_CFG
 
 def main():
     print("=" * 80)

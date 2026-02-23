@@ -10,13 +10,13 @@ Scans for 3 active strategies:
 
 import pandas as pd
 from datetime import datetime
-from scanners.scanner_walkforward import run_scan_as_of
-from core.pre_buy_check import pre_buy_check
-from utils.email_utils import send_email_alert
-from utils.position_tracker import PositionTracker, filter_trades_by_position
-from utils.position_monitor import monitor_positions
-from utils.market_data import get_historical_data
-from config.trading_config import (
+from src.scanning.scanner import run_scan_as_of
+from src.scanning.validator import pre_buy_check
+from src.notifications.email import send_email_alert
+from src.position_management.tracker import PositionTracker, filter_trades_by_position
+from src.position_management.monitor import monitor_positions
+from src.data.market import get_historical_data
+from src.config.settings import (
     POSITION_MAX_TOTAL,
     POSITION_MAX_PER_STRATEGY,
     POSITION_RISK_PER_TRADE_PCT,

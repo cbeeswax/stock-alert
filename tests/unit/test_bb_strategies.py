@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Quick test to verify BB strategies are working"""
 
-from scanners.scanner_walkforward import run_scan_as_of
+from src.scanning.scanner import run_scan_as_of
 import pandas as pd
+
 
 # Test on a single date
 test_date = "2024-01-15"

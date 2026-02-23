@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Test BB strategies across multiple dates to find signals"""
 
-from scanners.scanner_walkforward import run_scan_as_of
+from src.scanning.scanner import run_scan_as_of
 import pandas as pd
+
 
 # Test across multiple dates (including volatile periods)
 test_dates = [

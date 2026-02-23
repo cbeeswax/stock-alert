@@ -5,8 +5,9 @@ import pandas as pd
 import yfinance as yf
 from pathlib import Path
 from datetime import datetime, timedelta
-from config.config import SP500_SOURCE
+from src.config.config import SP500_SOURCE
 import os
+
 
 # Raise file descriptor limit to avoid "Too many open files" with 500+ tickers
 try:
