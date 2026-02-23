@@ -284,19 +284,37 @@ Conclusion: 80%+ of profits come from pyramiding into winners
 Position trading uses weekly scans (Monday) instead of daily:
 
 ```bash
-# 1. Download latest data
+# 1. Run the scanner (auto-records approved trades)
 source venv/bin/activate
-python scanners/scanner_walkforward.py
+python main.py
 
-# 2. Review email alerts
-# - Check entry signals
-# - Verify position sizing
-# - Review quality scores
+# Output:
+# - Email with entry candidates
+# - ✅ Trades automatically recorded to position_tracker
+# - Stop loss & target levels calculated
+# - Position sizing instructions
+```
 
-# 3. Execute trades
-# - Buy specified number of shares
-# - Set stop loss alerts
-# - Update position tracker
+**What happens automatically:**
+- Scanner identifies trade-ready signals
+- Passes through MIN_NORM_SCORE filter (≥7.0)
+- Limited to MAX_TRADES_EMAIL (5 per scan)
+- **Auto-recorded to position_tracker with exact entry prices**
+- Next scan skips these tickers (prevents duplicate entries)
+
+### **Manual Position Management (Optional)**
+
+If you need to manually manage positions outside of `main.py`:
+
+```bash
+# List all open positions
+python manage_positions.py list
+
+# Remove a position (after you exit trade)
+python manage_positions.py remove AAPL
+
+# Clear all positions (careful!)
+python manage_positions.py clear
 ```
 
 ### **Daily (Position Monitoring)**

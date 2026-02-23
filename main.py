@@ -225,7 +225,38 @@ if __name__ == "__main__":
         print("   - Either no setups found or all slots filled\n")
 
     # --------------------------------------------------
-    # Step 6: Send Email Alert (only if there is something actionable)
+    # Step 6: Auto-Record Trades to Position Tracker
+    # --------------------------------------------------
+    if not trade_ready.empty:
+        print("="*80)
+        print("💾 Auto-Recording Trades to Position Tracker...")
+        print("="*80 + "\n")
+        
+        for _, trade in trade_ready.iterrows():
+            ticker = trade['Ticker']
+            entry_price = trade['Entry']
+            strategy = trade['Strategy']
+            stop_loss = trade['StopLoss']
+            target = trade['Target']
+            
+            success = position_tracker.add_position(
+                ticker=ticker,
+                entry_date=datetime.now(),
+                entry_price=entry_price,
+                strategy=strategy,
+                stop_loss=stop_loss,
+                target=target
+            )
+            
+            if success:
+                print(f"✅ {ticker} @ ${entry_price:.2f} ({strategy})")
+            else:
+                print(f"⚠️  {ticker} - already recorded or error")
+        
+        print()
+
+    # --------------------------------------------------
+    # Step 7: Send Email Alert (only if there is something actionable)
     # --------------------------------------------------
     has_new_trades = not trade_ready.empty
     has_action_signals = (
