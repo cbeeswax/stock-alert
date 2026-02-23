@@ -344,8 +344,10 @@ def send_email_alert(
 
     # Email credentials
     sender = os.getenv("EMAIL_SENDER")
-    receiver = os.getenv("EMAIL_RECEIVER")
     password = os.getenv("EMAIL_PASSWORD")
+    # Support comma-separated list of recipients
+    receiver_raw = os.getenv("EMAIL_RECEIVER", "")
+    receivers = [r.strip() for r in receiver_raw.split(",") if r.strip()]
 
     # Update subject if there are urgent actions
     subject = f"{subject_prefix} – {datetime.now().strftime('%Y-%m-%d')}"
@@ -358,13 +360,13 @@ def send_email_alert(
     msg = MIMEText(body_html, "html")
     msg["Subject"] = subject
     msg["From"] = sender
-    msg["To"] = receiver
+    msg["To"] = ", ".join(receivers)
 
     # Send email
     try:
         with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
             server.login(sender, password)
-            server.sendmail(sender, receiver, msg.as_string())
+            server.sendmail(sender, receivers, msg.as_string())
         print(f"✅ Email sent: {subject}")
     except Exception as e:
         print(f"❌ Failed to send email: {e}")
