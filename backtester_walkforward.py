@@ -301,9 +301,9 @@ class WalkForwardBacktester:
                         if position['strategy'] == "RelativeStrength_Ranker_Position":
                             self.rs_bought_tracker.add_pyramid(
                                 ticker=position['ticker'],
-                                pyramid_date=current_date.strftime('%Y-%m-%d'),
-                                pyramid_price=current_close,
-                                pyramid_amount=POSITION_PYRAMID_SIZE
+                                date=current_date.strftime('%Y-%m-%d'),
+                                price=current_close,
+                                size_pct=POSITION_PYRAMID_SIZE
                             )
 
                         # Display pyramid add
