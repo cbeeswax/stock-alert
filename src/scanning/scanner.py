@@ -372,7 +372,7 @@ def detect_liquidity_zone(df, cfg):
 # MAIN SCANNER FUNCTION
 # =============================================================================
 
-def run_scan_as_of(as_of_date, tickers):
+def run_scan_as_of(as_of_date, tickers, rs_bought_tracker=None):
     """
     Walk-forward scanner for long-term position strategies.
     Returns signals with priority ordering for deduplication.
@@ -396,8 +396,13 @@ def run_scan_as_of(as_of_date, tickers):
 
     signals = []
     
-    # Initialize RS Ranker bought tracker
-    rs_tracker = RSBoughtTracker()
+    # Initialize or use provided RS Ranker bought tracker
+    # If tracker passed from backtester, use it for persistent tracking across scans
+    # If called directly (live), create fresh tracker
+    if rs_bought_tracker is None:
+        rs_tracker = RSBoughtTracker()
+    else:
+        rs_tracker = rs_bought_tracker
     for ticker in tickers:
         df = get_historical_data(ticker)
         if df.empty:

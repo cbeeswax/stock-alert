@@ -793,8 +793,8 @@ class WalkForwardBacktester:
                         self.position_tracker.remove_position(ticker)
                         self.strategy_positions[strategy] = max(0, self.strategy_positions.get(strategy, 0) - 1)
 
-            # Run scanner for new entries
-            signals = run_scan_as_of(day, self.tickers)
+            # Run scanner for new entries (pass persistent tracker for backtest)
+            signals = run_scan_as_of(day, self.tickers, rs_bought_tracker=self.rs_bought_tracker)
 
             if signals:
                 # DEBUG: Log signal count
