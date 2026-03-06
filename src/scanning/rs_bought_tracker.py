@@ -65,24 +65,24 @@ class RSBoughtTracker:
     def add_bought(self, ticker: str, entry_date: str, entry_price: float) -> None:
         """
         Record a ticker as recommended for buy.
+        Handles both new entries and re-entries after cooldown.
 
         Args:
             ticker: Stock ticker symbol
             entry_date: Date recommended (YYYY-MM-DD)
             entry_price: Entry price
         """
-        if ticker not in self.bought_tickers:
-            self.bought_tickers[ticker] = {
-                "entry_date": entry_date,
-                "entry_price": entry_price,
-                "status": "bought",
-                "pyramids": [],
-                "exit_date": None,
-                "exit_price": None,
-                "exit_reason": None,
-                "profit_loss": None
-            }
-            self._save()
+        self.bought_tickers[ticker] = {
+            "entry_date": entry_date,
+            "entry_price": entry_price,
+            "status": "bought",
+            "pyramids": [],
+            "exit_date": None,
+            "exit_price": None,
+            "exit_reason": None,
+            "profit_loss": None
+        }
+        self._save()
 
     def add_pyramid(self, ticker: str, date: str, price: float, size_pct: float = 0.5) -> None:
         """
