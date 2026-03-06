@@ -234,6 +234,38 @@ SHORT_CFG_BULL = {}
 SHORT_CFG_SIDEWAYS = {}
 SHORT_CFG_BEAR = {}
 
+# Leader Pullback Short Config (for bull/sideways markets)
+LEADER_SHORT_CFG_BULL = {
+    "ENABLED": True,
+    "DEBUG_MODE": False,
+    "PARTIAL_R": 2.0,
+    "PARTIAL_SIZE": 0.5,
+    "TRAIL_EMA": None,
+    "TRAIL_DAYS": None,
+    "EARLY_EXIT_DAYS": 20,
+    "EARLY_EXIT_R_THRESHOLD": 0.0,
+    "MAX_DAYS": 40,
+    "MAX_POSITIONS": 10,
+    "RISK_PER_TRADE_PCT": 0.35,
+}
+
+# MegaCap Weekly Slide Config
+MEGACAP_WEEKLY_SLIDE_CFG = {
+    "ENABLED": False,
+    "DEBUG_MODE": False,
+    "SYMBOLS": ["MSFT", "ORCL", "META", "AAPL", "NVDA", "GOOGL", "AMZN", "AVGO", "ADBE", "CRM"],
+    "MIN_PRICE": 30,
+    "MIN_DOLLAR_VOLUME": 100_000_000,
+    "RISK_PER_TRADE_PCT": 0.5,
+    "MAX_POSITIONS": 2,
+    "ONE_PER_SYMBOL": True,
+    "COOLDOWN_DAYS": 10,
+    "PARTIAL_R": 2.0,
+    "PARTIAL_SIZE": 0.5,
+    "BREAKEVEN_AFTER_PARTIAL": True,
+    "MAX_DAYS": 50,
+}
+
 # =============================================================================
 # REGIME CLASSIFICATION
 # =============================================================================
