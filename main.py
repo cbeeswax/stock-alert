@@ -12,6 +12,7 @@ import pandas as pd
 from datetime import datetime
 from src.scanning.scanner import run_scan_as_of
 from src.scanning.validator import pre_buy_check
+from src.scanning.rs_bought_tracker import RSBoughtTracker
 from src.notifications.email import send_email_alert
 from src.position_management.tracker import PositionTracker, filter_trades_by_position
 from src.position_management.monitor import monitor_positions
@@ -27,6 +28,9 @@ from src.config.settings import (
 
 # Position tracker for live trading (persistent file)
 position_tracker = PositionTracker(mode="live", file="data/open_positions.json")
+
+# RS Ranker bought tracker for live trading (persistent file)
+rs_bought_tracker = RSBoughtTracker(file_path="data/rs_ranker_bought.json")
 
 
 def check_market_regime():
@@ -150,7 +154,7 @@ if __name__ == "__main__":
 
     # Run scanner as of today
     today = pd.Timestamp.today()
-    signals = run_scan_as_of(today, tickers)
+    signals = run_scan_as_of(today, tickers, rs_bought_tracker=rs_bought_tracker)
 
     print(f"\n✅ Scanner found {len(signals)} raw signals")
 

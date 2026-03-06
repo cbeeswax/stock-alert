@@ -289,6 +289,15 @@ class WalkForwardBacktester:
                         })
                         position['current_shares'] += add_shares
 
+                        # Record pyramid add to RS Ranker tracker (if applicable)
+                        if position['strategy'] == "RelativeStrength_Ranker_Position":
+                            self.rs_bought_tracker.add_pyramid(
+                                ticker=position['ticker'],
+                                pyramid_date=current_date.strftime('%Y-%m-%d'),
+                                pyramid_price=current_close,
+                                pyramid_amount=POSITION_PYRAMID_SIZE
+                            )
+
                         # Display pyramid add
                         print(f"   ➕ {current_date.date()} | PYRAMID {position['ticker']} @ ${current_close:.2f} (+{int(POSITION_PYRAMID_SIZE*100)}%) at {current_r:+.2f}R")
 
@@ -746,6 +755,16 @@ class WalkForwardBacktester:
             if strategy not in self.cooldown_tracker:
                 self.cooldown_tracker[strategy] = {}
             self.cooldown_tracker[strategy][ticker] = exit_date
+
+        # Record exit to RS Ranker tracker (if applicable)
+        if strategy == "RelativeStrength_Ranker_Position":
+            self.rs_bought_tracker.close_position(
+                ticker=ticker,
+                exit_date=exit_date.strftime('%Y-%m-%d'),
+                exit_price=exit_price,
+                exit_reason=exit_reason,
+                profit_loss=pnl
+            )
 
         return result
 
