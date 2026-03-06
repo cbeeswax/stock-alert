@@ -9,6 +9,7 @@ import time
 import pandas as pd
 from src.scanning.scanner import run_scan_as_of
 from src.scanning.validator import pre_buy_check
+from src.scanning.rs_bought_tracker import RSBoughtTracker
 from src.data.market import get_historical_data
 from src.position_management.tracker import PositionTracker, filter_trades_by_position
 from src.data.indicators import compute_rsi, compute_bollinger_bands, compute_percent_b
@@ -108,6 +109,10 @@ class WalkForwardBacktester:
 
         # Position tracker
         self.position_tracker = PositionTracker(mode="backtest")
+        
+        # RS Ranker bought tracker - Fresh for each backtest run
+        self.rs_bought_tracker = RSBoughtTracker()
+        self.rs_bought_tracker.clear_all()  # Start fresh for backtesting
 
         # Per-strategy position counters
         self.strategy_positions = {}
@@ -746,6 +751,9 @@ class WalkForwardBacktester:
 
     def run(self):
         """Run walk-forward backtest"""
+        # Ensure fresh tracker for this backtest run
+        self.rs_bought_tracker.clear_all()
+        
         end_date = pd.Timestamp.today()
         print(f"🚀 Position Trading Backtest: {self.start_date.date()} to {end_date.date()}")
         print(f"📅 Scan frequency: {self.scan_frequency}")

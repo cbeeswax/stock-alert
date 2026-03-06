@@ -16,10 +16,12 @@ STRATEGIES:
 
 import pandas as pd
 import numpy as np
+from datetime import datetime
 from src.data.market import get_historical_data
 from src.data.indicators import compute_rsi, compute_bollinger_bands, compute_percent_b
 from src.analysis.sectors import get_ticker_sector
 from src.analysis.regime import get_regime_label, get_regime_config, is_short_regime_ok
+from src.scanning.rs_bought_tracker import RSBoughtTracker
 from config.trading_config import (
     # Global settings
     POSITION_INITIAL_EQUITY,
@@ -393,10 +395,9 @@ def run_scan_as_of(as_of_date, tickers):
     is_bear_regime = check_regime_bearish(qqq_df, REGIME_BEAR_MA) if not qqq_df.empty else False
 
     signals = []
-
-    # -------------------------------------------------
-    # Scan each ticker for all strategies
-    # -------------------------------------------------
+    
+    # Initialize RS Ranker bought tracker
+    rs_tracker = RSBoughtTracker()
     for ticker in tickers:
         df = get_historical_data(ticker)
         if df.empty:
@@ -806,59 +807,72 @@ def run_scan_as_of(as_of_date, tickers):
         # =====================================================================
         if rs_6mo is not None and POSITION_MAX_PER_STRATEGY.get("RelativeStrength_Ranker_Position", 0) > 0:
             try:
-                # Check if ticker is in tech sectors
-                ticker_sector = get_ticker_sector(ticker)
-                is_tech = ticker_sector in RS_RANKER_SECTORS
+                # Check if already bought - skip duplicate BUY signals
+                if rs_tracker.is_bought(ticker):
+                    pass  # Skip, already in bought list (allow pyramid/exit alerts only)
+                elif not rs_tracker.can_buy_again(ticker, cooldown_days=30, as_of_date=as_of_date):
+                    pass  # Skip, in cooldown period after recent exit
+                else:
+                    # Check if ticker is in tech sectors
+                    ticker_sector = get_ticker_sector(ticker)
+                    is_tech = ticker_sector in RS_RANKER_SECTORS
 
-                if is_tech:
-                    # VOLATILITY FILTER (Skip overly volatile stocks prone to whipsaw)
-                    daily_returns = close.pct_change()
-                    volatility_20d = daily_returns.rolling(20).std().iloc[-1] if len(daily_returns) >= 20 else 0
-                    if volatility_20d > 0.04:  # More than 4% daily volatility
-                        continue  # Too volatile, skip
+                    if is_tech:
+                        # VOLATILITY FILTER (Skip overly volatile stocks prone to whipsaw)
+                        daily_returns = close.pct_change()
+                        volatility_20d = daily_returns.rolling(20).std().iloc[-1] if len(daily_returns) >= 20 else 0
+                        if volatility_20d > 0.04:  # More than 4% daily volatility
+                            continue  # Too volatile, skip
 
-                    # MULTI-MONTH TREND FILTERS
-                    # Stacked MAs: Price > 50 > 100 > 200
-                    stacked_mas = (last_close > ma50.iloc[-1] and
-                                   ma50.iloc[-1] > ma100.iloc[-1] and
-                                   ma100.iloc[-1] > ma200.iloc[-1])
+                        # MULTI-MONTH TREND FILTERS
+                        # Stacked MAs: Price > 50 > 100 > 200
+                        stacked_mas = (last_close > ma50.iloc[-1] and
+                                       ma50.iloc[-1] > ma100.iloc[-1] and
+                                       ma100.iloc[-1] > ma200.iloc[-1])
 
-                    # UNIVERSAL FILTERS (STRONGER)
-                    strong_rs = rs_6mo >= UNIVERSAL_RS_MIN  # 30% minimum
+                        # UNIVERSAL FILTERS (STRONGER)
+                        strong_rs = rs_6mo >= UNIVERSAL_RS_MIN  # 30% minimum
 
-                    # Trigger options:
-                    # Option A: New 3-month high
-                    high_3mo = high.rolling(63).max().iloc[-1] if len(high) >= 63 else 0
-                    is_3mo_high = last_close >= high_3mo * 0.995
+                        # Trigger options:
+                        # Option A: New 3-month high
+                        high_3mo = high.rolling(63).max().iloc[-1] if len(high) >= 63 else 0
+                        is_3mo_high = last_close >= high_3mo * 0.995
 
-                    # Option B: Pullback to 21-EMA then close above
-                    near_ema21 = abs(last_close - ema21.iloc[-1]) / ema21.iloc[-1] < 0.02  # Within 2%
-                    if len(high) >= 2:
-                        close_above_prior = last_close > high.iloc[-2]
-                    else:
-                        close_above_prior = False
-                    pullback_breakout = near_ema21 and close_above_prior
+                        # Option B: Pullback to 21-EMA then close above
+                        near_ema21 = abs(last_close - ema21.iloc[-1]) / ema21.iloc[-1] < 0.02  # Within 2%
+                        if len(high) >= 2:
+                            close_above_prior = last_close > high.iloc[-2]
+                        else:
+                            close_above_prior = False
+                        pullback_breakout = near_ema21 and close_above_prior
 
-                    if all([stacked_mas, strong_rs,
-                           (is_3mo_high or pullback_breakout), strong_adx]):
-                        # Stop
-                        stop_price = last_close - (RS_RANKER_STOP_ATR_MULT * atr20.iloc[-1])
+                        if all([stacked_mas, strong_rs,
+                               (is_3mo_high or pullback_breakout), strong_adx]):
+                            # Stop
+                            stop_price = last_close - (RS_RANKER_STOP_ATR_MULT * atr20.iloc[-1])
 
-                        # Quality score (high for top RS)
-                        score = min((rs_6mo / RS_RANKER_RS_THRESHOLD) * 100, 100)
+                            # Quality score (high for top RS)
+                            score = min((rs_6mo / RS_RANKER_RS_THRESHOLD) * 100, 100)
 
-                        signals.append({
-                            "Ticker": ticker,
-                            "Strategy": "RelativeStrength_Ranker_Position",
-                            "Priority": STRATEGY_PRIORITY["RelativeStrength_Ranker_Position"],
-                            "Price": round(last_close, 2),
-                            "StopPrice": round(stop_price, 2),
-                            "ATR20": round(atr20.iloc[-1], 2),
-                            "RS_6mo": round(rs_6mo * 100, 2),
-                            "Score": round(score, 2),
-                            "AsOfDate": as_of_date,
-                            "MaxDays": RS_RANKER_MAX_DAYS,
-                        })
+                            signals.append({
+                                "Ticker": ticker,
+                                "Strategy": "RelativeStrength_Ranker_Position",
+                                "Priority": STRATEGY_PRIORITY["RelativeStrength_Ranker_Position"],
+                                "Price": round(last_close, 2),
+                                "StopPrice": round(stop_price, 2),
+                                "ATR20": round(atr20.iloc[-1], 2),
+                                "RS_6mo": round(rs_6mo * 100, 2),
+                                "Score": round(score, 2),
+                                "AsOfDate": as_of_date,
+                                "MaxDays": RS_RANKER_MAX_DAYS,
+                            })
+                            
+                            # Record this ticker as recommended
+                            rs_tracker.add_bought(
+                                ticker,
+                                entry_date=str(as_of_date.date()),
+                                entry_price=round(last_close, 2)
+                            )
             except Exception:
                 pass
 
