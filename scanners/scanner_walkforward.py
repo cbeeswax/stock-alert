@@ -16,11 +16,11 @@ STRATEGIES:
 
 import pandas as pd
 import numpy as np
-from utils.market_data import get_historical_data
-from utils.ema_utils import compute_rsi, compute_bollinger_bands, compute_percent_b
-from utils.sector_utils import get_ticker_sector
-from utils.regime_classifier import get_regime_label, get_regime_config, is_short_regime_ok
-from config.trading_config import (
+from src.data.market import get_historical_data
+from src.data.indicators import compute_rsi, compute_bollinger_bands, compute_percent_b
+from src.analysis.sectors import get_ticker_sector
+from src.analysis.regime import get_regime_label, get_regime_config, is_short_regime_ok
+from src.config.settings import (
     # Global settings
     POSITION_INITIAL_EQUITY,
     POSITION_RISK_PER_TRADE_PCT,

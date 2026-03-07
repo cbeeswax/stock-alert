@@ -11,7 +11,7 @@ Usage:
 import pandas as pd
 from datetime import datetime
 from backtester_walkforward import WalkForwardBacktester
-from config.trading_config import (
+from src.config.settings import (
     BACKTEST_START_DATE,
     BACKTEST_SCAN_FREQUENCY,
     POSITION_INITIAL_EQUITY,

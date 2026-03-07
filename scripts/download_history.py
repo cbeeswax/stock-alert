@@ -1,21 +1,23 @@
 import time
 import gc
-import resource
+import sys
 import pandas as pd
 import yfinance as yf
 from pathlib import Path
 from datetime import datetime, timedelta
-from config.config import SP500_SOURCE
+from src.config.config import SP500_SOURCE
 import os
 
-# Raise file descriptor limit to avoid "Too many open files" with 500+ tickers
-try:
-    soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
-    target = min(8192, hard)
-    if soft < target:
-        resource.setrlimit(resource.RLIMIT_NOFILE, (target, hard))
-except Exception:
-    pass
+# Raise file descriptor limit to avoid "Too many open files" with 500+ tickers (Unix/Linux only)
+if sys.platform != "win32":
+    import resource
+    try:
+        soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+        target = min(8192, hard)
+        if soft < target:
+            resource.setrlimit(resource.RLIMIT_NOFILE, (target, hard))
+    except Exception:
+        pass
 
 # ----------------------------
 # Folders and settings

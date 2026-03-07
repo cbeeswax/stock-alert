@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Diagnose which strategies are generating the most signals"""
 
-from scanners.scanner_walkforward import run_scan_as_of
-from core.pre_buy_check import pre_buy_check
+from src.scanning.scanner import run_scan_as_of
+from src.scanning.validator import pre_buy_check
 import pandas as pd
+
 
 # Test a recent date
 test_date = "2024-01-15"

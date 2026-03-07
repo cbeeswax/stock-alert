@@ -4,17 +4,26 @@ Long-Term Position Trading Backtester
 Walk-forward backtester for 8 position strategies (60-120 day holds).
 Features: Strategy-specific exits, pyramiding, per-strategy position limits.
 """
+# -*- coding: utf-8 -*-
+
+import sys
+import io
+# Fix encoding on Windows
+if sys.platform == "win32":
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
 
 import time
 import pandas as pd
-from scanners.scanner_walkforward import run_scan_as_of
-from core.pre_buy_check import pre_buy_check
-from utils.market_data import get_historical_data
-from utils.position_tracker import PositionTracker, filter_trades_by_position
-from utils.ema_utils import compute_rsi, compute_bollinger_bands, compute_percent_b
-from utils.regime_classifier import get_regime_config
+from src.scanning.scanner import run_scan_as_of
+from src.scanning.validator import pre_buy_check
+from src.scanning.rs_bought_tracker import RSBoughtTracker
+from src.data.market import get_historical_data
+from src.position_management.tracker import PositionTracker, filter_trades_by_position
+from src.data.indicators import compute_rsi, compute_bollinger_bands, compute_percent_b
+from src.analysis.regime import get_regime_config
 from scripts.download_history import download_ticker, was_update_session_today, mark_update_session
-from config.trading_config import (
+from src.config.settings import (
     # Position trading settings
     POSITION_RISK_PER_TRADE_PCT,
     POSITION_MAX_PER_STRATEGY,
@@ -108,6 +117,10 @@ class WalkForwardBacktester:
 
         # Position tracker
         self.position_tracker = PositionTracker(mode="backtest")
+        
+        # RS Ranker bought tracker - Fresh for each backtest run
+        self.rs_bought_tracker = RSBoughtTracker()
+        self.rs_bought_tracker.clear_all()  # Start fresh for backtesting
 
         # Per-strategy position counters
         self.strategy_positions = {}
@@ -283,6 +296,15 @@ class WalkForwardBacktester:
                             'r_at_add': current_r
                         })
                         position['current_shares'] += add_shares
+
+                        # Record pyramid add to RS Ranker tracker (if applicable)
+                        if position['strategy'] == "RelativeStrength_Ranker_Position":
+                            self.rs_bought_tracker.add_pyramid(
+                                ticker=position['ticker'],
+                                date=current_date.strftime('%Y-%m-%d'),
+                                price=current_close,
+                                size_pct=POSITION_PYRAMID_SIZE
+                            )
 
                         # Display pyramid add
                         print(f"   ➕ {current_date.date()} | PYRAMID {position['ticker']} @ ${current_close:.2f} (+{int(POSITION_PYRAMID_SIZE*100)}%) at {current_r:+.2f}R")
@@ -742,10 +764,23 @@ class WalkForwardBacktester:
                 self.cooldown_tracker[strategy] = {}
             self.cooldown_tracker[strategy][ticker] = exit_date
 
+        # Record exit to RS Ranker tracker (if applicable)
+        if strategy == "RelativeStrength_Ranker_Position":
+            self.rs_bought_tracker.close_position(
+                ticker=ticker,
+                exit_date=exit_date.strftime('%Y-%m-%d'),
+                exit_price=exit_price,
+                exit_reason=exit_reason,
+                profit_loss=pnl
+            )
+
         return result
 
     def run(self):
         """Run walk-forward backtest"""
+        # Ensure fresh tracker for this backtest run
+        self.rs_bought_tracker.clear_all()
+        
         end_date = pd.Timestamp.today()
         print(f"🚀 Position Trading Backtest: {self.start_date.date()} to {end_date.date()}")
         print(f"📅 Scan frequency: {self.scan_frequency}")
@@ -785,8 +820,8 @@ class WalkForwardBacktester:
                         self.position_tracker.remove_position(ticker)
                         self.strategy_positions[strategy] = max(0, self.strategy_positions.get(strategy, 0) - 1)
 
-            # Run scanner for new entries
-            signals = run_scan_as_of(day, self.tickers)
+            # Run scanner for new entries (pass persistent tracker for backtest)
+            signals = run_scan_as_of(day, self.tickers, rs_bought_tracker=self.rs_bought_tracker)
 
             if signals:
                 # DEBUG: Log signal count

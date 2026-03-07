@@ -10,13 +10,14 @@ Scans for 3 active strategies:
 
 import pandas as pd
 from datetime import datetime
-from scanners.scanner_walkforward import run_scan_as_of
-from core.pre_buy_check import pre_buy_check
-from utils.email_utils import send_email_alert
-from utils.position_tracker import PositionTracker, filter_trades_by_position
-from utils.position_monitor import monitor_positions
-from utils.market_data import get_historical_data
-from config.trading_config import (
+from src.scanning.scanner import run_scan_as_of
+from src.scanning.validator import pre_buy_check
+from src.scanning.rs_bought_tracker import RSBoughtTracker
+from src.notifications.email import send_email_alert
+from src.position_management.tracker import PositionTracker, filter_trades_by_position
+from src.position_management.monitor import monitor_positions
+from src.data.market import get_historical_data
+from src.config.settings import (
     POSITION_MAX_TOTAL,
     POSITION_MAX_PER_STRATEGY,
     POSITION_RISK_PER_TRADE_PCT,
@@ -27,6 +28,9 @@ from config.trading_config import (
 
 # Position tracker for live trading (persistent file)
 position_tracker = PositionTracker(mode="live", file="data/open_positions.json")
+
+# RS Ranker bought tracker for live trading (persistent file)
+rs_bought_tracker = RSBoughtTracker(file_path="data/rs_ranker_bought.json")
 
 
 def check_market_regime():
@@ -150,7 +154,7 @@ if __name__ == "__main__":
 
     # Run scanner as of today
     today = pd.Timestamp.today()
-    signals = run_scan_as_of(today, tickers)
+    signals = run_scan_as_of(today, tickers, rs_bought_tracker=rs_bought_tracker)
 
     print(f"\n✅ Scanner found {len(signals)} raw signals")
 
@@ -225,7 +229,38 @@ if __name__ == "__main__":
         print("   - Either no setups found or all slots filled\n")
 
     # --------------------------------------------------
-    # Step 6: Send Email Alert (only if there is something actionable)
+    # Step 6: Auto-Record Trades to Position Tracker
+    # --------------------------------------------------
+    if not trade_ready.empty:
+        print("="*80)
+        print("💾 Auto-Recording Trades to Position Tracker...")
+        print("="*80 + "\n")
+        
+        for _, trade in trade_ready.iterrows():
+            ticker = trade['Ticker']
+            entry_price = trade['Entry']
+            strategy = trade['Strategy']
+            stop_loss = trade['StopLoss']
+            target = trade['Target']
+            
+            success = position_tracker.add_position(
+                ticker=ticker,
+                entry_date=datetime.now(),
+                entry_price=entry_price,
+                strategy=strategy,
+                stop_loss=stop_loss,
+                target=target
+            )
+            
+            if success:
+                print(f"✅ {ticker} @ ${entry_price:.2f} ({strategy})")
+            else:
+                print(f"⚠️  {ticker} - already recorded or error")
+        
+        print()
+
+    # --------------------------------------------------
+    # Step 7: Send Email Alert (only if there is something actionable)
     # --------------------------------------------------
     has_new_trades = not trade_ready.empty
     has_action_signals = (

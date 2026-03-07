@@ -2,9 +2,10 @@
 Quick test script for TechMomentum_Swing_30_60 strategy
 """
 import pandas as pd
-from scanners.scanner_walkforward import run_scan_as_of
-from utils.sector_utils import get_tickers_by_sector
-from config.trading_config import TECHMOMENTUM_SECTORS
+from src.scanning.scanner import run_scan_as_of
+from src.analysis.sectors import get_tickers_by_sector
+from src.config.settings import TECHMOMENTUM_SECTORS
+
 
 # Get tech/comm tickers
 tech_tickers = get_tickers_by_sector(TECHMOMENTUM_SECTORS)
