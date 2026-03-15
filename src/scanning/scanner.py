@@ -418,6 +418,14 @@ def run_scan_as_of(as_of_date, tickers, rs_bought_tracker=None):
         if df.empty:
             continue
 
+        # Ensure index is datetime (safety check for string indices)
+        if not isinstance(df.index, pd.DatetimeIndex):
+            try:
+                df.index = pd.to_datetime(df.index, format='%Y-%m-%d', errors='coerce')
+                df = df[df.index.notna()]
+            except:
+                continue
+
         # Cut future data
         df = df[df.index <= as_of_date]
 
@@ -1570,6 +1578,15 @@ def run_scan_as_of(as_of_date, tickers, rs_bought_tracker=None):
     xle_df = get_historical_data("XLE")  # Energy
     xlb_df = get_historical_data("XLB")  # Materials
     xly_df = get_historical_data("XLY")  # Consumer Discretionary
+    
+    # Ensure all sector ETF indices are datetime
+    for etf_df in [xli_df, xlv_df, xle_df, xlb_df, xly_df]:
+        if not etf_df.empty and not isinstance(etf_df.index, pd.DatetimeIndex):
+            try:
+                etf_df.index = pd.to_datetime(etf_df.index, format='%Y-%m-%d', errors='coerce')
+                etf_df = etf_df[etf_df.index.notna()]
+            except:
+                pass
     
     if not xli_df.empty:
         xli_df = xli_df[xli_df.index <= as_of_date]
