@@ -1,1 +1,52 @@
-{}
+{
+  "ON": {
+    "entry_date": "2022-01-12",
+    "entry_price": 66.49,
+    "status": "closed",
+    "pyramids": [],
+    "exit_date": "2022-01-24",
+    "exit_price": 53.87,
+    "exit_reason": "StopLoss",
+    "profit_loss": -1993.9599999999996
+  },
+  "LYV": {
+    "entry_date": "2022-01-18",
+    "entry_price": 115.21,
+    "status": "closed",
+    "pyramids": [],
+    "exit_date": "2022-04-29",
+    "exit_price": 104.87999725341795,
+    "exit_reason": "MA100_Trail_Late",
+    "profit_loss": -1074.3202856445337
+  },
+  "HPQ": {
+    "entry_date": "2022-02-01",
+    "entry_price": 32.44,
+    "status": "bought",
+    "pyramids": [],
+    "exit_date": null,
+    "exit_price": null,
+    "exit_reason": null,
+    "profit_loss": null
+  },
+  "HPE": {
+    "entry_date": "2022-03-11",
+    "entry_price": 14.85,
+    "status": "bought",
+    "pyramids": [],
+    "exit_date": null,
+    "exit_price": null,
+    "exit_reason": null,
+    "profit_loss": null
+  },
+  "AVGO": {
+    "entry_date": "2022-03-15",
+    "entry_price": 54.91,
+    "status": "bought",
+    "pyramids": [],
+    "exit_date": null,
+    "exit_price": null,
+    "exit_reason": null,
+    "profit_loss": null
+  }
+}
