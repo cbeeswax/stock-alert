@@ -206,11 +206,15 @@ class WalkForwardBacktester:
         max_days = trade.get("MaxDays", POSITION_MAX_DAYS_LONG)
         regime = trade.get("Regime", None)  # Track regime for SHORT positions
 
-        # Position sizing (use strategy-specific risk %)
+        # Position sizing (use strategy-specific or regime-based risk %)
         risk_pct = None  # Default: use POSITION_RISK_PER_TRADE_PCT (2.0%)
 
+        # RS_Ranker uses regime-based risk
+        if strategy == "RelativeStrength_Ranker_Position":
+            risk_pct = self.regime_params.get('risk_per_trade_pct', POSITION_RISK_PER_TRADE_PCT)
+        
         # Weak-RS shorts use 1.5% risk
-        if strategy == "ShortWeakRS_Retrace_Position":
+        elif strategy == "ShortWeakRS_Retrace_Position":
             risk_pct = SHORT_RISK_PER_TRADE_PCT  # 1.5%
 
         # Leader Pullback Shorts use smaller size (0.5% risk)
@@ -242,6 +246,7 @@ class WalkForwardBacktester:
             'pyramid_adds': [],
             'closes_below_trail': 0,
             'regime': regime,  # Track market regime for regime-based strategies
+            'rs_partial_stage': 0,  # Track dual-stage partial exit progress for RS_Ranker
         }
 
         self.open_positions.append(position)
@@ -368,10 +373,21 @@ class WalkForwardBacktester:
                         partial_size = TREND_CONT_PARTIAL_SIZE
 
                 elif strategy == "RelativeStrength_Ranker_Position":
-                    if current_r >= RS_RANKER_PARTIAL_R:
-                        should_partial = True
-                        partial_trigger = f"{RS_RANKER_PARTIAL_R}R"
-                        partial_size = RS_RANKER_PARTIAL_SIZE
+                    # DUAL-STAGE PARTIALS: Exit 40% @ 2.5R, then 30% @ 4.0R
+                    if not position.get('partial_exited'):
+                        # First partial: Exit 40% @ 2.5R
+                        if current_r >= 2.5:
+                            should_partial = True
+                            partial_trigger = "2.5R_Stage1"
+                            partial_size = 0.40  # Exit 40%
+                            position['rs_partial_stage'] = 1
+                    elif position.get('rs_partial_stage') == 1:
+                        # Second partial: Exit 30% @ 4.0R (from remaining 60%)
+                        if current_r >= 4.0:
+                            should_partial = True
+                            partial_trigger = "4.0R_Stage2"
+                            partial_size = 0.30 / 0.60  # 30% of original = 50% of remaining
+                            position['rs_partial_stage'] = 2
 
                 elif strategy == "ShortWeakRS_Retrace_Position":
                     # Use regime-specific config for partial exits
