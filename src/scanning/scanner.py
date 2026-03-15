@@ -1560,4 +1560,71 @@ def run_scan_as_of(as_of_date, tickers, rs_bought_tracker=None):
                     print(f"❌ ERROR in MegaCap_WeeklySlide_Short for {ticker}: {e}")
                 continue
 
+    # =========================================================================
+    # Phase 2-3: SECTOR-BASED STRATEGIES
+    # =========================================================================
+    
+    # Load sector ETF data for all sector strategies
+    xli_df = get_historical_data("XLI")  # Industrials
+    xlv_df = get_historical_data("XLV")  # Healthcare
+    xle_df = get_historical_data("XLE")  # Energy
+    xlb_df = get_historical_data("XLB")  # Materials
+    xly_df = get_historical_data("XLY")  # Consumer Discretionary
+    
+    if not xli_df.empty:
+        xli_df = xli_df[xli_df.index <= as_of_date]
+    if not xlv_df.empty:
+        xlv_df = xlv_df[xlv_df.index <= as_of_date]
+    if not xle_df.empty:
+        xle_df = xle_df[xle_df.index <= as_of_date]
+    if not xlb_df.empty:
+        xlb_df = xlb_df[xlb_df.index <= as_of_date]
+    if not xly_df.empty:
+        xly_df = xly_df[xly_df.index <= as_of_date]
+    
+    # Industrials Ranker
+    if POSITION_MAX_PER_STRATEGY.get("Industrials_Ranker_Position", 0) > 0 and not xli_df.empty:
+        try:
+            from src.strategies.industrials_ranker import scan_industrials
+            ind_signals = scan_industrials(tickers, as_of_date, xli_df, adx_threshold)
+            signals.extend(ind_signals)
+        except Exception as e:
+            pass  # Silently skip if module not available
+    
+    # Healthcare Ranker
+    if POSITION_MAX_PER_STRATEGY.get("Healthcare_Ranker_Position", 0) > 0 and not xlv_df.empty:
+        try:
+            from src.strategies.healthcare_ranker import scan_healthcare
+            hc_signals = scan_healthcare(tickers, as_of_date, xlv_df, adx_threshold)
+            signals.extend(hc_signals)
+        except Exception as e:
+            pass
+    
+    # Energy Ranker
+    if POSITION_MAX_PER_STRATEGY.get("Energy_Ranker_Position", 0) > 0 and not xle_df.empty:
+        try:
+            from src.strategies.energy_ranker import scan_energy
+            energy_signals = scan_energy(tickers, as_of_date, xle_df, adx_threshold)
+            signals.extend(energy_signals)
+        except Exception as e:
+            pass
+    
+    # Materials Ranker
+    if POSITION_MAX_PER_STRATEGY.get("Materials_Ranker_Position", 0) > 0 and not xlb_df.empty:
+        try:
+            from src.strategies.materials_ranker import scan_materials
+            mat_signals = scan_materials(tickers, as_of_date, xlb_df, adx_threshold)
+            signals.extend(mat_signals)
+        except Exception as e:
+            pass
+    
+    # Consumer Discretionary Ranker
+    if POSITION_MAX_PER_STRATEGY.get("ConsumerDisc_Ranker_Position", 0) > 0 and not xly_df.empty:
+        try:
+            from src.strategies.consumer_disc_ranker import scan_consumer_disc
+            cd_signals = scan_consumer_disc(tickers, as_of_date, xly_df, adx_threshold)
+            signals.extend(cd_signals)
+        except Exception as e:
+            pass
+
     return signals
