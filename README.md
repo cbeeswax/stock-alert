@@ -2,7 +2,7 @@
 
 A comprehensive Python-based position trading system for identifying and managing long-term stock trades. Uses quantitative analysis of 3+ strategies to scan S&P 500 stocks and monitor positions with strict risk management.
 
-**Performance**: 493.7% total return on backtests (2022-2026), ~48.8% annualized, 48.5% win rate
+**Performance**: $204.5K total return on backtests (2022-2026), RelativeStrength_Ranker_Position only, 48.5% win rate, 2.52R average
 
 ## Features
 
