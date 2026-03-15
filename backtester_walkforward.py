@@ -22,6 +22,7 @@ from src.data.market import get_historical_data
 from src.position_management.tracker import PositionTracker, filter_trades_by_position
 from src.data.indicators import compute_rsi, compute_bollinger_bands, compute_percent_b
 from src.analysis.regime import get_regime_config
+from src.analysis.market_regime import get_position_regime, PositionRegime, get_regime_params
 from scripts.download_history import download_ticker, was_update_session_today, mark_update_session
 from src.config.settings import (
     # Position trading settings
@@ -134,6 +135,24 @@ class WalkForwardBacktester:
         # Cooldown tracker for strategies that need symbol-level cooldowns
         # Structure: {strategy: {ticker: exit_date}}
         self.cooldown_tracker = {}
+        
+        # Current market regime (RiskOn/Neutral/RiskOff)
+        self.current_position_regime = PositionRegime.NEUTRAL  # Default to neutral
+        self.regime_params = get_regime_params(PositionRegime.NEUTRAL)
+
+    def _update_market_regime(self, as_of_date):
+        """
+        Update market regime based on QQQ price and moving averages.
+        
+        Args:
+            as_of_date: Date to classify regime for
+        """
+        try:
+            self.current_position_regime = get_position_regime(as_of_date=as_of_date, index_symbol="QQQ")
+            self.regime_params = get_regime_params(self.current_position_regime)
+        except Exception as e:
+            # If regime detection fails, stay with previous regime
+            print(f"⚠️  Failed to update regime on {as_of_date}: {e}")
 
     def _calculate_atr(self, df, period=14):
         """Calculate ATR"""
@@ -797,13 +816,17 @@ class WalkForwardBacktester:
         print(f"\n🔍 Total scan dates: {len(scan_dates)}\n")
 
         for idx, day in enumerate(scan_dates, 1):
+            # Update market regime at each scan date
+            self._update_market_regime(day)
+            regime_emoji = "🟢" if self.current_position_regime == PositionRegime.RISK_ON else "🟡" if self.current_position_regime == PositionRegime.NEUTRAL else "🔴"
+            
             # Progress indicator
             if idx % 10 == 0:
                 open_tickers = self.position_tracker.get_open_tickers()
                 tickers_display = ", ".join(open_tickers[:5]) if open_tickers else "None"
                 if len(open_tickers) > 5:
                     tickers_display += f" +{len(open_tickers)-5} more"
-                print(f"📅 {day.date()} | Progress: {idx}/{len(scan_dates)} | Open: {len(open_tickers)} [{tickers_display}]")
+                print(f"📅 {day.date()} {regime_emoji} | Progress: {idx}/{len(scan_dates)} | Open: {len(open_tickers)} [{tickers_display}]")
 
             # Check open positions for exits EVERY day
             closed_today = self._check_open_positions(day)
@@ -849,9 +872,19 @@ class WalkForwardBacktester:
                         print(f"   ❌ {day.date()} | All SHORT signals filtered by filter_trades_by_position")
 
                     if not validated.empty:
+                        # Check if new entries are allowed in current regime
+                        allow_new_entries = self.regime_params.get('allow_new_entries', True)
+                        if not allow_new_entries:
+                            if idx % 10 == 0:
+                                print(f"   🔴 {day.date()} | RISK_OFF regime: No new entries allowed")
+                        
                         # Take trades respecting limits
                         for _, trade in validated.iterrows():
                             strategy = trade["Strategy"]
+
+                            # Check if new entries allowed in current regime
+                            if not allow_new_entries:
+                                continue  # Skip all new entries in RISK_OFF
 
                             # Check global position limit
                             if len(self.position_tracker.positions) >= POSITION_MAX_TOTAL:
