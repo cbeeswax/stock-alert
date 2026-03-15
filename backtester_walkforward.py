@@ -601,14 +601,23 @@ class WalkForwardBacktester:
 
         elif strategy == "RelativeStrength_Ranker_Position":
             # RS_Ranker: HYBRID TRAIL - EMA21 early (protect), MA100 late (let run)
+            # PROFIT-GATED: Skip EMA21 trail until +0.75R profit reached
+            profit_gate_threshold = 0.75  # Don't use EMA21 until +0.75R
+            
             if days_held <= 60:
-                # First 60 days: Tight EMA21 trail (cut losers fast)
+                # First 60 days: Tight EMA21 trail (cut losers fast) - BUT ONLY AFTER +0.75R
                 if ema21 and pd.notna(ema21):
-                    if current_close < ema21:
-                        position['closes_below_trail'] += 1
-                        if position['closes_below_trail'] >= 5:
-                            return self._close_position(position, current_date, current_close, "EMA21_Trail_Early", current_r)
+                    # Check if we should apply EMA21 exit
+                    if current_r >= profit_gate_threshold:
+                        # Profit-gated: Use EMA21 trail
+                        if current_close < ema21:
+                            position['closes_below_trail'] += 1
+                            if position['closes_below_trail'] >= 5:
+                                return self._close_position(position, current_date, current_close, "EMA21_Trail_Early", current_r)
+                        else:
+                            position['closes_below_trail'] = 0
                     else:
+                        # Before +0.75R: Ignore EMA21, only stop loss applies
                         position['closes_below_trail'] = 0
             else:
                 # After 60 days: Loose MA100 trail (let winners run to time stop)

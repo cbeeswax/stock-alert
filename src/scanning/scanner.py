@@ -21,6 +21,7 @@ from src.data.market import get_historical_data
 from src.data.indicators import compute_rsi, compute_bollinger_bands, compute_percent_b
 from src.analysis.sectors import get_ticker_sector
 from src.analysis.regime import get_regime_label, get_regime_config, is_short_regime_ok
+from src.analysis.market_regime import get_position_regime, get_regime_params
 from src.scanning.rs_bought_tracker import RSBoughtTracker
 from config.trading_config import (
     # Global settings
@@ -393,6 +394,15 @@ def run_scan_as_of(as_of_date, tickers, rs_bought_tracker=None):
     qqq_ma_rising = check_ma_rising(qqq_df, UNIVERSAL_QQQ_BULL_MA, UNIVERSAL_QQQ_MA_RISING_DAYS) if not qqq_df.empty else False
     is_bull_regime = qqq_bull_basic and qqq_ma_rising
     is_bear_regime = check_regime_bearish(qqq_df, REGIME_BEAR_MA) if not qqq_df.empty else False
+    
+    # Detect position regime for ADX threshold adjustment
+    try:
+        position_regime = get_position_regime(as_of_date=as_of_date, index_symbol="QQQ")
+        regime_params = get_regime_params(position_regime)
+        adx_threshold = regime_params.get('adx_threshold', UNIVERSAL_ADX_MIN)
+    except Exception:
+        # Fallback to default if regime detection fails
+        adx_threshold = UNIVERSAL_ADX_MIN
 
     signals = []
     
@@ -454,7 +464,7 @@ def run_scan_as_of(as_of_date, tickers, rs_bought_tracker=None):
 
         # Universal filters (pre-calculate for all strategies)
         all_mas_rising = check_all_mas_rising(df, UNIVERSAL_QQQ_MA_RISING_DAYS) if UNIVERSAL_ALL_MAS_RISING else True
-        strong_adx = adx14.iloc[-1] >= UNIVERSAL_ADX_MIN if not pd.isna(adx14.iloc[-1]) else False
+        strong_adx = adx14.iloc[-1] >= adx_threshold if not pd.isna(adx14.iloc[-1]) else False
 
         # =====================================================================
         # STRATEGY 1: EMA_CROSSOVER_POSITION
