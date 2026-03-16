@@ -1024,10 +1024,15 @@ class WalkForwardBacktester:
 
                 # Use the last available date (not necessarily end_date)
                 final_date = df.index[-1]
+                if not isinstance(final_date, pd.Timestamp):
+                    final_date = pd.Timestamp(final_date)
                 final_price = df['Close'].iloc[-1]
 
                 # Update position's days_held to final date
-                days_from_entry = (final_date - position['entry_date']).days
+                entry_date = position['entry_date']
+                if not isinstance(entry_date, pd.Timestamp):
+                    entry_date = pd.Timestamp(entry_date)
+                days_from_entry = (final_date - entry_date).days
                 position['days_held'] = days_from_entry
 
                 # Calculate final R-multiple

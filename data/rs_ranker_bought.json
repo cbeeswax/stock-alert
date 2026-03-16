@@ -1,62 +1,52 @@
 {
-  "ON": {
-    "entry_date": "2022-01-12",
-    "entry_price": 66.49,
+  "GDDY": {
+    "entry_date": "2026-03-02",
+    "entry_price": 139.28,
     "status": "closed",
     "pyramids": [],
-    "exit_date": "2022-01-24",
-    "exit_price": 53.87,
+    "exit_date": "2026-03-09",
+    "exit_price": 126.63,
     "exit_reason": "StopLoss",
-    "profit_loss": -1993.9599999999996
+    "profit_loss": -1998.700000000001
   },
-  "LYV": {
-    "entry_date": "2022-01-18",
-    "entry_price": 115.21,
+  "WBD": {
+    "entry_date": "2026-03-02",
+    "entry_price": 28.5,
     "status": "closed",
     "pyramids": [],
-    "exit_date": "2022-04-29",
-    "exit_price": 104.87999725341795,
-    "exit_reason": "MA100_Trail_Late",
-    "profit_loss": -1074.3202856445337
+    "exit_date": "2026-03-13",
+    "exit_price": 27.13999938964844,
+    "exit_reason": "EndOfBacktest",
+    "profit_loss": -1252.5605621337859
   },
-  "HPQ": {
-    "entry_date": "2022-02-01",
-    "entry_price": 32.44,
-    "status": "bought",
-    "pyramids": [],
-    "exit_date": null,
-    "exit_price": null,
-    "exit_reason": null,
-    "profit_loss": null
-  },
-  "HPE": {
-    "entry_date": "2022-03-11",
-    "entry_price": 14.85,
+  "INTC": {
+    "entry_date": "2026-03-04",
+    "entry_price": 45.58,
     "status": "closed",
     "pyramids": [],
-    "exit_date": "2022-05-20",
-    "exit_price": 12.32,
-    "exit_reason": "StopLoss",
-    "profit_loss": -999.3499999999998
+    "exit_date": "2026-03-13",
+    "exit_price": 45.77000045776367,
+    "exit_reason": "EndOfBacktest",
+    "profit_loss": 32.87007919311553
   },
-  "AVGO": {
-    "entry_date": "2022-03-15",
-    "entry_price": 54.91,
-    "status": "bought",
+  "AMAT": {
+    "entry_date": "2026-03-10",
+    "entry_price": 345.88,
+    "status": "closed",
     "pyramids": [],
-    "exit_date": null,
-    "exit_price": null,
-    "exit_reason": null,
-    "profit_loss": null
+    "exit_date": "2026-03-13",
+    "exit_price": 341.5299987792969,
+    "exit_reason": "EndOfBacktest",
+    "profit_loss": -108.75003051757801
   },
-  "TMUS": {
-    "entry_date": "2022-06-07",
-    "entry_price": 133.89,
-    "status": "bought",
+  "KLAC": {
+    "entry_date": "2026-03-10",
+    "entry_price": 1452.94,
+    "status": "closed",
     "pyramids": [],
-    "exit_date": null,
-    "exit_price": null,
-    "exit_reason": null,
-    "profit_loss": null
+    "exit_date": "2026-03-13",
+    "exit_price": 1418.6400146484375,
+    "exit_reason": "EndOfBacktest",
+    "profit_loss": -205.79991210937396
   }
 }
