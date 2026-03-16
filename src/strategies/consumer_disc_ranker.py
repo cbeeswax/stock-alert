@@ -48,6 +48,14 @@ def scan_consumer_disc(tickers, as_of_date, sector_etf_df, adx_threshold=25, cd_
         if df.empty or len(df) < 252:
             continue
         
+        # Ensure index is datetime before comparison
+        if not isinstance(df.index, pd.DatetimeIndex):
+            try:
+                df.index = pd.to_datetime(df.index, format='%Y-%m-%d', errors='coerce')
+                df = df[df.index.notna()]
+            except:
+                continue
+        
         df = df[df.index <= as_of_date]
         sector = get_ticker_sector(ticker)
         if sector != "Consumer Discretionary":

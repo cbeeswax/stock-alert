@@ -70,6 +70,14 @@ def scan_industrials(tickers, as_of_date, sector_etf_df, adx_threshold=25, rs_lo
         if df.empty or len(df) < 252:
             continue
         
+        # Ensure index is datetime before comparison
+        if not isinstance(df.index, pd.DatetimeIndex):
+            try:
+                df.index = pd.to_datetime(df.index, format='%Y-%m-%d', errors='coerce')
+                df = df[df.index.notna()]
+            except:
+                continue
+        
         # Filter to as_of_date
         df = df[df.index <= as_of_date]
         
