@@ -22,12 +22,12 @@
   "HPQ": {
     "entry_date": "2022-02-01",
     "entry_price": 32.44,
-    "status": "closed",
+    "status": "bought",
     "pyramids": [],
-    "exit_date": "2022-06-21",
-    "exit_price": 30.095962524414062,
-    "exit_reason": "MA100_Trail_Late",
-    "profit_loss": -1108.7297259521474
+    "exit_date": null,
+    "exit_price": null,
+    "exit_reason": null,
+    "profit_loss": null
   },
   "HPE": {
     "entry_date": "2022-03-11",
@@ -40,8 +40,8 @@
     "profit_loss": -999.3499999999998
   },
   "AVGO": {
-    "entry_date": "2023-03-03",
-    "entry_price": 60.5,
+    "entry_date": "2022-03-15",
+    "entry_price": 54.91,
     "status": "bought",
     "pyramids": [],
     "exit_date": null,
@@ -52,192 +52,6 @@
   "TMUS": {
     "entry_date": "2022-06-07",
     "entry_price": 133.89,
-    "status": "bought",
-    "pyramids": [],
-    "exit_date": null,
-    "exit_price": null,
-    "exit_reason": null,
-    "profit_loss": null
-  },
-  "TKO": {
-    "entry_date": "2022-06-14",
-    "entry_price": 60.51,
-    "status": "bought",
-    "pyramids": [],
-    "exit_date": null,
-    "exit_price": null,
-    "exit_reason": null,
-    "profit_loss": null
-  },
-  "T": {
-    "entry_date": "2022-06-22",
-    "entry_price": 16.45,
-    "status": "bought",
-    "pyramids": [],
-    "exit_date": null,
-    "exit_price": null,
-    "exit_reason": null,
-    "profit_loss": null
-  },
-  "FSLR": {
-    "entry_date": "2022-09-07",
-    "entry_price": 134.8,
-    "status": "bought",
-    "pyramids": [],
-    "exit_date": null,
-    "exit_price": null,
-    "exit_reason": null,
-    "profit_loss": null
-  },
-  "ENPH": {
-    "entry_date": "2022-11-09",
-    "entry_price": 284.75,
-    "status": "bought",
-    "pyramids": [],
-    "exit_date": null,
-    "exit_price": null,
-    "exit_reason": null,
-    "profit_loss": null
-  },
-  "IT": {
-    "entry_date": "2022-11-10",
-    "entry_price": 340.9,
-    "status": "bought",
-    "pyramids": [],
-    "exit_date": null,
-    "exit_price": null,
-    "exit_reason": null,
-    "profit_loss": null
-  },
-  "ANET": {
-    "entry_date": "2022-11-18",
-    "entry_price": 33.87,
-    "status": "bought",
-    "pyramids": [],
-    "exit_date": null,
-    "exit_price": null,
-    "exit_reason": null,
-    "profit_loss": null
-  },
-  "ORCL": {
-    "entry_date": "2023-01-11",
-    "entry_price": 85.46,
-    "status": "bought",
-    "pyramids": [],
-    "exit_date": null,
-    "exit_price": null,
-    "exit_reason": null,
-    "profit_loss": null
-  },
-  "JBL": {
-    "entry_date": "2023-01-13",
-    "entry_price": 77.06,
-    "status": "bought",
-    "pyramids": [],
-    "exit_date": null,
-    "exit_price": null,
-    "exit_reason": null,
-    "profit_loss": null
-  },
-  "IPG": {
-    "entry_date": "2023-01-20",
-    "entry_price": 32.25,
-    "status": "bought",
-    "pyramids": [],
-    "exit_date": null,
-    "exit_price": null,
-    "exit_reason": null,
-    "profit_loss": null
-  },
-  "NFLX": {
-    "entry_date": "2023-01-20",
-    "entry_price": 34.25,
-    "status": "bought",
-    "pyramids": [],
-    "exit_date": null,
-    "exit_price": null,
-    "exit_reason": null,
-    "profit_loss": null
-  },
-  "OMC": {
-    "entry_date": "2023-01-25",
-    "entry_price": 78.54,
-    "status": "bought",
-    "pyramids": [],
-    "exit_date": null,
-    "exit_price": null,
-    "exit_reason": null,
-    "profit_loss": null
-  },
-  "FICO": {
-    "entry_date": "2023-02-23",
-    "entry_price": 671.67,
-    "status": "bought",
-    "pyramids": [],
-    "exit_date": null,
-    "exit_price": null,
-    "exit_reason": null,
-    "profit_loss": null
-  },
-  "NVDA": {
-    "entry_date": "2023-03-31",
-    "entry_price": 27.75,
-    "status": "bought",
-    "pyramids": [],
-    "exit_date": null,
-    "exit_price": null,
-    "exit_reason": null,
-    "profit_loss": null
-  },
-  "META": {
-    "entry_date": "2023-04-06",
-    "entry_price": 214.6,
-    "status": "pyramided",
-    "pyramids": [
-      {
-        "date": "2023-06-26",
-        "price": 276.538330078125,
-        "amount": 0.5
-      }
-    ],
-    "exit_date": null,
-    "exit_price": null,
-    "exit_reason": null,
-    "profit_loss": null
-  },
-  "AMD": {
-    "entry_date": "2023-04-28",
-    "entry_price": 89.37,
-    "status": "closed",
-    "pyramids": [],
-    "exit_date": "2023-06-27",
-    "exit_price": 110.38999938964844,
-    "exit_reason": "EMA21_Trail_Early",
-    "profit_loss": 1870.7799456787106
-  },
-  "CRM": {
-    "entry_date": "2023-06-06",
-    "entry_price": 210.29,
-    "status": "bought",
-    "pyramids": [],
-    "exit_date": null,
-    "exit_price": null,
-    "exit_reason": null,
-    "profit_loss": null
-  },
-  "PANW": {
-    "entry_date": "2023-06-22",
-    "entry_price": 124.57,
-    "status": "bought",
-    "pyramids": [],
-    "exit_date": null,
-    "exit_price": null,
-    "exit_reason": null,
-    "profit_loss": null
-  },
-  "PLTR": {
-    "entry_date": "2023-06-27",
-    "entry_price": 14.61,
     "status": "bought",
     "pyramids": [],
     "exit_date": null,
