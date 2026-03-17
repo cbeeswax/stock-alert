@@ -283,7 +283,7 @@ REGIME_BEAR_MA = 200
 # ADDITIONAL POSITION TRADING CONFIGS
 # =============================================================================
 
-RS_RANKER_SECTORS = ["Information Technology", "Communication Services"]
+RS_RANKER_SECTORS = ["Information Technology", "Communication Services", "Technology"]
 RS_RANKER_TOP_N = 10
 RS_RANKER_RS_THRESHOLD = 0.30
 RS_RANKER_STOP_ATR_MULT = 2.0
