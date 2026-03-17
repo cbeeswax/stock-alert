@@ -830,11 +830,9 @@ def run_scan_as_of(as_of_date, tickers, rs_bought_tracker=None):
         # =====================================================================
         if rs_6mo is not None and POSITION_MAX_PER_STRATEGY.get("RelativeStrength_Ranker_Position", 0) > 0:
             try:
-                # Check if already bought - skip duplicate BUY signals
-                if rs_tracker.is_bought(ticker):
-                    pass  # Skip, already in bought list (allow pyramid/exit alerts only)
-                elif not rs_tracker.can_buy_again(ticker, cooldown_days=30, as_of_date=as_of_date):
-                    pass  # Skip, in cooldown period after recent exit
+                # Check if already bought - skip duplicate BUY signals (unless cooldown passed)
+                if rs_tracker.is_bought(ticker) and not rs_tracker.can_buy_again(ticker, cooldown_days=30, as_of_date=as_of_date):
+                    pass  # Skip, still in cooldown period after recent exit
                 else:
                     # Check if ticker is in tech sectors
                     ticker_sector = get_ticker_sector(ticker)
