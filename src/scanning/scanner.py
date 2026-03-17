@@ -299,11 +299,11 @@ def get_sector_for_ticker(ticker):
         "CEG": "Utilities", "VST": "Utilities", "AES": "Utilities",
 
         # Semiconductors (Technology - high priority)
-        "ASML": "Technology", "TSM": "Technology", "STX": "Technology", "WDC": "Technology",
-        "SMCI": "Technology", "ARM": "Technology",
+        "ASML": "Information Technology", "TSM": "Information Technology", "STX": "Information Technology", "WDC": "Information Technology",
+        "SMCI": "Information Technology", "ARM": "Information Technology",
 
         # Tech Hardware
-        "IBM": "Technology", "DELL": "Technology", "HPQ": "Technology", "NTAP": "Technology",
+        "IBM": "Information Technology", "DELL": "Information Technology", "HPQ": "Information Technology", "NTAP": "Information Technology",
 
         # Aerospace/Defense (Industrials)
         "NOC": "Industrials", "GD": "Industrials", "HII": "Industrials",
@@ -313,9 +313,9 @@ def get_sector_for_ticker(ticker):
         "VRTX": "Healthcare", "BIIB": "Healthcare", "MRNA": "Healthcare",
 
         # Software (Technology)
-        "NOW": "Technology", "INTU": "Technology", "WDAY": "Technology", "TEAM": "Technology",
-        "ZM": "Technology", "ZS": "Technology", "DDOG": "Technology", "SNOW": "Technology",
-        "OKTA": "Technology", "SHOP": "Technology",
+        "NOW": "Information Technology", "INTU": "Information Technology", "WDAY": "Information Technology", "TEAM": "Information Technology",
+        "ZM": "Information Technology", "ZS": "Information Technology", "DDOG": "Information Technology", "SNOW": "Information Technology",
+        "OKTA": "Information Technology", "SHOP": "Information Technology",
     }
 
     return SECTOR_MAP.get(ticker, None)

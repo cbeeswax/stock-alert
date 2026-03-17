@@ -48,5 +48,15 @@
     "exit_price": 1418.6400146484375,
     "exit_reason": "EndOfBacktest",
     "profit_loss": -205.79991210937396
+  },
+  "WDC": {
+    "entry_date": "2024-04-23",
+    "entry_price": 52.65,
+    "status": "bought",
+    "pyramids": [],
+    "exit_date": null,
+    "exit_price": null,
+    "exit_reason": null,
+    "profit_loss": null
   }
 }
