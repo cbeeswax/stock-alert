@@ -1022,10 +1022,16 @@ class WalkForwardBacktester:
                     print(f"   ⚠️  Cannot close {ticker} - no price data")
                     continue
 
+                # Ensure index is DatetimeIndex
+                if not isinstance(df.index, pd.DatetimeIndex):
+                    df.index = pd.to_datetime(df.index, errors='coerce')
+                    df = df[df.index.notna()]
+                    if df.empty:
+                        print(f"   ⚠️  Cannot close {ticker} - invalid date index")
+                        continue
+
                 # Use the last available date (not necessarily end_date)
                 final_date = df.index[-1]
-                if not isinstance(final_date, pd.Timestamp):
-                    final_date = pd.Timestamp(final_date)
                 final_price = df['Close'].iloc[-1]
 
                 # Update position's days_held to final date
