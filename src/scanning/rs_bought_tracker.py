@@ -183,6 +183,47 @@ class RSBoughtTracker:
         
         return days_since_exit >= cooldown_days
 
+    def has_recent_stop(self, ticker: str, trading_days_lookback: int = 5, as_of_date=None) -> bool:
+        """
+        Check if ticker was stopped out recently (within N trading days).
+        
+        Args:
+            ticker: Stock ticker symbol
+            trading_days_lookback: Number of trading days to look back (default 5)
+            as_of_date: Current date for calculation (default: today)
+        
+        Returns:
+            True if ticker exited via StopLoss within the lookback period
+        """
+        if ticker not in self.bought_tickers:
+            return False
+        
+        ticker_data = self.bought_tickers[ticker]
+        exit_reason = ticker_data.get("exit_reason")
+        exit_date = ticker_data.get("exit_date")
+        
+        # Only block if exit was a StopLoss
+        if exit_reason != "StopLoss" or not exit_date:
+            return False
+        
+        from datetime import datetime
+        import pandas as pd
+        
+        exit_dt = datetime.strptime(exit_date, "%Y-%m-%d")
+        
+        # Use provided date or current date
+        if as_of_date is not None:
+            current_dt = pd.to_datetime(as_of_date)
+            if hasattr(current_dt, 'to_pydatetime'):
+                current_dt = current_dt.to_pydatetime()
+        else:
+            current_dt = datetime.now()
+        
+        # Calculate trading days since exit (rough: assume ~1 trading day per calendar day)
+        trading_days_since = (current_dt - exit_dt).days
+        
+        return trading_days_since <= trading_days_lookback
+
     def get_bought_tickers(self) -> List[str]:
         """Get list of all active bought tickers (not closed)."""
         return [
