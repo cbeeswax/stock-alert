@@ -1,57 +1,7 @@
 {
-  "GDDY": {
-    "entry_date": "2026-03-02",
-    "entry_price": 139.28,
-    "status": "closed",
-    "pyramids": [],
-    "exit_date": "2026-03-09",
-    "exit_price": 126.63,
-    "exit_reason": "StopLoss",
-    "profit_loss": -1998.700000000001
-  },
-  "WBD": {
-    "entry_date": "2026-03-02",
-    "entry_price": 28.5,
-    "status": "closed",
-    "pyramids": [],
-    "exit_date": "2026-03-13",
-    "exit_price": 27.13999938964844,
-    "exit_reason": "EndOfBacktest",
-    "profit_loss": -1252.5605621337859
-  },
-  "INTC": {
-    "entry_date": "2026-03-04",
-    "entry_price": 45.58,
-    "status": "closed",
-    "pyramids": [],
-    "exit_date": "2026-03-13",
-    "exit_price": 45.77000045776367,
-    "exit_reason": "EndOfBacktest",
-    "profit_loss": 32.87007919311553
-  },
-  "AMAT": {
-    "entry_date": "2026-03-10",
-    "entry_price": 345.88,
-    "status": "closed",
-    "pyramids": [],
-    "exit_date": "2026-03-13",
-    "exit_price": 341.5299987792969,
-    "exit_reason": "EndOfBacktest",
-    "profit_loss": -108.75003051757801
-  },
-  "KLAC": {
-    "entry_date": "2026-03-10",
-    "entry_price": 1452.94,
-    "status": "closed",
-    "pyramids": [],
-    "exit_date": "2026-03-13",
-    "exit_price": 1418.6400146484375,
-    "exit_reason": "EndOfBacktest",
-    "profit_loss": -205.79991210937396
-  },
   "WDC": {
-    "entry_date": "2024-04-23",
-    "entry_price": 52.65,
+    "entry_date": "2024-01-25",
+    "entry_price": 45.43,
     "status": "bought",
     "pyramids": [],
     "exit_date": null,

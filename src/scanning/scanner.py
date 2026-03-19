@@ -845,6 +845,8 @@ def run_scan_as_of(as_of_date, tickers, rs_bought_tracker=None):
                         daily_returns = close.pct_change()
                         volatility_20d = daily_returns.rolling(20).std().iloc[-1] if len(daily_returns) >= 20 else 0
                         if volatility_20d > 0.04:  # More than 4% daily volatility
+                            if ticker == "WDC" and as_of_date >= pd.Timestamp('2024-04-20') and as_of_date <= pd.Timestamp('2024-05-05'):
+                                print(f"  [FAIL] Volatility: {volatility_20d:.2%}")
                             continue  # Too volatile, skip
 
                         # MULTI-MONTH TREND FILTERS
