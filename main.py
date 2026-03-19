@@ -272,6 +272,15 @@ if __name__ == "__main__":
             
             if success:
                 print(f"✅ {ticker} @ ${entry_price:.2f} ({strategy})")
+                
+                # Record RS_Ranker entry to tracker (for re-entry prevention)
+                if strategy == "RelativeStrength_Ranker_Position":
+                    rs_bought_tracker.add_bought(
+                        ticker=ticker,
+                        entry_date=pd.Timestamp.today().strftime('%Y-%m-%d'),
+                        entry_price=entry_price,
+                        strategy=strategy
+                    )
             else:
                 print(f"⚠️  {ticker} - already recorded or error")
         
