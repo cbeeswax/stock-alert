@@ -119,9 +119,10 @@ class WalkForwardBacktester:
         # Position tracker
         self.position_tracker = PositionTracker(mode="backtest")
         
-        # RS Ranker bought tracker - Fresh for each backtest run
-        self.rs_bought_tracker = RSBoughtTracker()
-        self.rs_bought_tracker.clear_all()  # Start fresh for backtesting
+        # RS Ranker bought tracker - Backtest uses separate file to avoid mixing with production
+        backtest_tracker_file = "data/backtest/rs_ranker_bought.json"
+        self._delete_backtest_tracker_files(backtest_tracker_file)
+        self.rs_bought_tracker = RSBoughtTracker(file_path=backtest_tracker_file, load_from_file=False)  # Start fresh
 
         # Per-strategy position counters
         self.strategy_positions = {}
@@ -139,6 +140,20 @@ class WalkForwardBacktester:
         # Current market regime (RiskOn/Neutral/RiskOff)
         self.current_position_regime = PositionRegime.NEUTRAL  # Default to neutral
         self.regime_params = get_regime_params(PositionRegime.NEUTRAL)
+
+    def _delete_backtest_tracker_files(self, tracker_file):
+        """Delete backtest tracker files at start for clean slate.
+        
+        Args:
+            tracker_file: Path to tracker file to delete
+        """
+        import os
+        try:
+            if os.path.exists(tracker_file):
+                os.remove(tracker_file)
+                print(f"✓ Deleted stale backtest tracker: {tracker_file}")
+        except Exception as e:
+            print(f"⚠️  Could not delete tracker file {tracker_file}: {e}")
 
     def _update_market_regime(self, as_of_date):
         """

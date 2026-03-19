@@ -45,6 +45,14 @@ class RSBoughtTracker:
         """
         self.file_path = Path(file_path)
         self.bought_tickers = {}
+        
+        # Determine history file path based on tracker location
+        # Backtest trackers go to data/backtest/, production trackers to data/
+        if "backtest" in str(file_path):
+            self.history_file_path = "data/backtest/rs_ranker_trade_history.json"
+        else:
+            self.history_file_path = "data/rs_ranker_trade_history.json"
+        
         if load_from_file:
             self._load()
 
@@ -142,9 +150,9 @@ class RSBoughtTracker:
             entry_date = trade_data.get("entry_date")
             entry_price = trade_data.get("entry_price")
             
-            # Append to trade history
+            # Append to trade history (using separate file for backtest vs production)
             from src.scanning.trade_history import TradeHistory
-            history = TradeHistory()
+            history = TradeHistory(file_path=self.history_file_path)
             history.append_trade(
                 ticker=ticker,
                 strategy=strategy,
