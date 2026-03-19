@@ -21,6 +21,7 @@ from src.data.market import get_historical_data
 from src.data.indicators import compute_rsi, compute_bollinger_bands, compute_percent_b
 from src.analysis.sectors import get_ticker_sector
 from src.analysis.regime import get_regime_label, get_regime_config, is_short_regime_ok
+from src.analysis.market_regime import get_position_regime, get_regime_params
 from src.scanning.rs_bought_tracker import RSBoughtTracker
 from config.trading_config import (
     # Global settings
@@ -298,11 +299,11 @@ def get_sector_for_ticker(ticker):
         "CEG": "Utilities", "VST": "Utilities", "AES": "Utilities",
 
         # Semiconductors (Technology - high priority)
-        "ASML": "Technology", "TSM": "Technology", "STX": "Technology", "WDC": "Technology",
-        "SMCI": "Technology", "ARM": "Technology",
+        "ASML": "Information Technology", "TSM": "Information Technology", "STX": "Information Technology", "WDC": "Information Technology",
+        "SMCI": "Information Technology", "ARM": "Information Technology",
 
         # Tech Hardware
-        "IBM": "Technology", "DELL": "Technology", "HPQ": "Technology", "NTAP": "Technology",
+        "IBM": "Information Technology", "DELL": "Information Technology", "HPQ": "Information Technology", "NTAP": "Information Technology",
 
         # Aerospace/Defense (Industrials)
         "NOC": "Industrials", "GD": "Industrials", "HII": "Industrials",
@@ -312,9 +313,9 @@ def get_sector_for_ticker(ticker):
         "VRTX": "Healthcare", "BIIB": "Healthcare", "MRNA": "Healthcare",
 
         # Software (Technology)
-        "NOW": "Technology", "INTU": "Technology", "WDAY": "Technology", "TEAM": "Technology",
-        "ZM": "Technology", "ZS": "Technology", "DDOG": "Technology", "SNOW": "Technology",
-        "OKTA": "Technology", "SHOP": "Technology",
+        "NOW": "Information Technology", "INTU": "Information Technology", "WDAY": "Information Technology", "TEAM": "Information Technology",
+        "ZM": "Information Technology", "ZS": "Information Technology", "DDOG": "Information Technology", "SNOW": "Information Technology",
+        "OKTA": "Information Technology", "SHOP": "Information Technology",
     }
 
     return SECTOR_MAP.get(ticker, None)
@@ -393,6 +394,15 @@ def run_scan_as_of(as_of_date, tickers, rs_bought_tracker=None):
     qqq_ma_rising = check_ma_rising(qqq_df, UNIVERSAL_QQQ_BULL_MA, UNIVERSAL_QQQ_MA_RISING_DAYS) if not qqq_df.empty else False
     is_bull_regime = qqq_bull_basic and qqq_ma_rising
     is_bear_regime = check_regime_bearish(qqq_df, REGIME_BEAR_MA) if not qqq_df.empty else False
+    
+    # Detect position regime for ADX threshold adjustment
+    try:
+        position_regime = get_position_regime(as_of_date=as_of_date, index_symbol="QQQ")
+        regime_params = get_regime_params(position_regime)
+        adx_threshold = regime_params.get('adx_threshold', UNIVERSAL_ADX_MIN)
+    except Exception:
+        # Fallback to default if regime detection fails
+        adx_threshold = UNIVERSAL_ADX_MIN
 
     signals = []
     
@@ -407,6 +417,14 @@ def run_scan_as_of(as_of_date, tickers, rs_bought_tracker=None):
         df = get_historical_data(ticker)
         if df.empty:
             continue
+
+        # Ensure index is datetime (safety check for string indices)
+        if not isinstance(df.index, pd.DatetimeIndex):
+            try:
+                df.index = pd.to_datetime(df.index, format='%Y-%m-%d', errors='coerce')
+                df = df[df.index.notna()]
+            except:
+                continue
 
         # Cut future data
         df = df[df.index <= as_of_date]
@@ -454,7 +472,7 @@ def run_scan_as_of(as_of_date, tickers, rs_bought_tracker=None):
 
         # Universal filters (pre-calculate for all strategies)
         all_mas_rising = check_all_mas_rising(df, UNIVERSAL_QQQ_MA_RISING_DAYS) if UNIVERSAL_ALL_MAS_RISING else True
-        strong_adx = adx14.iloc[-1] >= UNIVERSAL_ADX_MIN if not pd.isna(adx14.iloc[-1]) else False
+        strong_adx = adx14.iloc[-1] >= adx_threshold if not pd.isna(adx14.iloc[-1]) else False
 
         # =====================================================================
         # STRATEGY 1: EMA_CROSSOVER_POSITION
@@ -814,9 +832,9 @@ def run_scan_as_of(as_of_date, tickers, rs_bought_tracker=None):
             try:
                 # Check if already bought - skip duplicate BUY signals
                 if rs_tracker.is_bought(ticker):
-                    pass  # Skip, already in bought list (allow pyramid/exit alerts only)
-                elif not rs_tracker.can_buy_again(ticker, cooldown_days=30, as_of_date=as_of_date):
-                    pass  # Skip, in cooldown period after recent exit
+                    pass  # Skip, already in active position
+                elif rs_tracker.has_recent_stop(ticker, trading_days_lookback=5, as_of_date=as_of_date):
+                    pass  # Skip, stopped out within last 5 trading days
                 else:
                     # Check if ticker is in tech sectors
                     ticker_sector = get_ticker_sector(ticker)
@@ -827,6 +845,8 @@ def run_scan_as_of(as_of_date, tickers, rs_bought_tracker=None):
                         daily_returns = close.pct_change()
                         volatility_20d = daily_returns.rolling(20).std().iloc[-1] if len(daily_returns) >= 20 else 0
                         if volatility_20d > 0.04:  # More than 4% daily volatility
+                            if ticker == "WDC" and as_of_date >= pd.Timestamp('2024-04-20') and as_of_date <= pd.Timestamp('2024-05-05'):
+                                print(f"  [FAIL] Volatility: {volatility_20d:.2%}")
                             continue  # Too volatile, skip
 
                         # MULTI-MONTH TREND FILTERS
@@ -1549,5 +1569,81 @@ def run_scan_as_of(as_of_date, tickers, rs_bought_tracker=None):
                 if cfg_mega.get("DEBUG_MODE", False):
                     print(f"❌ ERROR in MegaCap_WeeklySlide_Short for {ticker}: {e}")
                 continue
+
+    # =========================================================================
+    # Phase 2-3: SECTOR-BASED STRATEGIES
+    # =========================================================================
+    
+    # Load sector ETF data for all sector strategies
+    xli_df = get_historical_data("XLI")  # Industrials
+    xlv_df = get_historical_data("XLV")  # Healthcare
+    xle_df = get_historical_data("XLE")  # Energy
+    xlb_df = get_historical_data("XLB")  # Materials
+    xly_df = get_historical_data("XLY")  # Consumer Discretionary
+    
+    # Ensure all sector ETF indices are datetime
+    for etf_df in [xli_df, xlv_df, xle_df, xlb_df, xly_df]:
+        if not etf_df.empty and not isinstance(etf_df.index, pd.DatetimeIndex):
+            try:
+                etf_df.index = pd.to_datetime(etf_df.index, format='%Y-%m-%d', errors='coerce')
+                etf_df = etf_df[etf_df.index.notna()]
+            except:
+                pass
+    
+    if not xli_df.empty:
+        xli_df = xli_df[xli_df.index <= as_of_date]
+    if not xlv_df.empty:
+        xlv_df = xlv_df[xlv_df.index <= as_of_date]
+    if not xle_df.empty:
+        xle_df = xle_df[xle_df.index <= as_of_date]
+    if not xlb_df.empty:
+        xlb_df = xlb_df[xlb_df.index <= as_of_date]
+    if not xly_df.empty:
+        xly_df = xly_df[xly_df.index <= as_of_date]
+    
+    # Industrials Ranker
+    if POSITION_MAX_PER_STRATEGY.get("Industrials_Ranker_Position", 0) > 0 and not xli_df.empty:
+        try:
+            from src.strategies.industrials_ranker import scan_industrials
+            ind_signals = scan_industrials(tickers, as_of_date, xli_df, adx_threshold)
+            signals.extend(ind_signals)
+        except Exception as e:
+            pass  # Silently skip if module not available
+    
+    # Healthcare Ranker
+    if POSITION_MAX_PER_STRATEGY.get("Healthcare_Ranker_Position", 0) > 0 and not xlv_df.empty:
+        try:
+            from src.strategies.healthcare_ranker import scan_healthcare
+            hc_signals = scan_healthcare(tickers, as_of_date, xlv_df, adx_threshold)
+            signals.extend(hc_signals)
+        except Exception as e:
+            pass
+    
+    # Energy Ranker
+    if POSITION_MAX_PER_STRATEGY.get("Energy_Ranker_Position", 0) > 0 and not xle_df.empty:
+        try:
+            from src.strategies.energy_ranker import scan_energy
+            energy_signals = scan_energy(tickers, as_of_date, xle_df, adx_threshold)
+            signals.extend(energy_signals)
+        except Exception as e:
+            pass
+    
+    # Materials Ranker
+    if POSITION_MAX_PER_STRATEGY.get("Materials_Ranker_Position", 0) > 0 and not xlb_df.empty:
+        try:
+            from src.strategies.materials_ranker import scan_materials
+            mat_signals = scan_materials(tickers, as_of_date, xlb_df, adx_threshold)
+            signals.extend(mat_signals)
+        except Exception as e:
+            pass
+    
+    # Consumer Discretionary Ranker
+    if POSITION_MAX_PER_STRATEGY.get("ConsumerDisc_Ranker_Position", 0) > 0 and not xly_df.empty:
+        try:
+            from src.strategies.consumer_disc_ranker import scan_consumer_disc
+            cd_signals = scan_consumer_disc(tickers, as_of_date, xly_df, adx_threshold)
+            signals.extend(cd_signals)
+        except Exception as e:
+            pass
 
     return signals

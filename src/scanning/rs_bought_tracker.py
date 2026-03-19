@@ -35,11 +35,26 @@ from typing import Dict, List, Optional, Tuple
 class RSBoughtTracker:
     """Manages RelativeStrength_Ranker bought ticker list."""
 
-    def __init__(self, file_path: str = "data/rs_ranker_bought.json"):
-        """Initialize tracker."""
+    def __init__(self, file_path: str = "data/rs_ranker_bought.json", load_from_file: bool = True):
+        """Initialize tracker.
+        
+        Args:
+            file_path: Path to JSON file
+            load_from_file: If True, load existing data from file. If False, start fresh.
+                           Use False for diagnostic/test runs to avoid loading stale data.
+        """
         self.file_path = Path(file_path)
         self.bought_tickers = {}
-        self._load()
+        
+        # Determine history file path based on tracker location
+        # Backtest trackers go to data/backtest/, production trackers to data/
+        if "backtest" in str(file_path):
+            self.history_file_path = "data/backtest/rs_ranker_trade_history.json"
+        else:
+            self.history_file_path = "data/rs_ranker_trade_history.json"
+        
+        if load_from_file:
+            self._load()
 
     def _load(self) -> None:
         """Load bought list from JSON file."""
@@ -62,7 +77,7 @@ class RSBoughtTracker:
         except Exception as e:
             print(f"⚠️  Error saving RS bought tracker: {e}")
 
-    def add_bought(self, ticker: str, entry_date: str, entry_price: float) -> None:
+    def add_bought(self, ticker: str, entry_date: str, entry_price: float, strategy: str = "RelativeStrength_Ranker_Position") -> None:
         """
         Record a ticker as recommended for buy.
         Handles both new entries and re-entries after cooldown.
@@ -71,10 +86,12 @@ class RSBoughtTracker:
             ticker: Stock ticker symbol
             entry_date: Date recommended (YYYY-MM-DD)
             entry_price: Entry price
+            strategy: Strategy name (default: RS_Ranker)
         """
         self.bought_tickers[ticker] = {
             "entry_date": entry_date,
             "entry_price": entry_price,
+            "strategy": strategy,
             "status": "bought",
             "pyramids": [],
             "exit_date": None,
@@ -111,19 +128,45 @@ class RSBoughtTracker:
         exit_date: str,
         exit_price: float,
         exit_reason: str,
-        profit_loss: Optional[float] = None
+        profit_loss: Optional[float] = None,
+        r_multiple: Optional[float] = None,
+        days_held: int = 0
     ) -> None:
         """
-        Record position closure.
+        Record position closure and move to history.
 
         Args:
             ticker: Stock ticker symbol
             exit_date: Exit date (YYYY-MM-DD)
             exit_price: Exit price
-            exit_reason: Reason for exit (TimeStop_150d, EMA21_Trail, MA100_Trail, TargetHit, etc)
+            exit_reason: Reason for exit
             profit_loss: Profit/loss in dollars (optional)
+            r_multiple: R-multiple (optional)
+            days_held: Days held (optional)
         """
         if ticker in self.bought_tickers:
+            trade_data = self.bought_tickers[ticker]
+            strategy = trade_data.get("strategy", "RelativeStrength_Ranker_Position")
+            entry_date = trade_data.get("entry_date")
+            entry_price = trade_data.get("entry_price")
+            
+            # Append to trade history (using separate file for backtest vs production)
+            from src.scanning.trade_history import TradeHistory
+            history = TradeHistory(file_path=self.history_file_path)
+            history.append_trade(
+                ticker=ticker,
+                strategy=strategy,
+                entry_date=entry_date,
+                entry_price=entry_price,
+                exit_date=exit_date,
+                exit_price=exit_price,
+                exit_reason=exit_reason,
+                pnl=profit_loss or 0,
+                r_multiple=r_multiple or 0,
+                days_held=days_held
+            )
+            
+            # Mark as closed in current positions (keep for reference)
             self.bought_tickers[ticker].update({
                 "status": "closed",
                 "exit_date": exit_date,
@@ -182,6 +225,47 @@ class RSBoughtTracker:
         days_since_exit = (current_date - exit_date).days
         
         return days_since_exit >= cooldown_days
+
+    def has_recent_stop(self, ticker: str, trading_days_lookback: int = 5, as_of_date=None) -> bool:
+        """
+        Check if ticker was stopped out recently (within N trading days).
+        
+        Args:
+            ticker: Stock ticker symbol
+            trading_days_lookback: Number of trading days to look back (default 5)
+            as_of_date: Current date for calculation (default: today)
+        
+        Returns:
+            True if ticker exited via StopLoss within the lookback period
+        """
+        if ticker not in self.bought_tickers:
+            return False
+        
+        ticker_data = self.bought_tickers[ticker]
+        exit_reason = ticker_data.get("exit_reason")
+        exit_date = ticker_data.get("exit_date")
+        
+        # Only block if exit was a StopLoss
+        if exit_reason != "StopLoss" or not exit_date:
+            return False
+        
+        from datetime import datetime
+        import pandas as pd
+        
+        exit_dt = datetime.strptime(exit_date, "%Y-%m-%d")
+        
+        # Use provided date or current date
+        if as_of_date is not None:
+            current_dt = pd.to_datetime(as_of_date)
+            if hasattr(current_dt, 'to_pydatetime'):
+                current_dt = current_dt.to_pydatetime()
+        else:
+            current_dt = datetime.now()
+        
+        # Calculate trading days since exit (rough: assume ~1 trading day per calendar day)
+        trading_days_since = (current_dt - exit_dt).days
+        
+        return trading_days_since <= trading_days_lookback
 
     def get_bought_tickers(self) -> List[str]:
         """Get list of all active bought tickers (not closed)."""

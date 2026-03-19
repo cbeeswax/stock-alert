@@ -102,9 +102,27 @@ if __name__ == "__main__":
             if action_signals['exits']:
                 print(f"🚨 EXITS ({len(action_signals['exits'])}):")
                 for exit_sig in action_signals['exits']:
-                    print(f"   {exit_sig['ticker']}: {exit_sig['type']} - {exit_sig['reason']}")
+                    ticker = exit_sig['ticker']
+                    print(f"   {ticker}: {exit_sig['type']} - {exit_sig['reason']}")
                     print(f"   → {exit_sig['action']}")
                     print()
+                    
+                    # GET POSITION FIRST (before removing)
+                    pos = position_tracker.get_position(ticker)
+                    strategy = pos.get('strategy') if pos else None
+                    
+                    # REMOVE THE POSITION FROM TRACKER
+                    position_tracker.remove_position(ticker)
+                    
+                    # UPDATE RS RANKER TRACKER IF IT WAS RS_RANKER STRATEGY
+                    if strategy == 'RelativeStrength_Ranker_Position':
+                        rs_bought_tracker.close_position(
+                            ticker=ticker,
+                            exit_date=pd.Timestamp.today().strftime('%Y-%m-%d'),
+                            exit_price=exit_sig['current_price'],
+                            exit_reason=exit_sig['type'],
+                            profit_loss=0
+                        )
 
             # Partial profits
             if action_signals['partials']:
@@ -254,6 +272,15 @@ if __name__ == "__main__":
             
             if success:
                 print(f"✅ {ticker} @ ${entry_price:.2f} ({strategy})")
+                
+                # Record RS_Ranker entry to tracker (for re-entry prevention)
+                if strategy == "RelativeStrength_Ranker_Position":
+                    rs_bought_tracker.add_bought(
+                        ticker=ticker,
+                        entry_date=pd.Timestamp.today().strftime('%Y-%m-%d'),
+                        entry_price=entry_price,
+                        strategy=strategy
+                    )
             else:
                 print(f"⚠️  {ticker} - already recorded or error")
         

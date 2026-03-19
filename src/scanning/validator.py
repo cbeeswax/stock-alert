@@ -267,6 +267,14 @@ def pre_buy_check(combined_signals, rr_ratio=None, benchmark="SPY", as_of_date=N
             print(f"   ❌ {ticker} [{strategy}]: filtered — no historical data")
             continue
 
+        # Ensure index is datetime (safety check for string indices)
+        if not isinstance(df.index, pd.DatetimeIndex):
+            try:
+                df.index = pd.to_datetime(df.index, format='%Y-%m-%d', errors='coerce')
+                df = df[df.index.notna()]
+            except:
+                continue
+
         # 🔒 CRITICAL: Filter to as_of_date for backtesting (prevents look-ahead bias)
         if as_of_date is not None:
             df = df[df.index <= as_of_date]

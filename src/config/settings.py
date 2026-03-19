@@ -25,6 +25,11 @@ POSITION_MAX_TOTAL = 20            # Max 20 total positions
 # Per-Strategy Position Limits
 POSITION_MAX_PER_STRATEGY = {
     "RelativeStrength_Ranker_Position": 10,   # ACTIVE: 48.5% WR, 2.52R, $497k profit
+    "Industrials_Ranker_Position": 3,         # Phase 2: New sector
+    "Healthcare_Ranker_Position": 3,          # Phase 3: New sector
+    "Energy_Ranker_Position": 3,              # Phase 3: New sector
+    "Materials_Ranker_Position": 3,           # Phase 3: New sector
+    "ConsumerDisc_Ranker_Position": 3,        # Phase 3: New sector
     "High52_Position": 0,                      # DISABLED
     "BigBase_Breakout_Position": 0,           # DISABLED
     "EMA_Crossover_Position": 0,              # DISABLED
@@ -278,7 +283,7 @@ REGIME_BEAR_MA = 200
 # ADDITIONAL POSITION TRADING CONFIGS
 # =============================================================================
 
-RS_RANKER_SECTORS = ["Information Technology", "Communication Services"]
+RS_RANKER_SECTORS = ["Information Technology", "Communication Services", "Technology"]
 RS_RANKER_TOP_N = 10
 RS_RANKER_RS_THRESHOLD = 0.30
 RS_RANKER_STOP_ATR_MULT = 2.0

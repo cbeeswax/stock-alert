@@ -22,6 +22,7 @@ from src.data.market import get_historical_data
 from src.position_management.tracker import PositionTracker, filter_trades_by_position
 from src.data.indicators import compute_rsi, compute_bollinger_bands, compute_percent_b
 from src.analysis.regime import get_regime_config
+from src.analysis.market_regime import get_position_regime, PositionRegime, get_regime_params
 from scripts.download_history import download_ticker, was_update_session_today, mark_update_session
 from src.config.settings import (
     # Position trading settings
@@ -118,9 +119,10 @@ class WalkForwardBacktester:
         # Position tracker
         self.position_tracker = PositionTracker(mode="backtest")
         
-        # RS Ranker bought tracker - Fresh for each backtest run
-        self.rs_bought_tracker = RSBoughtTracker()
-        self.rs_bought_tracker.clear_all()  # Start fresh for backtesting
+        # RS Ranker bought tracker - Backtest uses separate file to avoid mixing with production
+        backtest_tracker_file = "data/backtest/rs_ranker_bought.json"
+        self._delete_backtest_tracker_files(backtest_tracker_file)
+        self.rs_bought_tracker = RSBoughtTracker(file_path=backtest_tracker_file, load_from_file=False)  # Start fresh
 
         # Per-strategy position counters
         self.strategy_positions = {}
@@ -134,6 +136,38 @@ class WalkForwardBacktester:
         # Cooldown tracker for strategies that need symbol-level cooldowns
         # Structure: {strategy: {ticker: exit_date}}
         self.cooldown_tracker = {}
+        
+        # Current market regime (RiskOn/Neutral/RiskOff)
+        self.current_position_regime = PositionRegime.NEUTRAL  # Default to neutral
+        self.regime_params = get_regime_params(PositionRegime.NEUTRAL)
+
+    def _delete_backtest_tracker_files(self, tracker_file):
+        """Delete backtest tracker files at start for clean slate.
+        
+        Args:
+            tracker_file: Path to tracker file to delete
+        """
+        import os
+        try:
+            if os.path.exists(tracker_file):
+                os.remove(tracker_file)
+                print(f"✓ Deleted stale backtest tracker: {tracker_file}")
+        except Exception as e:
+            print(f"⚠️  Could not delete tracker file {tracker_file}: {e}")
+
+    def _update_market_regime(self, as_of_date):
+        """
+        Update market regime based on QQQ price and moving averages.
+        
+        Args:
+            as_of_date: Date to classify regime for
+        """
+        try:
+            self.current_position_regime = get_position_regime(as_of_date=as_of_date, index_symbol="QQQ")
+            self.regime_params = get_regime_params(self.current_position_regime)
+        except Exception as e:
+            # If regime detection fails, stay with previous regime
+            print(f"⚠️  Failed to update regime on {as_of_date}: {e}")
 
     def _calculate_atr(self, df, period=14):
         """Calculate ATR"""
@@ -187,11 +221,15 @@ class WalkForwardBacktester:
         max_days = trade.get("MaxDays", POSITION_MAX_DAYS_LONG)
         regime = trade.get("Regime", None)  # Track regime for SHORT positions
 
-        # Position sizing (use strategy-specific risk %)
+        # Position sizing (use strategy-specific or regime-based risk %)
         risk_pct = None  # Default: use POSITION_RISK_PER_TRADE_PCT (2.0%)
 
+        # RS_Ranker uses regime-based risk
+        if strategy == "RelativeStrength_Ranker_Position":
+            risk_pct = self.regime_params.get('risk_per_trade_pct', POSITION_RISK_PER_TRADE_PCT)
+        
         # Weak-RS shorts use 1.5% risk
-        if strategy == "ShortWeakRS_Retrace_Position":
+        elif strategy == "ShortWeakRS_Retrace_Position":
             risk_pct = SHORT_RISK_PER_TRADE_PCT  # 1.5%
 
         # Leader Pullback Shorts use smaller size (0.5% risk)
@@ -223,6 +261,7 @@ class WalkForwardBacktester:
             'pyramid_adds': [],
             'closes_below_trail': 0,
             'regime': regime,  # Track market regime for regime-based strategies
+            'rs_partial_stage': 0,  # Track dual-stage partial exit progress for RS_Ranker
         }
 
         self.open_positions.append(position)
@@ -349,10 +388,21 @@ class WalkForwardBacktester:
                         partial_size = TREND_CONT_PARTIAL_SIZE
 
                 elif strategy == "RelativeStrength_Ranker_Position":
-                    if current_r >= RS_RANKER_PARTIAL_R:
-                        should_partial = True
-                        partial_trigger = f"{RS_RANKER_PARTIAL_R}R"
-                        partial_size = RS_RANKER_PARTIAL_SIZE
+                    # DUAL-STAGE PARTIALS: Exit 40% @ 2.5R, then 30% @ 4.0R
+                    if not position.get('partial_exited'):
+                        # First partial: Exit 40% @ 2.5R
+                        if current_r >= 2.5:
+                            should_partial = True
+                            partial_trigger = "2.5R_Stage1"
+                            partial_size = 0.40  # Exit 40%
+                            position['rs_partial_stage'] = 1
+                    elif position.get('rs_partial_stage') == 1:
+                        # Second partial: Exit 30% @ 4.0R (from remaining 60%)
+                        if current_r >= 4.0:
+                            should_partial = True
+                            partial_trigger = "4.0R_Stage2"
+                            partial_size = 0.30 / 0.60  # 30% of original = 50% of remaining
+                            position['rs_partial_stage'] = 2
 
                 elif strategy == "ShortWeakRS_Retrace_Position":
                     # Use regime-specific config for partial exits
@@ -582,14 +632,54 @@ class WalkForwardBacktester:
 
         elif strategy == "RelativeStrength_Ranker_Position":
             # RS_Ranker: HYBRID TRAIL - EMA21 early (protect), MA100 late (let run)
+            # PROFIT-GATED: Skip EMA21 trail until +0.75R profit reached
+            profit_gate_threshold = 0.75  # Don't use EMA21 until +0.75R
+            
             if days_held <= 60:
-                # First 60 days: Tight EMA21 trail (cut losers fast)
+                # First 60 days: Tight EMA21 trail (cut losers fast) - BUT ONLY AFTER +0.75R
                 if ema21 and pd.notna(ema21):
-                    if current_close < ema21:
-                        position['closes_below_trail'] += 1
-                        if position['closes_below_trail'] >= 5:
-                            return self._close_position(position, current_date, current_close, "EMA21_Trail_Early", current_r)
+                    # Check if we should apply EMA21 exit
+                    if current_r >= profit_gate_threshold:
+                        # Profit-gated: Use EMA21 trail
+                        if current_close < ema21:
+                            position['closes_below_trail'] += 1
+                            if position['closes_below_trail'] >= 5:
+                                return self._close_position(position, current_date, current_close, "EMA21_Trail_Early", current_r)
+                        else:
+                            position['closes_below_trail'] = 0
                     else:
+                        # Before +0.75R: Ignore EMA21, only stop loss applies
+                        position['closes_below_trail'] = 0
+            else:
+                # After 60 days: Loose MA100 trail (let winners run to time stop)
+                if ma100 and pd.notna(ma100):
+                    if current_close < ma100:
+                        position['closes_below_trail'] += 1
+                        if position['closes_below_trail'] >= 8:
+                            return self._close_position(position, current_date, current_close, "MA100_Trail_Late", current_r)
+                    else:
+                        position['closes_below_trail'] = 0
+
+        # All sector-based ranker strategies use same exit logic as RS_Ranker
+        elif strategy in ["Industrials_Ranker_Position", "Healthcare_Ranker_Position", 
+                          "Energy_Ranker_Position", "Materials_Ranker_Position", "ConsumerDisc_Ranker_Position"]:
+            # SECTOR RANKERS: HYBRID TRAIL - EMA21 early (protect), MA100 late (let run)
+            # PROFIT-GATED: Skip EMA21 trail until +0.75R profit reached
+            profit_gate_threshold = 0.75
+            
+            if days_held <= 60:
+                # First 60 days: Tight EMA21 trail (cut losers fast) - BUT ONLY AFTER +0.75R
+                if ema21 and pd.notna(ema21):
+                    if current_r >= profit_gate_threshold:
+                        # Profit-gated: Use EMA21 trail
+                        if current_close < ema21:
+                            position['closes_below_trail'] += 1
+                            if position['closes_below_trail'] >= 5:
+                                return self._close_position(position, current_date, current_close, "EMA21_Trail_Early", current_r)
+                        else:
+                            position['closes_below_trail'] = 0
+                    else:
+                        # Before +0.75R: Ignore EMA21, only stop loss applies
                         position['closes_below_trail'] = 0
             else:
                 # After 60 days: Loose MA100 trail (let winners run to time stop)
@@ -766,12 +856,18 @@ class WalkForwardBacktester:
 
         # Record exit to RS Ranker tracker (if applicable)
         if strategy == "RelativeStrength_Ranker_Position":
+            # Calculate days held
+            position_entry = pd.Timestamp(position['entry_date'])
+            days_held = (exit_date - position_entry).days
+            
             self.rs_bought_tracker.close_position(
                 ticker=ticker,
                 exit_date=exit_date.strftime('%Y-%m-%d'),
                 exit_price=exit_price,
                 exit_reason=exit_reason,
-                profit_loss=pnl
+                profit_loss=pnl,
+                r_multiple=r_multiple,
+                days_held=days_held
             )
 
         return result
@@ -797,13 +893,23 @@ class WalkForwardBacktester:
         print(f"\n🔍 Total scan dates: {len(scan_dates)}\n")
 
         for idx, day in enumerate(scan_dates, 1):
+            # Update market regime at each scan date
+            self._update_market_regime(day)
+            regime_emoji = "🟢" if self.current_position_regime == PositionRegime.RISK_ON else "🟡" if self.current_position_regime == PositionRegime.NEUTRAL else "🔴"
+            
+            # Log regime change
+            regime_str = "RISK_ON" if self.current_position_regime == PositionRegime.RISK_ON else "NEUTRAL" if self.current_position_regime == PositionRegime.NEUTRAL else "RISK_OFF"
+            risk_pct = self.regime_params.get('risk_per_trade_pct', 2.0)
+            adx_thresh = self.regime_params.get('adx_threshold', 25)
+            max_pos = self.regime_params.get('max_positions', 10)
+            
             # Progress indicator
             if idx % 10 == 0:
                 open_tickers = self.position_tracker.get_open_tickers()
                 tickers_display = ", ".join(open_tickers[:5]) if open_tickers else "None"
                 if len(open_tickers) > 5:
                     tickers_display += f" +{len(open_tickers)-5} more"
-                print(f"📅 {day.date()} | Progress: {idx}/{len(scan_dates)} | Open: {len(open_tickers)} [{tickers_display}]")
+                print(f"📅 {day.date()} {regime_emoji} | Progress: {idx}/{len(scan_dates)} | Open: {len(open_tickers)} [{tickers_display}]")
 
             # Check open positions for exits EVERY day
             closed_today = self._check_open_positions(day)
@@ -824,37 +930,57 @@ class WalkForwardBacktester:
             signals = run_scan_as_of(day, self.tickers, rs_bought_tracker=self.rs_bought_tracker)
 
             if signals:
-                # DEBUG: Log signal count
-                short_signals = [s for s in signals if s.get("Direction") == "SHORT"]
-                if short_signals:
-                    print(f"   📊 {day.date()} | {len(short_signals)} SHORT signals generated")
-
+                # Log detailed signal information
+                signal_count = len(signals)
+                by_strategy = {}
+                for s in signals:
+                    strat = s.get("Strategy", "Unknown")
+                    by_strategy[strat] = by_strategy.get(strat, 0) + 1
+                
+                if idx % 5 == 0 or signal_count > 5:  # Log detailed every 5 scans or on large signal days
+                    print(f"   📊 {day.date()} {regime_emoji} [{regime_str}] | {signal_count} signals generated | Regime: Risk={risk_pct}% ADX={adx_thresh} MaxPos={max_pos}")
+                    for strat, count in sorted(by_strategy.items()):
+                        print(f"      - {strat}: {count} signal(s)")
+                
                 # Pre-buy check (deduplication, formatting)
                 validated = pre_buy_check(signals, benchmark="QQQ", as_of_date=day)
-
-                # DEBUG: Log after pre_buy_check
-                if short_signals and validated.empty:
-                    print(f"   ❌ {day.date()} | All SHORT signals filtered by pre_buy_check")
-
+                
+                # Log filtering results
+                filtered_out = signal_count - len(validated)
+                if filtered_out > 0 and (idx % 5 == 0 or signal_count > 5):
+                    print(f"      Filtered by pre_buy_check: -{filtered_out} ({100*filtered_out/signal_count:.0f}%)")
+                
                 if not validated.empty:
-                    short_validated = validated[validated.get("Direction", "LONG") == "SHORT"]
-                    if len(short_validated) > 0:
-                        print(f"   ✅ {day.date()} | {len(short_validated)} SHORT signals passed pre_buy_check")
-
                     # Filter out positions we already hold
+                    before_filter = len(validated)
                     validated = filter_trades_by_position(validated, self.position_tracker, as_of_date=day)
-
-                    # DEBUG: Log after filter_trades_by_position
-                    if len(short_validated) > 0 and validated.empty:
-                        print(f"   ❌ {day.date()} | All SHORT signals filtered by filter_trades_by_position")
+                    held_filter = before_filter - len(validated)
+                    
+                    if held_filter > 0 and (idx % 5 == 0 or before_filter > 5):
+                        print(f"      Already holding: -{held_filter}")
 
                     if not validated.empty:
+                        # Check if new entries are allowed in current regime
+                        allow_new_entries = self.regime_params.get('allow_new_entries', True)
+                        if not allow_new_entries:
+                            if idx % 10 == 0:
+                                print(f"   🔴 {day.date()} | RISK_OFF regime: No new entries allowed")
+                        
                         # Take trades respecting limits
+                        entered_count = 0
+                        skipped_count = 0
+                        
                         for _, trade in validated.iterrows():
                             strategy = trade["Strategy"]
 
+                            # Check if new entries allowed in current regime
+                            if not allow_new_entries:
+                                skipped_count += 1
+                                continue  # Skip all new entries in RISK_OFF
+
                             # Check global position limit
                             if len(self.position_tracker.positions) >= POSITION_MAX_TOTAL:
+                                skipped_count += 1
                                 break
 
                             # Check per-strategy limit
@@ -866,6 +992,7 @@ class WalkForwardBacktester:
                                 max_for_strategy = POSITION_MAX_PER_STRATEGY
 
                             if strategy_count >= max_for_strategy:
+                                skipped_count += 1
                                 continue
 
                             # Check cooldown for strategies that need it
@@ -876,6 +1003,7 @@ class WalkForwardBacktester:
                                     days_since_exit = (day - exit_date).days
                                     cooldown_days = MEGACAP_WEEKLY_SLIDE_CFG.get("COOLDOWN_DAYS", 10)
                                     if days_since_exit < cooldown_days:
+                                        skipped_count += 1
                                         continue  # Still in cooldown period
 
                             # Enter position
@@ -884,6 +1012,7 @@ class WalkForwardBacktester:
                             if success:
                                 # Show trade entry
                                 print(f"   ✅ {day.date()} | ENTER {trade['Ticker']} @ ${trade['Entry']:.2f} | {strategy[:20]}")
+                                entered_count += 1
 
                                 # Update position counts
                                 self.position_tracker.add_position(
@@ -894,6 +1023,10 @@ class WalkForwardBacktester:
                                     as_of_date=day
                                 )
                                 self.strategy_positions[strategy] = strategy_count + 1
+                        
+                        # Log summary for day
+                        if entered_count > 0 or skipped_count > 0:
+                            print(f"      Summary: Entered={entered_count}, Skipped={skipped_count}, Total Open={len(self.position_tracker.positions)}/{POSITION_MAX_TOTAL}")
 
         # =================================================================
         # Close any remaining open positions at end of backtest
@@ -910,12 +1043,23 @@ class WalkForwardBacktester:
                     print(f"   ⚠️  Cannot close {ticker} - no price data")
                     continue
 
+                # Ensure index is DatetimeIndex
+                if not isinstance(df.index, pd.DatetimeIndex):
+                    df.index = pd.to_datetime(df.index, errors='coerce')
+                    df = df[df.index.notna()]
+                    if df.empty:
+                        print(f"   ⚠️  Cannot close {ticker} - invalid date index")
+                        continue
+
                 # Use the last available date (not necessarily end_date)
                 final_date = df.index[-1]
                 final_price = df['Close'].iloc[-1]
 
                 # Update position's days_held to final date
-                days_from_entry = (final_date - position['entry_date']).days
+                entry_date = position['entry_date']
+                if not isinstance(entry_date, pd.Timestamp):
+                    entry_date = pd.Timestamp(entry_date)
+                days_from_entry = (final_date - entry_date).days
                 position['days_held'] = days_from_entry
 
                 # Calculate final R-multiple
