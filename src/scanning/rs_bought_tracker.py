@@ -69,7 +69,7 @@ class RSBoughtTracker:
         except Exception as e:
             print(f"⚠️  Error saving RS bought tracker: {e}")
 
-    def add_bought(self, ticker: str, entry_date: str, entry_price: float) -> None:
+    def add_bought(self, ticker: str, entry_date: str, entry_price: float, strategy: str = "RelativeStrength_Ranker_Position") -> None:
         """
         Record a ticker as recommended for buy.
         Handles both new entries and re-entries after cooldown.
@@ -78,10 +78,12 @@ class RSBoughtTracker:
             ticker: Stock ticker symbol
             entry_date: Date recommended (YYYY-MM-DD)
             entry_price: Entry price
+            strategy: Strategy name (default: RS_Ranker)
         """
         self.bought_tickers[ticker] = {
             "entry_date": entry_date,
             "entry_price": entry_price,
+            "strategy": strategy,
             "status": "bought",
             "pyramids": [],
             "exit_date": None,
@@ -118,19 +120,45 @@ class RSBoughtTracker:
         exit_date: str,
         exit_price: float,
         exit_reason: str,
-        profit_loss: Optional[float] = None
+        profit_loss: Optional[float] = None,
+        r_multiple: Optional[float] = None,
+        days_held: int = 0
     ) -> None:
         """
-        Record position closure.
+        Record position closure and move to history.
 
         Args:
             ticker: Stock ticker symbol
             exit_date: Exit date (YYYY-MM-DD)
             exit_price: Exit price
-            exit_reason: Reason for exit (TimeStop_150d, EMA21_Trail, MA100_Trail, TargetHit, etc)
+            exit_reason: Reason for exit
             profit_loss: Profit/loss in dollars (optional)
+            r_multiple: R-multiple (optional)
+            days_held: Days held (optional)
         """
         if ticker in self.bought_tickers:
+            trade_data = self.bought_tickers[ticker]
+            strategy = trade_data.get("strategy", "RelativeStrength_Ranker_Position")
+            entry_date = trade_data.get("entry_date")
+            entry_price = trade_data.get("entry_price")
+            
+            # Append to trade history
+            from src.scanning.trade_history import TradeHistory
+            history = TradeHistory()
+            history.append_trade(
+                ticker=ticker,
+                strategy=strategy,
+                entry_date=entry_date,
+                entry_price=entry_price,
+                exit_date=exit_date,
+                exit_price=exit_price,
+                exit_reason=exit_reason,
+                pnl=profit_loss or 0,
+                r_multiple=r_multiple or 0,
+                days_held=days_held
+            )
+            
+            # Mark as closed in current positions (keep for reference)
             self.bought_tickers[ticker].update({
                 "status": "closed",
                 "exit_date": exit_date,
