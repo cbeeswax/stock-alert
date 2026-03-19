@@ -107,18 +107,21 @@ if __name__ == "__main__":
                     print(f"   → {exit_sig['action']}")
                     print()
                     
-                    # CLOSE THE POSITION IN TRACKER
-                    position_tracker.close_position(ticker, exit_sig['type'])
-                    
-                    # UPDATE RS RANKER TRACKER IF APPLICABLE
+                    # GET POSITION FIRST (before removing)
                     pos = position_tracker.get_position(ticker)
-                    if pos and pos.get('strategy') == 'RelativeStrength_Ranker_Position':
+                    strategy = pos.get('strategy') if pos else None
+                    
+                    # REMOVE THE POSITION FROM TRACKER
+                    position_tracker.remove_position(ticker)
+                    
+                    # UPDATE RS RANKER TRACKER IF IT WAS RS_RANKER STRATEGY
+                    if strategy == 'RelativeStrength_Ranker_Position':
                         rs_bought_tracker.close_position(
                             ticker=ticker,
                             exit_date=pd.Timestamp.today().strftime('%Y-%m-%d'),
                             exit_price=exit_sig['current_price'],
                             exit_reason=exit_sig['type'],
-                            profit_loss=0  # Would need to calculate actual P&L
+                            profit_loss=0
                         )
 
             # Partial profits
