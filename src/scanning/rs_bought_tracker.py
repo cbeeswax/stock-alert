@@ -35,11 +35,18 @@ from typing import Dict, List, Optional, Tuple
 class RSBoughtTracker:
     """Manages RelativeStrength_Ranker bought ticker list."""
 
-    def __init__(self, file_path: str = "data/rs_ranker_bought.json"):
-        """Initialize tracker."""
+    def __init__(self, file_path: str = "data/rs_ranker_bought.json", load_from_file: bool = True):
+        """Initialize tracker.
+        
+        Args:
+            file_path: Path to JSON file
+            load_from_file: If True, load existing data from file. If False, start fresh.
+                           Use False for diagnostic/test runs to avoid loading stale data.
+        """
         self.file_path = Path(file_path)
         self.bought_tickers = {}
-        self._load()
+        if load_from_file:
+            self._load()
 
     def _load(self) -> None:
         """Load bought list from JSON file."""

@@ -102,9 +102,24 @@ if __name__ == "__main__":
             if action_signals['exits']:
                 print(f"🚨 EXITS ({len(action_signals['exits'])}):")
                 for exit_sig in action_signals['exits']:
-                    print(f"   {exit_sig['ticker']}: {exit_sig['type']} - {exit_sig['reason']}")
+                    ticker = exit_sig['ticker']
+                    print(f"   {ticker}: {exit_sig['type']} - {exit_sig['reason']}")
                     print(f"   → {exit_sig['action']}")
                     print()
+                    
+                    # CLOSE THE POSITION IN TRACKER
+                    position_tracker.close_position(ticker, exit_sig['type'])
+                    
+                    # UPDATE RS RANKER TRACKER IF APPLICABLE
+                    pos = position_tracker.get_position(ticker)
+                    if pos and pos.get('strategy') == 'RelativeStrength_Ranker_Position':
+                        rs_bought_tracker.close_position(
+                            ticker=ticker,
+                            exit_date=pd.Timestamp.today().strftime('%Y-%m-%d'),
+                            exit_price=exit_sig['current_price'],
+                            exit_reason=exit_sig['type'],
+                            profit_loss=0  # Would need to calculate actual P&L
+                        )
 
             # Partial profits
             if action_signals['partials']:
