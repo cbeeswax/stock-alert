@@ -841,12 +841,18 @@ class WalkForwardBacktester:
 
         # Record exit to RS Ranker tracker (if applicable)
         if strategy == "RelativeStrength_Ranker_Position":
+            # Calculate days held
+            position_entry = pd.Timestamp(position['entry_date'])
+            days_held = (exit_date - position_entry).days
+            
             self.rs_bought_tracker.close_position(
                 ticker=ticker,
                 exit_date=exit_date.strftime('%Y-%m-%d'),
                 exit_price=exit_price,
                 exit_reason=exit_reason,
-                profit_loss=pnl
+                profit_loss=pnl,
+                r_multiple=r_multiple,
+                days_held=days_held
             )
 
         return result
