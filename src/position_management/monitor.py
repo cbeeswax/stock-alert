@@ -28,6 +28,8 @@ from src.config.settings import (
     RS_RANKER_MAX_DAYS,
     HIGH52_POS_MAX_DAYS,
     BIGBASE_MAX_DAYS,
+    GAP_REVERSAL_MAX_DAYS,
+    GAP_REVERSAL_TRAIL_MA,
     POSITION_PARTIAL_SIZE,
     POSITION_PYRAMID_R_TRIGGER,
     POSITION_PYRAMID_MAX_ADDS,
@@ -127,6 +129,9 @@ def monitor_positions(position_tracker):
             elif strategy == "BigBase_Breakout_Position":
                 partial_r_trigger = BIGBASE_PARTIAL_R
                 max_days = BIGBASE_MAX_DAYS
+            elif strategy == "GapReversal_Position":
+                partial_r_trigger = 999  # no partial exits for gap reversal
+                max_days = GAP_REVERSAL_MAX_DAYS
             else:
                 partial_r_trigger = 2.5
                 max_days = 150
@@ -235,21 +240,56 @@ def monitor_positions(position_tracker):
                     else:
                         closes_below_trail = 0
 
+            elif strategy == "GapReversal_Position":
+                # GapReversal: EMA21 single-close exit (immediate, no consecutive count needed)
+                direction = pos.get('direction', 'LONG')
+                if ema21 and pd.notna(ema21):
+                    if direction == "LONG" and current_close < ema21:
+                        exits.append({
+                            'ticker': ticker,
+                            'type': 'EMA21_TRAIL_GAP',
+                            'reason': f'Close ${current_close:.2f} crossed below EMA{GAP_REVERSAL_TRAIL_MA} (${ema21:.2f})',
+                            'action': f'EXIT at market (${current_close:.2f})',
+                            'current_r': current_r,
+                            'days_held': days_held,
+                            'urgency': 'HIGH',
+                            'entry_price': entry_price,
+                            'current_price': current_close
+                        })
+                        trail_triggered = True
+                    elif direction == "SHORT" and current_close > ema21:
+                        exits.append({
+                            'ticker': ticker,
+                            'type': 'EMA21_TRAIL_GAP_SHORT',
+                            'reason': f'Close ${current_close:.2f} crossed above EMA{GAP_REVERSAL_TRAIL_MA} (${ema21:.2f})',
+                            'action': f'EXIT SHORT at market (${current_close:.2f})',
+                            'current_r': current_r,
+                            'days_held': days_held,
+                            'urgency': 'HIGH',
+                            'entry_price': entry_price,
+                            'current_price': current_close
+                        })
+                        trail_triggered = True
+
             # Update trail counter
             if not trail_triggered:
                 pos['closes_below_trail'] = closes_below_trail
                 position_tracker._save_positions()
 
             # =====================================================
-            # 4. CHECK TIME STOP (Skip for pyramided positions)
+            # 4. CHECK TIME STOP
             # =====================================================
-            # Pyramided positions = proven winners, managed by trail stops only
+            # GapReversal: always hard-cap at MaxDays (no pyramid exception —
+            # the PLTR trade ran 1134 days because this check was skipped).
+            # Other strategies: skip time stop if position was pyramided (proven winner).
             pyramid_adds = pos.get('pyramid_adds', 0)
-            # Handle both integer (live) and list (shouldn't happen, but safe)
             pyramid_count = len(pyramid_adds) if isinstance(pyramid_adds, list) else pyramid_adds
             has_pyramids = pyramid_count > 0
 
-            if not has_pyramids and days_held >= max_days:
+            time_stop_due = (strategy == "GapReversal_Position" and days_held >= max_days) or \
+                            (not has_pyramids and days_held >= max_days)
+
+            if time_stop_due:
                 exits.append({
                     'ticker': ticker,
                     'type': f'TIME_STOP_{max_days}d',

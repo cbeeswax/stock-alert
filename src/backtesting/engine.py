@@ -193,6 +193,12 @@ class WalkForwardBacktester:
         if risk_per_share == 0:
             return 0
 
+        # Enforce a minimum stop distance (1% of entry) to prevent position-size explosions
+        # when the gap fill level is very close to the entry price (e.g. tiny 0.1% gap).
+        min_risk_per_share = entry_price * 0.01
+        if risk_per_share < min_risk_per_share:
+            risk_per_share = min_risk_per_share
+
         # Use FIXED initial capital for position sizing (prevents exponential growth)
         risk_dollars = self.initial_capital * (risk_pct / 100)
         shares = int(risk_dollars / risk_per_share)
@@ -806,6 +812,15 @@ class WalkForwardBacktester:
 
 
         has_pyramids = len(position['pyramid_adds']) > 0
+
+        # GapReversal: always enforce MaxDays hard cap — never pyramid, and open-ended
+        # holds are what caused the -245R PLTR trade (1134 days with no exit).
+        if strategy == "GapReversal_Position" and days_held >= max_days:
+            self.log.info(
+                f"GapReversal EXIT max_days | {position.get('ticker','?')} {direction} | "
+                f"date={current_date} days={days_held} R={current_r:.2f}"
+            )
+            return self._close_position(position, current_date, current_close, f"TimeStop_{max_days}d", current_r)
 
         if not has_pyramids and days_held >= max_days:
             # Only apply time stop to non-pyramided positions

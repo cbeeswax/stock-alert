@@ -230,8 +230,12 @@ if __name__ == "__main__":
             stop = trade['StopLoss']
             target = trade['Target']
 
-            # Calculate shares
+            # Calculate shares — enforce 1% minimum stop distance to prevent
+            # position-size explosions when gap fill level is very close to entry.
             risk_per_share = entry - stop
+            min_risk = entry * 0.01
+            if 0 < risk_per_share < min_risk:
+                risk_per_share = min_risk
             shares = int(risk_amount / risk_per_share) if risk_per_share > 0 else 0
             position_size = shares * entry
 

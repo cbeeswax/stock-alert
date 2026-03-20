@@ -181,6 +181,7 @@ GAP_REVERSAL_PRIORITY = 1              # Signal priority (lower = higher priorit
 GAP_REVERSAL_PRIOR_DECLINE_LOOKBACK = 20   # bars to look back for prior high/low
 GAP_REVERSAL_PRIOR_DECLINE_PCT = 0.10      # stock must be down ≥10% from lookback high (long)
 GAP_REVERSAL_PRIOR_RALLY_PCT = 0.10        # stock must be up ≥10% from lookback low (short)
+GAP_REVERSAL_SHORT_REGIME_FILTER = True    # shorts only allowed when market is not BULLISH
 
 # =============================================================================
 # INDEX REGIME FILTERS

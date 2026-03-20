@@ -1,0 +1,93 @@
+{
+  "AMAT_RelativeStrength_20260225_20260303": {
+    "ticker": "AMAT",
+    "strategy": "RelativeStrength_Ranker_Position",
+    "entry_date": "2026-02-25",
+    "entry_price": 394.95,
+    "exit_date": "2026-03-03",
+    "exit_price": 359.88,
+    "exit_reason": "StopLoss",
+    "pnl": -1998.99,
+    "r_multiple": -1.0,
+    "days_held": 6,
+    "outcome": "Loss"
+  },
+  "ADI_RelativeStrength_20260220_20260305": {
+    "ticker": "ADI",
+    "strategy": "RelativeStrength_Ranker_Position",
+    "entry_date": "2026-02-20",
+    "entry_price": 353.92,
+    "exit_date": "2026-03-05",
+    "exit_price": 332.51,
+    "exit_reason": "StopLoss",
+    "pnl": -1991.13,
+    "r_multiple": -1.0,
+    "days_held": 13,
+    "outcome": "Loss"
+  },
+  "GDDY_RelativeStrength_20260220_20260309": {
+    "ticker": "GDDY",
+    "strategy": "RelativeStrength_Ranker_Position",
+    "entry_date": "2026-02-20",
+    "entry_price": 139.28,
+    "exit_date": "2026-03-09",
+    "exit_price": 133.66,
+    "exit_reason": "StopLoss",
+    "pnl": -1995.1,
+    "r_multiple": -1.0,
+    "days_held": 17,
+    "outcome": "Loss"
+  },
+  "WBD_RelativeStrength_20260302_20260312": {
+    "ticker": "WBD",
+    "strategy": "RelativeStrength_Ranker_Position",
+    "entry_date": "2026-03-02",
+    "entry_price": 28.5,
+    "exit_date": "2026-03-12",
+    "exit_price": 27.53,
+    "exit_reason": "StopLoss",
+    "pnl": -1999.17,
+    "r_multiple": -1.0,
+    "days_held": 10,
+    "outcome": "Loss"
+  },
+  "KEYS_RelativeStrength_20260220_20260319": {
+    "ticker": "KEYS",
+    "strategy": "RelativeStrength_Ranker_Position",
+    "entry_date": "2026-02-20",
+    "entry_price": 245.93,
+    "exit_date": "2026-03-19",
+    "exit_price": 290.2099914550781,
+    "exit_reason": "EndOfBacktest",
+    "pnl": 3586.68,
+    "r_multiple": 3.01,
+    "days_held": 27,
+    "outcome": "Win"
+  },
+  "INTC_RelativeStrength_20260304_20260319": {
+    "ticker": "INTC",
+    "strategy": "RelativeStrength_Ranker_Position",
+    "entry_date": "2026-03-04",
+    "entry_price": 45.58,
+    "exit_date": "2026-03-19",
+    "exit_price": 46.18000030517578,
+    "exit_reason": "EndOfBacktest",
+    "pnl": 233.4,
+    "r_multiple": 0.12,
+    "days_held": 15,
+    "outcome": "Win"
+  },
+  "AMAT_RelativeStrength_20260310_20260319": {
+    "ticker": "AMAT",
+    "strategy": "RelativeStrength_Ranker_Position",
+    "entry_date": "2026-03-10",
+    "entry_price": 345.88,
+    "exit_date": "2026-03-19",
+    "exit_price": 357.2099914550781,
+    "exit_reason": "EndOfBacktest",
+    "pnl": 645.81,
+    "r_multiple": 0.32,
+    "days_held": 9,
+    "outcome": "Win"
+  }
+}

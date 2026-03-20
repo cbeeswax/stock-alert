@@ -60,6 +60,7 @@ class GapReversalPosition(BaseStrategy):
             GAP_REVERSAL_PRIOR_DECLINE_LOOKBACK,
             GAP_REVERSAL_PRIOR_DECLINE_PCT,
             GAP_REVERSAL_PRIOR_RALLY_PCT,
+            GAP_REVERSAL_SHORT_REGIME_FILTER,
             MIN_LIQUIDITY_USD,
             MIN_PRICE,
         )
@@ -127,6 +128,18 @@ class GapReversalPosition(BaseStrategy):
                     prior_close_val = float(prior_closes.iloc[-1])
                     if recent_low > 0 and (prior_close_val / recent_low) < (1 + GAP_REVERSAL_PRIOR_RALLY_PCT):
                         return None  # Not enough prior rally
+
+            # Regime filter for shorts: only short when market is NOT bullish.
+            # In a bull market, gap-down reversals tend to continue up (continuation),
+            # not reverse — this was the cause of the 0% short win rate in 2022-2026.
+            if is_short and GAP_REVERSAL_SHORT_REGIME_FILTER:
+                try:
+                    from src.analysis.market_regime import get_position_regime, PositionRegime
+                    regime = get_position_regime(as_of_date)
+                    if regime == PositionRegime.BULLISH:
+                        return None  # No shorts in bull market
+                except Exception:
+                    pass  # If regime check fails, allow the trade
 
             # Higher-timeframe weekly trend filter
             if GAP_REVERSAL_WEEKLY_TF_FILTER:
