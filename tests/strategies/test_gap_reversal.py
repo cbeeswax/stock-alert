@@ -23,10 +23,13 @@ def _declining_df(n=150, final_gap_up=True, gap_pct=0.015):
     Build n rows of declining price ending in a gap-up (long setup) or
     gap-down (short setup) on the last bar.
 
+    The decline is steep enough (100→40 = 60pts over n bars) so the last 20 bars
+    show ≥15% decline, satisfying the GAP_REVERSAL_PRIOR_DECLINE_PCT=10% filter.
+
     Returns a properly DatetimeIndexed OHLCV DataFrame.
     """
     dates = pd.date_range("2023-01-02", periods=n, freq="B")
-    close_vals = 100 - np.linspace(0, 40, n)   # declining → drives RSI very low
+    close_vals = 100 - np.linspace(0, 60, n)   # 100→40: steep decline drives RSI very low
 
     open_vals = close_vals.copy()
     if final_gap_up:
@@ -47,9 +50,13 @@ def _declining_df(n=150, final_gap_up=True, gap_pct=0.015):
 
 
 def _rallying_df(n=150, final_gap_down=True, gap_pct=0.015):
-    """Build n rows of rising price ending in a gap-down (short setup)."""
+    """Build n rows of rising price ending in a gap-down (short setup).
+
+    Rally is steep enough (30→150 = 120pts) so the last 20 bars show ≥11% rally,
+    satisfying the GAP_REVERSAL_PRIOR_RALLY_PCT=10% filter.
+    """
     dates = pd.date_range("2023-01-02", periods=n, freq="B")
-    close_vals = 60 + np.linspace(0, 40, n)   # rallying → drives RSI very high
+    close_vals = 30 + np.linspace(0, 120, n)   # 30→150: steep rally drives RSI very high
 
     open_vals = close_vals.copy()
     if final_gap_down:
@@ -126,8 +133,10 @@ class TestLongSignal:
         signal = strat.scan("TEST", df, df.index[-1])
         assert signal is None
 
-    def test_no_signal_when_rsi_not_oversold(self):
+    def test_no_signal_when_rsi_not_oversold(self, monkeypatch):
         """Flat price (RSI ~50) with a gap up — RSI condition not met."""
+        # Also disable prior-decline filter so only RSI is tested
+        monkeypatch.setattr(cfg, "GAP_REVERSAL_PRIOR_DECLINE_PCT", 0.0)
         n = 150
         dates = pd.date_range("2023-01-02", periods=n, freq="B")
         close_vals = np.full(n, 100.0)
@@ -146,6 +155,31 @@ class TestLongSignal:
         strat = GapReversalPosition()
         signal = strat.scan("TEST", df, df.index[-1])
         # Smoothed RSI on flat price is near 50 — should not fire < 10
+        assert signal is None
+
+    def test_no_signal_prior_decline_insufficient(self, monkeypatch):
+        """Gap up but stock barely declined before it — prior-decline filter rejects."""
+        # Build a flat-then-tiny-dip dataset: flat for 130 bars, 2% dip for 19 bars, gap up
+        n = 150
+        dates = pd.date_range("2023-01-02", periods=n, freq="B")
+        close_vals = np.concatenate([
+            np.full(131, 80.0),               # flat (131 bars)
+            np.linspace(80.0, 78.5, 19),      # tiny 1.9% dip — below 10% threshold
+        ])
+        # Force smoothed RSI very low by applying a steep but brief prior drop
+        # Actually — we need RSI < 10 AND prior decline < 10%. Use monkeypatch for RSI.
+        # Easier: just verify filter blocks a setup where decline < PRIOR_DECLINE_PCT
+        monkeypatch.setattr(cfg, "GAP_REVERSAL_RSI_OVERSOLD", 100)   # always pass RSI check
+        open_vals = close_vals.copy()
+        open_vals[-1] = close_vals[-2] * 1.015   # gap up
+        df = pd.DataFrame(
+            {"Open": open_vals, "High": close_vals * 1.005,
+             "Low": close_vals * 0.995, "Close": close_vals, "Volume": [50_000_000] * n},
+            index=dates,
+        )
+        strat = GapReversalPosition()
+        signal = strat.scan("TEST", df, df.index[-1])
+        # 1.9% decline < 10% required → filter rejects
         assert signal is None
 
     def test_no_signal_insufficient_data(self):

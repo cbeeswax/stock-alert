@@ -41,13 +41,17 @@ def get_weekly_data(ticker: str, as_of_date=None) -> pd.DataFrame:
     if cache_file.exists():
         try:
             cached = pd.read_csv(cache_file, index_col=0, parse_dates=True)
-            # Refresh if more than 5 days stale (relative to latest cached row)
-            if not cached.empty and (pd.Timestamp.now() - cached.index[-1]).days < 8:
-                df = cached
-            else:
-                df = _download_weekly(ticker)
-                if not df.empty:
-                    df.to_csv(cache_file)
+            # In backtest mode (as_of_date in the past), always use cache if it covers as_of_date.
+            # In live mode (as_of_date is today or None), refresh if data is > 7 days stale.
+            if not cached.empty:
+                ref_date = pd.Timestamp(as_of_date) if as_of_date is not None else pd.Timestamp.now()
+                days_stale = (ref_date - cached.index[-1]).days
+                if days_stale < 8:
+                    df = cached
+                else:
+                    df = _download_weekly(ticker)
+                    if not df.empty:
+                        df.to_csv(cache_file)
         except Exception:
             df = _download_weekly(ticker)
             if not df.empty:

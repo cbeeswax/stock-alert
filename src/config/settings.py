@@ -175,6 +175,12 @@ GAP_REVERSAL_MAX_DAYS = 120            # Maximum hold period
 GAP_REVERSAL_DIRECTION = "both"        # "long", "short", or "both"
 GAP_REVERSAL_WEEKLY_TF_FILTER = True   # Require weekly trend alignment
 GAP_REVERSAL_PRIORITY = 1              # Signal priority (lower = higher priority)
+# Prior move filter: stock must have declined/rallied before the gap
+# For longs: prior close <= recent_high * (1 - DECLINE_PCT) — stock declined at least X%
+# For shorts: prior close >= recent_low * (1 + RALLY_PCT) — stock rallied at least X%
+GAP_REVERSAL_PRIOR_DECLINE_LOOKBACK = 20   # bars to look back for prior high/low
+GAP_REVERSAL_PRIOR_DECLINE_PCT = 0.10      # stock must be down ≥10% from lookback high (long)
+GAP_REVERSAL_PRIOR_RALLY_PCT = 0.10        # stock must be up ≥10% from lookback low (short)
 
 # =============================================================================
 # INDEX REGIME FILTERS

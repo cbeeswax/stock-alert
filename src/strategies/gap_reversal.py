@@ -57,6 +57,9 @@ class GapReversalPosition(BaseStrategy):
             GAP_REVERSAL_WEEKLY_TF_FILTER,
             GAP_REVERSAL_MAX_DAYS,
             GAP_REVERSAL_PRIORITY,
+            GAP_REVERSAL_PRIOR_DECLINE_LOOKBACK,
+            GAP_REVERSAL_PRIOR_DECLINE_PCT,
+            GAP_REVERSAL_PRIOR_RALLY_PCT,
             MIN_LIQUIDITY_USD,
             MIN_PRICE,
         )
@@ -105,6 +108,25 @@ class GapReversalPosition(BaseStrategy):
 
             if not (is_long or is_short):
                 return None
+
+            # Prior move filter: verify the stock actually declined (long) or rallied (short)
+            # before the gap — prevents false setups on breakouts or earnings surprises.
+            # Use close[-2] as the bar before the gap (bar[-1] is the gap bar itself).
+            lookback = min(GAP_REVERSAL_PRIOR_DECLINE_LOOKBACK, len(close) - 2)
+            if lookback >= 5:
+                prior_closes = close.iloc[-(lookback + 1):-1]  # bars before the gap bar
+                if is_long:
+                    # Must have declined ≥ PRIOR_DECLINE_PCT from recent high
+                    recent_high = prior_closes.max()
+                    prior_close_val = float(prior_closes.iloc[-1])
+                    if recent_high > 0 and (prior_close_val / recent_high) > (1 - GAP_REVERSAL_PRIOR_DECLINE_PCT):
+                        return None  # Not enough prior decline
+                if is_short:
+                    # Must have rallied ≥ PRIOR_RALLY_PCT from recent low
+                    recent_low = prior_closes.min()
+                    prior_close_val = float(prior_closes.iloc[-1])
+                    if recent_low > 0 and (prior_close_val / recent_low) < (1 + GAP_REVERSAL_PRIOR_RALLY_PCT):
+                        return None  # Not enough prior rally
 
             # Higher-timeframe weekly trend filter
             if GAP_REVERSAL_WEEKLY_TF_FILTER:
