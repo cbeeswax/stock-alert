@@ -23,6 +23,7 @@ from src.analysis.sectors import get_ticker_sector
 from src.analysis.regime import get_regime_label, get_regime_config, is_short_regime_ok
 from src.analysis.market_regime import get_position_regime, get_regime_params
 from src.scanning.rs_bought_tracker import RSBoughtTracker
+from src.strategies.registry import StrategyRegistry
 from config.trading_config import (
     # Global settings
     POSITION_INITIAL_EQUITY,
@@ -367,6 +368,46 @@ def detect_liquidity_zone(df, cfg):
         "zone_detected": zone_detected,
         "consolidation_bars": consolidation_bars,
     }
+
+
+# =============================================================================
+# REGISTRY INTEGRATION
+# =============================================================================
+# Strategies handled by hardcoded blocks in run_scan_as_of().
+# Any strategy registered in StrategyRegistry but NOT in this set
+# will be dispatched automatically via strategy.scan(ticker, df, as_of_date).
+_LEGACY_STRATEGY_NAMES = frozenset({
+    "EMA_Crossover_Position",
+    "MeanReversion_Position",
+    "%B_MeanReversion_Position",
+    "High52_Position",
+    "BigBase_Breakout_Position",
+    "TrendContinuation_Position",
+    "RelativeStrength_Ranker_Position",
+    "ShortWeakRS_Retrace_Position",
+    "LeaderPullback_Short_Position",
+    "MegaCap_WeeklySlide_Short",
+    "Industrials_Ranker_Position",
+    "Healthcare_Ranker_Position",
+    "Energy_Ranker_Position",
+    "Materials_Ranker_Position",
+    "ConsumerDisc_Ranker_Position",
+})
+
+
+def _get_active_registry_strategies():
+    """Return list of (name, strategy_instance) for all registry strategies NOT in legacy set."""
+    from src.config.settings import POSITION_MAX_PER_STRATEGY
+    result = []
+    for name in StrategyRegistry.list_available():
+        if name in _LEGACY_STRATEGY_NAMES:
+            continue
+        if POSITION_MAX_PER_STRATEGY.get(name, 0) > 0:
+            try:
+                result.append((name, StrategyRegistry.create(name)))
+            except Exception:
+                pass
+    return result
 
 
 # =============================================================================
@@ -1569,6 +1610,34 @@ def run_scan_as_of(as_of_date, tickers, rs_bought_tracker=None):
                 if cfg_mega.get("DEBUG_MODE", False):
                     print(f"❌ ERROR in MegaCap_WeeklySlide_Short for {ticker}: {e}")
                 continue
+
+    # =========================================================================
+    # Registry-based strategy dispatch (new strategies added via BaseStrategy)
+    # Any strategy registered in StrategyRegistry and enabled in config
+    # that is NOT in _LEGACY_STRATEGY_NAMES is dispatched here automatically.
+    # =========================================================================
+    _registry_strategies = _get_active_registry_strategies()
+    if _registry_strategies:
+        for ticker in tickers:
+            df = get_historical_data(ticker)
+            if df is None or df.empty:
+                continue
+            if not isinstance(df.index, pd.DatetimeIndex):
+                try:
+                    df.index = pd.to_datetime(df.index, errors="coerce")
+                    df = df[df.index.notna()]
+                except Exception:
+                    continue
+            df = df[df.index <= as_of_date]
+            if len(df) < 50:
+                continue
+            for _name, _strategy in _registry_strategies:
+                try:
+                    signal = _strategy.scan(ticker, df, as_of_date)
+                    if signal and isinstance(signal, dict):
+                        signals.append(signal)
+                except Exception:
+                    continue
 
     # =========================================================================
     # Phase 2-3: SECTOR-BASED STRATEGIES
