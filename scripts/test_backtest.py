@@ -7,7 +7,7 @@ Tests with a small set of tickers to verify:
 """
 
 import pandas as pd
-from backtester_walkforward import WalkForwardBacktester
+from src.backtesting.engine import WalkForwardBacktester
 
 # Test with just a few tickers for speed
 TEST_TICKERS = ["AAPL", "MSFT", "GOOGL", "NVDA", "TSLA"]

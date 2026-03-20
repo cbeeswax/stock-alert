@@ -17,7 +17,7 @@ Usage:
 
 from enum import Enum
 import pandas as pd
-from utils.market_data import get_historical_data
+from src.data.market import get_historical_data
 
 
 class PositionRegime(Enum):
