@@ -24,6 +24,7 @@ POSITION_MAX_TOTAL = 20            # Max 20 total positions
 
 # Per-Strategy Position Limits
 POSITION_MAX_PER_STRATEGY = {
+    "GapReversal_Position": 0,                # NEW: Breakaway Gap Reversal (disabled until backtest validated)
     "RelativeStrength_Ranker_Position": 10,   # ACTIVE: 48.5% WR, 2.52R, $497k profit
     "Industrials_Ranker_Position": 3,         # Phase 2: New sector
     "Healthcare_Ranker_Position": 3,          # Phase 3: New sector
@@ -159,6 +160,21 @@ RS_RANKER_PARTIAL_SIZE = 0.3
 RS_RANKER_TRAIL_MA = 100
 RS_RANKER_TRAIL_DAYS = 10
 RS_RANKER_MAX_DAYS = 150
+
+# 8. GAPREVERSAL_POSITION — Breakaway Gap Reversal Strategy
+# Long: gap up + smoothed RSI(10 on EMA21) < 10 + weekly trend UP
+# Short: gap down + smoothed RSI(10 on EMA21) > 90 + weekly trend DOWN
+# Stop: gap fill (prior close). Exit: trailing EMA21.
+GAP_REVERSAL_MIN_GAP_PCT = 0.005       # Minimum 0.5% gap to filter noise
+GAP_REVERSAL_RSI_OVERSOLD = 10         # smoothed RSI threshold for long
+GAP_REVERSAL_RSI_OVERBOUGHT = 90       # smoothed RSI threshold for short
+GAP_REVERSAL_EMA_PERIOD = 21           # EMA period used for price smoothing
+GAP_REVERSAL_RSI_PERIOD = 10           # RSI period computed on EMA series
+GAP_REVERSAL_TRAIL_MA = 21             # Trailing exit MA period
+GAP_REVERSAL_MAX_DAYS = 120            # Maximum hold period
+GAP_REVERSAL_DIRECTION = "both"        # "long", "short", or "both"
+GAP_REVERSAL_WEEKLY_TF_FILTER = True   # Require weekly trend alignment
+GAP_REVERSAL_PRIORITY = 1              # Signal priority (lower = higher priority)
 
 # =============================================================================
 # INDEX REGIME FILTERS
