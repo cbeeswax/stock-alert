@@ -12,6 +12,7 @@ Usage:
 Output:
     - Console summary: win rate, avg R-multiple, profit factor, max drawdown
     - backtest_results_gap_reversal.csv: full trade log
+    - logs/backtest_gap_reversal.log: full debug log
 """
 import sys
 import io
@@ -21,6 +22,7 @@ if sys.platform == "win32":
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8")
 
 import argparse
+import logging
 import time
 import pandas as pd
 import numpy as np
@@ -41,6 +43,32 @@ from src.config.settings import (
 from scripts.download_history import download_ticker, was_update_session_today, mark_update_session
 import src.config.settings as cfg
 
+
+# ─── logging setup ──────────────────────────────────────────────────────────
+def _setup_logging() -> logging.Logger:
+    log_dir = ROOT / "logs"
+    log_dir.mkdir(exist_ok=True)
+    log_file = log_dir / "backtest_gap_reversal.log"
+
+    logger = logging.getLogger("backtest_gap_reversal")
+    logger.setLevel(logging.DEBUG)
+
+    if not logger.handlers:
+        fmt = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
+
+        # File: DEBUG and above — full detail for troubleshooting
+        fh = logging.FileHandler(log_file, encoding="utf-8")
+        fh.setLevel(logging.DEBUG)
+        fh.setFormatter(fmt)
+        logger.addHandler(fh)
+
+        # Console: WARNING and above — keep terminal clean
+        ch = logging.StreamHandler()
+        ch.setLevel(logging.WARNING)
+        ch.setFormatter(fmt)
+        logger.addHandler(ch)
+
+    return logger
 
 # ─── CLI args ───────────────────────────────────────────────────────────────
 def _parse_args():
@@ -209,6 +237,13 @@ def print_summary(trades: pd.DataFrame, args):
 # ─── main ───────────────────────────────────────────────────────────────────
 def main():
     args = _parse_args()
+    log = _setup_logging()
+
+    log.info("=" * 60)
+    log.info("Gap Reversal Backtest started")
+    log.info(f"  start={args.start}  freq={args.freq}  direction={args.direction}")
+    log.info(f"  capital=${args.capital:,.0f}  max_positions={args.max_positions}  weekly_filter={'OFF' if args.no_weekly_filter else 'ON'}")
+    log.info("=" * 60)
 
     # Apply runtime config overrides
     cfg.GAP_REVERSAL_DIRECTION = args.direction
@@ -219,6 +254,7 @@ def main():
     # Load S&P 500 universe
     sp500 = pd.read_csv("data/sp500_constituents.csv")
     tickers = sp500["Symbol"].tolist()
+    log.info(f"Universe: {len(tickers)} S&P 500 tickers loaded")
     print(f"Universe: {len(tickers)} S&P 500 tickers")
 
     # Update data if needed
@@ -226,13 +262,16 @@ def main():
     print("📥 CHECKING HISTORICAL DATA")
     print("=" * 60)
     if was_update_session_today():
+        log.info("Data already updated today — skipping download")
         print("⚡ Data already updated today — skipping download")
     else:
         import gc
+        log.info("Downloading/updating historical data for all tickers...")
         print("🔄 Updating historical data...")
         batch_size = 10
         for i, ticker in enumerate(tickers, 1):
             if i % 50 == 0:
+                log.debug(f"  Data download progress: [{i}/{len(tickers)}]")
                 print(f"  [{i}/{len(tickers)}]")
             download_ticker(ticker)
             if i % batch_size == 0:
@@ -243,12 +282,14 @@ def main():
         download_ticker("QQQ")
         gc.collect()
         mark_update_session()
+        log.info("Data update complete")
         print("✅ Data update complete!\n")
 
     # Run backtest
     print("=" * 60)
     print("🚀 Starting GapReversal backtest...")
     print("=" * 60)
+    log.info(f"Running backtest from {args.start} ...")
     t0 = time.time()
 
     bt = WalkForwardBacktester(
@@ -257,18 +298,39 @@ def main():
         scan_frequency=args.freq,
         initial_capital=args.capital,
     )
-    trades = bt.run()
+
+    try:
+        trades = bt.run()
+    except Exception as e:
+        log.exception(f"Backtest engine crashed: {e}")
+        raise
 
     elapsed = time.time() - t0
+    log.info(f"Backtest completed in {elapsed:.1f}s — {len(trades)} total trades")
     print(f"\n⏱️  Backtest completed in {elapsed:.1f}s")
 
     # Save
     if not trades.empty:
         trades.to_csv(args.output, index=False)
+        log.info(f"Trade log saved to {args.output}")
         print(f"💾 Full trade log saved to: {args.output}")
+
+        # Log summary stats to file
+        gap_trades = trades[trades["Strategy"] == "GapReversal_Position"]
+        if not gap_trades.empty:
+            m = compute_metrics(gap_trades)
+            log.info(
+                f"GapReversal results: trades={m['TotalTrades']} "
+                f"wr={m['WinRate%']}% avgR={m['AvgR']:+.2f} "
+                f"pf={m['ProfitFactor']:.2f} pnl=${m['TotalPnL$']:+,.2f} "
+                f"maxDD=${m['MaxDrawdown$']:,.2f}"
+            )
+    else:
+        log.warning("No trades generated — check filters, RSI thresholds, or data quality")
 
     # Print summary
     print_summary(trades, args)
+
 
     # Detailed stats from evaluator
     if not trades.empty:

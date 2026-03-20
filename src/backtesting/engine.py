@@ -4,6 +4,7 @@ Long-Term Position Trading Backtester - Engine
 Walk-forward backtester for 8 position strategies (60-120 day holds).
 Features: Strategy-specific exits, pyramiding, per-strategy position limits.
 """
+import logging
 import pandas as pd
 from src.scanning.scanner import run_scan_as_of
 from src.scanning.validator import pre_buy_check
@@ -99,6 +100,7 @@ class WalkForwardBacktester:
             scan_frequency: Scan frequency (default from config: W-MON)
             initial_capital: Starting capital for risk calculation
         """
+        self.log = logging.getLogger("backtest_gap_reversal")
         self.tickers = tickers
         self.start_date = pd.to_datetime(start_date or BACKTEST_START_DATE)
         self.scan_frequency = scan_frequency or BACKTEST_SCAN_FREQUENCY
@@ -766,13 +768,23 @@ class WalkForwardBacktester:
         elif strategy == "GapReversal_Position":
             # GAP REVERSAL: Gap-fill stop + EMA21 trailing exit
             gap_fill_lvl = position.get('stop_price')  # stored as stop_price at entry
+            current_low = today_data.get('Low', current_close)
+            ticker = position.get('ticker', '?')
 
             # 1. Gap-fill stop: if Low of current bar touches/passes prior close
             if gap_fill_lvl is not None and current_low <= float(gap_fill_lvl):
+                self.log.debug(
+                    f"GapReversal EXIT gap_fill | {ticker} {direction} | "
+                    f"date={current_date} low={current_low:.2f} fill_lvl={float(gap_fill_lvl):.2f} R={current_r:.2f}"
+                )
                 return self._close_position(position, current_date, float(gap_fill_lvl), "GapFillStop", current_r)
 
             # For SHORT gap reversal: if price rallies back to gap fill level
             if direction == "SHORT" and gap_fill_lvl is not None and current_close >= float(gap_fill_lvl):
+                self.log.debug(
+                    f"GapReversal EXIT gap_fill_short | {ticker} SHORT | "
+                    f"date={current_date} close={current_close:.2f} fill_lvl={float(gap_fill_lvl):.2f} R={current_r:.2f}"
+                )
                 return self._close_position(position, current_date, float(gap_fill_lvl), "GapFillStop_Short", current_r)
 
             # 2. EMA21 trailing exit
@@ -780,8 +792,16 @@ class WalkForwardBacktester:
                 ema21 = recent_df['Close'].ewm(span=21, adjust=False).mean().iloc[-1]
                 if pd.notna(ema21):
                     if direction == "LONG" and current_close < ema21:
+                        self.log.debug(
+                            f"GapReversal EXIT ema21_trail | {ticker} LONG | "
+                            f"date={current_date} close={current_close:.2f} ema21={ema21:.2f} R={current_r:.2f}"
+                        )
                         return self._close_position(position, current_date, current_close, "EMA21_TrailingExit", current_r)
                     if direction == "SHORT" and current_close > ema21:
+                        self.log.debug(
+                            f"GapReversal EXIT ema21_trail_short | {ticker} SHORT | "
+                            f"date={current_date} close={current_close:.2f} ema21={ema21:.2f} R={current_r:.2f}"
+                        )
                         return self._close_position(position, current_date, current_close, "EMA21_TrailingExit_Short", current_r)
 
 
@@ -1022,6 +1042,12 @@ class WalkForwardBacktester:
                             if success:
                                 # Show trade entry
                                 print(f"   ✅ {day.date()} | ENTER {trade['Ticker']} @ ${trade['Entry']:.2f} | {strategy[:20]}")
+                                if strategy == "GapReversal_Position":
+                                    self.log.info(
+                                        f"GapReversal ENTER | {trade['Ticker']} {trade.get('Direction','?')} | "
+                                        f"date={day.date()} entry={trade['Entry']:.2f} stop={trade.get('StopLoss', trade.get('StopPrice','?'))} "
+                                        f"gap={trade.get('GapPct','?')}% rsi={trade.get('SmoothedRSI','?')}"
+                                    )
                                 entered_count += 1
 
                                 # Update position counts
