@@ -24,7 +24,7 @@ from src.analysis.regime import get_regime_label, get_regime_config, is_short_re
 from src.analysis.market_regime import get_position_regime, get_regime_params
 from src.scanning.rs_bought_tracker import RSBoughtTracker
 from src.strategies.registry import StrategyRegistry
-from config.trading_config import (
+from src.config.settings import (
     # Global settings
     POSITION_INITIAL_EQUITY,
     POSITION_RISK_PER_TRADE_PCT,

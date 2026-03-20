@@ -238,6 +238,7 @@ PRICE_ABOVE_EMA20_MAX = 1.10
 # =============================================================================
 
 SHORT_ENABLED = False
+LEADER_SHORT_ALLOWED_REGIMES = ("bull", "sideways")
 SHORT_MAX_POSITIONS = 5
 SHORT_MAX_EQUITY_PCT = 0.30
 SHORT_RISK_PER_TRADE_PCT = 1.5

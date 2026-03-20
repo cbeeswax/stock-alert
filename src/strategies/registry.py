@@ -72,28 +72,33 @@ class StrategyRegistry:
 
 def register_builtin_strategies() -> None:
     """Register all built-in strategies."""
-    # Import strategy implementations
     try:
         from .relative_strength import RelativeStrengthRanker
         StrategyRegistry.register("RelativeStrength_Ranker_Position", RelativeStrengthRanker)
     except ImportError:
         pass
-    
+
     try:
         from .high_52w_strategy import High52Strategy
         StrategyRegistry.register("High52_Position", High52Strategy)
     except ImportError:
         pass
-    
+
     try:
         from .consolidation_breakout import ConsolidationBreakout
         StrategyRegistry.register("BigBase_Breakout_Position", ConsolidationBreakout)
     except ImportError:
         pass
-    
+
     try:
         from .ema_signals import EMACrossover
         StrategyRegistry.register("EMA_Crossover_Position", EMACrossover)
+    except ImportError:
+        pass
+
+    try:
+        from .gap_reversal import GapReversalPosition
+        StrategyRegistry.register("GapReversal_Position", GapReversalPosition)
     except ImportError:
         pass
 
