@@ -237,7 +237,11 @@ class WalkForwardBacktester:
         if shares == 0:
             return False
 
-        risk_amount = abs(entry_price - stop_price)
+        raw_risk = abs(entry_price - stop_price)
+        # Apply the same 1% floor used in _calculate_position_size() so R-multiples
+        # are consistent with actual share sizing (prevents extreme R from tiny stops)
+        min_risk_per_share = entry_price * 0.01 if entry_price > 0 else 0.01
+        risk_amount = max(raw_risk, min_risk_per_share)
 
         # Create position state
         position = {
@@ -798,16 +802,21 @@ class WalkForwardBacktester:
             current_low = today_data.get('Low', current_close)
             ticker = position.get('ticker', '?')
 
-            # 1. Gap-fill stop (LONG only): if Low of current bar touches/passes prior close (fills the gap)
-            if direction == "LONG" and gap_fill_lvl is not None and current_low <= float(gap_fill_lvl):
+            # 1. Gap-fill stop: guard against NaN Low/High before comparison
+            import math as _math
+            low_ok = not _math.isnan(float(current_low)) if current_low is not None else False
+            high_ok = not _math.isnan(float(high_price)) if high_price is not None else False
+
+            # 1a. LONG: gap fills if Low dips to/below prior close
+            if direction == "LONG" and gap_fill_lvl is not None and low_ok and current_low <= float(gap_fill_lvl):
                 self.log.debug(
                     f"GapReversal EXIT gap_fill | {ticker} LONG | "
                     f"date={current_date} low={current_low:.2f} fill_lvl={float(gap_fill_lvl):.2f} R={current_r:.2f}"
                 )
                 return self._close_position(position, current_date, float(gap_fill_lvl), "GapFillStop", current_r)
 
-            # For SHORT: gap fill means price RALLIED back to prior close (high >= fill level, not low)
-            if direction == "SHORT" and gap_fill_lvl is not None and float(high_price) >= float(gap_fill_lvl):
+            # 1b. SHORT: gap fills if High rallies back to/above prior close
+            if direction == "SHORT" and gap_fill_lvl is not None and high_ok and float(high_price) >= float(gap_fill_lvl):
                 self.log.debug(
                     f"GapReversal EXIT gap_fill_short | {ticker} SHORT | "
                     f"date={current_date} high={float(high_price):.2f} fill_lvl={float(gap_fill_lvl):.2f} R={current_r:.2f}"

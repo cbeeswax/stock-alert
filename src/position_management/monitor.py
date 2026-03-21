@@ -117,14 +117,18 @@ def monitor_positions(position_tracker):
             pyramids_added = pos.get('pyramids_added', 0)
 
             # Calculate current R-multiple (direction-aware)
+            # Apply 1% floor to match position sizing logic and prevent extreme R from tiny stops
+            min_risk = entry_price * 0.01 if entry_price > 0 else 0.01
             if direction == "SHORT":
                 # For SHORT: stop > entry, risk = stop - entry
-                risk_amount = (stop_loss - entry_price) if stop_loss > 0 else entry_price * 0.02
-                current_r = (entry_price - current_close) / max(risk_amount, 0.01)
+                raw_risk = (stop_loss - entry_price) if stop_loss > 0 else entry_price * 0.02
+                risk_amount = max(raw_risk, min_risk)
+                current_r = (entry_price - current_close) / risk_amount
             else:
                 # For LONG: entry > stop, risk = entry - stop
-                risk_amount = (entry_price - stop_loss) if stop_loss > 0 else entry_price * 0.02
-                current_r = (current_close - entry_price) / max(risk_amount, 0.01)
+                raw_risk = (entry_price - stop_loss) if stop_loss > 0 else entry_price * 0.02
+                risk_amount = max(raw_risk, min_risk)
+                current_r = (current_close - entry_price) / risk_amount
 
             # Get strategy-specific parameters
             if strategy == "RelativeStrength_Ranker_Position":
