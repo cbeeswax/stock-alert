@@ -30,7 +30,21 @@ def get_historical_data(ticker: str) -> pd.DataFrame:
     if not file.exists():
         return pd.DataFrame()
     df = pd.read_csv(file, index_col=0, parse_dates=True)
-    return df.sort_index()
+    df = df.sort_index()
+
+    # Drop rows with corrupt / non-datetime index (e.g. raw integer timestamps
+    # from yfinance bugs like PLTR's index=81469727, Close=$156M)
+    valid_date_mask = pd.to_datetime(df.index, errors='coerce').notna()
+    df = df[valid_date_mask]
+
+    # Drop rows with obviously corrupt prices (> 1000x the median close)
+    # This catches data errors without rejecting legitimate high-priced stocks.
+    if "Close" in df.columns and not df.empty:
+        median_close = df["Close"].median()
+        if median_close > 0:
+            df = df[df["Close"] <= median_close * 100]
+
+    return df
 
 
 def download_historical(

@@ -316,6 +316,13 @@ class WalkForwardBacktester:
                 if position['strategy'] == "GapReversal_Position" and position['days_held'] >= position['max_days']:
                     last_price = float(df['Close'].iloc[-1])
                     entry = position['entry_price']
+                    # Sanity check: exit price shouldn't be more than 50x entry (data corruption guard)
+                    if entry > 0 and last_price > entry * 50:
+                        self.log.warning(
+                            f"TimeStop corrupt exit price {position['ticker']}: last_price={last_price:.2f} "
+                            f"entry={entry:.2f} — using entry price instead"
+                        )
+                        last_price = entry  # Break-even exit on corrupt data
                     risk = max(position['risk_amount'], 0.01)
                     r = (entry - last_price) / risk if position['direction'] == "SHORT" else (last_price - entry) / risk
                     closed_positions.append(
@@ -326,9 +333,19 @@ class WalkForwardBacktester:
                 continue
 
             today_data = df.loc[current_date]
-            current_close = today_data['Close']
-            current_high = today_data['High']
-            current_low = today_data['Low']
+            current_close = float(today_data['Close'])
+            current_high = float(today_data['High'])
+            current_low = float(today_data['Low'])
+
+            # Sanity check: skip bars with corrupt prices (> 50x entry is data error)
+            entry_price_ref = position['entry_price']
+            if entry_price_ref > 0 and (current_close > entry_price_ref * 50 or current_close <= 0):
+                self.log.warning(
+                    f"Corrupt bar {position['ticker']} on {current_date}: close={current_close:.2f} "
+                    f"vs entry={entry_price_ref:.2f} — skipping"
+                )
+                remaining_positions.append(position)
+                continue
 
             # Update highest price
             if current_high > position['highest_price']:
