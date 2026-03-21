@@ -203,6 +203,11 @@ class WalkForwardBacktester:
         risk_dollars = self.initial_capital * (risk_pct / 100)
         shares = int(risk_dollars / risk_per_share)
 
+        # Hard cap: never exceed 25% of capital by market value (prevents data-error explosions)
+        if entry_price > 0:
+            max_shares_by_value = int(self.initial_capital * 0.25 / entry_price)
+            shares = min(shares, max_shares_by_value)
+
         return max(shares, 1)  # At least 1 share
 
     def _enter_position(self, entry_day, trade):
@@ -237,6 +242,12 @@ class WalkForwardBacktester:
         if shares == 0:
             return False
 
+        # Validate entry price — skip if data looks corrupted
+        import math as _math
+        if entry_price <= 0 or _math.isnan(entry_price) or stop_price <= 0 or _math.isnan(stop_price):
+            self.log.warning(f"SKIP {ticker} {strategy}: invalid entry={entry_price} stop={stop_price}")
+            return False
+
         raw_risk = abs(entry_price - stop_price)
         # Apply the same 1% floor used in _calculate_position_size() so R-multiples
         # are consistent with actual share sizing (prevents extreme R from tiny stops)
@@ -266,6 +277,14 @@ class WalkForwardBacktester:
         }
 
         self.open_positions.append(position)
+
+        # Log GapReversal entries for diagnostic purposes
+        if strategy == "GapReversal_Position":
+            self.log.info(
+                f"ENTER {ticker} {direction} | entry={entry_price:.4f} stop={stop_price:.4f} "
+                f"raw_risk={raw_risk:.4f} risk_amount={risk_amount:.4f} shares={shares}"
+            )
+
         return True
 
     def _check_open_positions(self, current_date):
@@ -323,7 +342,10 @@ class WalkForwardBacktester:
             # =================================================================
             # PYRAMIDING LOGIC (add to winners on pullback)
             # =================================================================
+            # GapReversal is a mean-reversion strategy — pyramiding is not applicable
+            # and caused catastrophic losses when the short-side stock recovered.
             if (POSITION_PYRAMID_ENABLED and
+                strategy != "GapReversal_Position" and
                 current_r >= POSITION_PYRAMID_R_TRIGGER and
                 len(position['pyramid_adds']) < POSITION_PYRAMID_MAX_ADDS and
                 not position['partial_exited']):
