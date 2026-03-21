@@ -258,8 +258,12 @@ def send_email_alert(
 
                     # Calculate position sizing
                     risk_amount = equity * risk_pct  # $2,000 default
-                    risk_per_share = entry - stop
-                    shares = int(risk_amount / risk_per_share) if risk_per_share > 0 else 0
+                    if entry > 0 and stop > 0:
+                        risk_per_share = max(abs(entry - stop), entry * 0.01)
+                        shares = int(risk_amount / risk_per_share) if risk_per_share > 0 else 0
+                        shares = min(shares, int(equity * 0.25 / entry))  # 25% cap
+                    else:
+                        shares = 0
                     position_size = shares * entry
 
                     # Color code by score (0-100 scale for position trading)

@@ -262,13 +262,19 @@ def display_trade_ready_signals(trade_ready: pd.DataFrame):
             stop = trade['StopLoss']
             target = trade['Target']
 
+            # Skip if entry/stop are invalid (data corruption guard)
+            if not entry or not stop or entry <= 0 or stop <= 0:
+                continue
+
             # Calculate shares — enforce 1% minimum stop distance to prevent
             # position-size explosions when gap fill level is very close to entry.
-            risk_per_share = entry - stop
+            risk_per_share = abs(entry - stop)
             min_risk = entry * 0.01
-            if 0 < risk_per_share < min_risk:
-                risk_per_share = min_risk
+            risk_per_share = max(risk_per_share, min_risk)
             shares = int(risk_amount / risk_per_share) if risk_per_share > 0 else 0
+            # Hard cap: never exceed 25% of capital by market value
+            if entry > 0:
+                shares = min(shares, int(equity * 0.25 / entry))
             position_size = shares * entry
 
             print(f"   {idx+1}. {ticker:<6} | {trade['Strategy']:<35}")
