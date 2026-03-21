@@ -204,7 +204,9 @@ class TestLongSignal:
 # ---------------------------------------------------------------------------
 
 class TestShortSignal:
-    def test_gap_down_high_rsi_generates_short_signal(self):
+    def test_gap_down_high_rsi_generates_short_signal(self, monkeypatch):
+        # Bypass the regime filter so we can test the signal logic in isolation
+        monkeypatch.setattr(cfg, "GAP_REVERSAL_SHORT_REGIME_FILTER", False)
         df = _rallying_df(n=150, final_gap_down=True, gap_pct=0.015)
         strat = GapReversalPosition()
         signal = strat.scan("TEST", df, df.index[-1])

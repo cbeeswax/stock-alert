@@ -282,9 +282,24 @@ class WalkForwardBacktester:
                 remaining_positions.append(position)
                 continue
 
+            # Normalize index timezone to match backtest dates (prevents ghost positions
+            # where current_date is never found due to tz-aware vs tz-naive mismatch)
+            if hasattr(df.index, 'tz') and df.index.tz is not None:
+                df.index = df.index.tz_localize(None)
+
             # Get today's bar
             if current_date not in df.index:
-                remaining_positions.append(position)
+                # Still enforce MaxDays even when today's bar is missing
+                if position['strategy'] == "GapReversal_Position" and position['days_held'] >= position['max_days']:
+                    last_price = float(df['Close'].iloc[-1])
+                    entry = position['entry_price']
+                    risk = max(position['risk_amount'], 0.01)
+                    r = (entry - last_price) / risk if position['direction'] == "SHORT" else (last_price - entry) / risk
+                    closed_positions.append(
+                        self._close_position(position, current_date, last_price, f"TimeStop_{position['max_days']}d", r)
+                    )
+                else:
+                    remaining_positions.append(position)
                 continue
 
             today_data = df.loc[current_date]
@@ -522,10 +537,13 @@ class WalkForwardBacktester:
         days_held = position['days_held']
         max_days = position['max_days']
 
-        # Check stop loss first
-        if direction == "LONG" and today_data['Low'] <= stop:
+        # Check stop loss first — guard against NaN in OHLC data (prevents stop from silently not firing)
+        low_price = today_data.get('Low', float('nan')) if hasattr(today_data, 'get') else today_data['Low']
+        high_price = today_data.get('High', float('nan')) if hasattr(today_data, 'get') else today_data['High']
+        import math
+        if direction == "LONG" and not math.isnan(float(low_price)) and float(low_price) <= stop:
             return self._close_position(position, current_date, stop, "StopLoss", -1.0)
-        elif direction == "SHORT" and today_data['High'] >= stop:
+        elif direction == "SHORT" and not math.isnan(float(high_price)) and float(high_price) >= stop:
             return self._close_position(position, current_date, stop, "StopLoss", -1.0)
 
         # Calculate indicators (need historical context)
@@ -777,19 +795,19 @@ class WalkForwardBacktester:
             current_low = today_data.get('Low', current_close)
             ticker = position.get('ticker', '?')
 
-            # 1. Gap-fill stop: if Low of current bar touches/passes prior close
-            if gap_fill_lvl is not None and current_low <= float(gap_fill_lvl):
+            # 1. Gap-fill stop (LONG only): if Low of current bar touches/passes prior close (fills the gap)
+            if direction == "LONG" and gap_fill_lvl is not None and current_low <= float(gap_fill_lvl):
                 self.log.debug(
-                    f"GapReversal EXIT gap_fill | {ticker} {direction} | "
+                    f"GapReversal EXIT gap_fill | {ticker} LONG | "
                     f"date={current_date} low={current_low:.2f} fill_lvl={float(gap_fill_lvl):.2f} R={current_r:.2f}"
                 )
                 return self._close_position(position, current_date, float(gap_fill_lvl), "GapFillStop", current_r)
 
-            # For SHORT gap reversal: if price rallies back to gap fill level
-            if direction == "SHORT" and gap_fill_lvl is not None and current_close >= float(gap_fill_lvl):
+            # For SHORT: gap fill means price RALLIED back to prior close (high >= fill level, not low)
+            if direction == "SHORT" and gap_fill_lvl is not None and float(high_price) >= float(gap_fill_lvl):
                 self.log.debug(
                     f"GapReversal EXIT gap_fill_short | {ticker} SHORT | "
-                    f"date={current_date} close={current_close:.2f} fill_lvl={float(gap_fill_lvl):.2f} R={current_r:.2f}"
+                    f"date={current_date} high={float(high_price):.2f} fill_lvl={float(gap_fill_lvl):.2f} R={current_r:.2f}"
                 )
                 return self._close_position(position, current_date, float(gap_fill_lvl), "GapFillStop_Short", current_r)
 

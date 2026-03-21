@@ -136,8 +136,8 @@ class GapReversalPosition(BaseStrategy):
                 try:
                     from src.analysis.market_regime import get_position_regime, PositionRegime
                     regime = get_position_regime(as_of_date)
-                    if regime == PositionRegime.BULLISH:
-                        return None  # No shorts in bull market
+                    if regime == PositionRegime.RISK_ON:
+                        return None  # No shorts in bull (risk-on) market
                 except Exception:
                     pass  # If regime check fails, allow the trade
 
