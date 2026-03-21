@@ -108,6 +108,7 @@ def monitor_positions(position_tracker):
             entry_date = pd.to_datetime(pos['entry_date'])
             strategy = pos.get('strategy', 'Unknown')
             stop_loss = pos.get('stop_loss', 0)
+            direction = pos.get('direction', 'LONG')
             days_held = (today - entry_date).days
 
             # Track consecutive closes below trail
@@ -115,9 +116,15 @@ def monitor_positions(position_tracker):
             partial_exited = pos.get('partial_exited', False)
             pyramids_added = pos.get('pyramids_added', 0)
 
-            # Calculate current R-multiple
-            risk_amount = entry_price - stop_loss if stop_loss > 0 else entry_price * 0.02
-            current_r = (current_close - entry_price) / risk_amount
+            # Calculate current R-multiple (direction-aware)
+            if direction == "SHORT":
+                # For SHORT: stop > entry, risk = stop - entry
+                risk_amount = (stop_loss - entry_price) if stop_loss > 0 else entry_price * 0.02
+                current_r = (entry_price - current_close) / max(risk_amount, 0.01)
+            else:
+                # For LONG: entry > stop, risk = entry - stop
+                risk_amount = (entry_price - stop_loss) if stop_loss > 0 else entry_price * 0.02
+                current_r = (current_close - entry_price) / max(risk_amount, 0.01)
 
             # Get strategy-specific parameters
             if strategy == "RelativeStrength_Ranker_Position":
@@ -139,7 +146,12 @@ def monitor_positions(position_tracker):
             # =====================================================
             # 1. CHECK STOP LOSS (HARD EXIT)
             # =====================================================
-            if stop_loss > 0 and current_low <= stop_loss:
+            # Direction-aware: LONG uses Low (gap-fill going down), SHORT uses High (gap-fill rally)
+            stop_hit = (
+                (direction == "LONG" and stop_loss > 0 and current_low <= stop_loss) or
+                (direction == "SHORT" and stop_loss > 0 and current_high >= stop_loss)
+            )
+            if stop_hit:
                 exits.append({
                     'ticker': ticker,
                     'type': 'STOP_LOSS',
@@ -242,7 +254,6 @@ def monitor_positions(position_tracker):
 
             elif strategy == "GapReversal_Position":
                 # GapReversal: EMA21 single-close exit (immediate, no consecutive count needed)
-                direction = pos.get('direction', 'LONG')
                 if ema21 and pd.notna(ema21):
                     if direction == "LONG" and current_close < ema21:
                         exits.append({
