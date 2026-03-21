@@ -345,7 +345,7 @@ class WalkForwardBacktester:
             # GapReversal is a mean-reversion strategy — pyramiding is not applicable
             # and caused catastrophic losses when the short-side stock recovered.
             if (POSITION_PYRAMID_ENABLED and
-                strategy != "GapReversal_Position" and
+                position['strategy'] != "GapReversal_Position" and
                 current_r >= POSITION_PYRAMID_R_TRIGGER and
                 len(position['pyramid_adds']) < POSITION_PYRAMID_MAX_ADDS and
                 not position['partial_exited']):
