@@ -2,75 +2,109 @@
 Base Strategy Class
 ===================
 Abstract base class for all trading strategies.
-All strategies should inherit from this class.
+All strategies should inherit from this class and implement scan().
+
+Lifecycle:
+    scanner calls strategy.scan(ticker, df, as_of_date) per ticker
+    backtester calls strategy.get_exit_conditions(position, df) per open position
 """
 
 from abc import ABC, abstractmethod
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 import pandas as pd
 
 
 class BaseStrategy(ABC):
     """
     Abstract base class for trading strategies.
-    
-    All strategy implementations should inherit from this and implement
-    the run() method to return a list of signal dictionaries.
+
+    Required implementation:
+        scan()              — per-ticker signal generation
+        get_exit_conditions() — per-position exit logic
+
+    Optional override:
+        run()               — bulk scan across all tickers (default loops scan())
     """
-    
+
     name: str = "BaseStrategy"
     description: str = ""
-    
+
     def __init__(self):
-        """Initialize strategy."""
         pass
-    
+
     @abstractmethod
-    def run(self, tickers: List[str], as_of_date: pd.Timestamp = None) -> List[Dict[str, Any]]:
+    def scan(
+        self,
+        ticker: str,
+        df: pd.DataFrame,
+        as_of_date: pd.Timestamp = None,
+    ) -> Optional[Dict[str, Any]]:
         """
-        Run the strategy on a list of tickers.
-        
+        Evaluate a single ticker and return a signal dict if conditions are met.
+
         Args:
-            tickers: List of ticker symbols to scan
-            as_of_date: Date to run scan as of (for backtesting)
-            
+            ticker:      Stock symbol
+            df:          Daily OHLCV DataFrame (DatetimeIndex, sorted ascending)
+            as_of_date:  Date to evaluate as of (use df sliced to this date)
+
         Returns:
-            List of signal dictionaries with required keys:
-            - Ticker: Stock symbol
-            - Close: Current close price
-            - Score: Raw strategy score
-            - Strategy: Strategy name
-            - Volume: Latest volume
-            - Date: Signal date
+            Signal dict with keys:
+                Ticker, Strategy, Close, Entry, StopLoss, Target,
+                Score, Volume, Date, Priority, MaxDays
+            or None if no signal.
         """
         pass
-    
-    def validate_signal(self, signal: Dict[str, Any]) -> bool:
+
+    def get_exit_conditions(
+        self,
+        position: Dict[str, Any],
+        df: pd.DataFrame,
+        current_date: pd.Timestamp,
+    ) -> Optional[Dict[str, Any]]:
         """
-        Validate that a signal has all required fields.
-        
+        Check whether an open position should be exited.
+
         Args:
-            signal: Signal dictionary to validate
-            
+            position:     Position dict (entry_price, stop_loss, metadata, etc.)
+            df:           Full daily OHLCV DataFrame for the ticker
+            current_date: Date being evaluated
+
         Returns:
-            True if valid, False otherwise
+            Exit dict with keys: reason, exit_price
+            or None to hold.
         """
+        return None
+
+    def run(
+        self,
+        tickers: List[str],
+        as_of_date: pd.Timestamp = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        Bulk scan: loops scan() over all tickers.
+        Override for strategies that need cross-ticker logic.
+        """
+        from src.data.market import get_historical_data
+        signals = []
+        for ticker in tickers:
+            try:
+                df = get_historical_data(ticker)
+                if df is None or df.empty:
+                    continue
+                if as_of_date is not None:
+                    df = df[df.index <= as_of_date]
+                if len(df) < 50:
+                    continue
+                signal = self.scan(ticker, df, as_of_date)
+                if signal:
+                    signals.append(signal)
+            except Exception:
+                continue
+        return self.format_signals(signals)
+
+    def validate_signal(self, signal: Dict[str, Any]) -> bool:
         required_keys = {"Ticker", "Close", "Score", "Strategy", "Volume", "Date"}
         return all(key in signal for key in required_keys)
-    
+
     def format_signals(self, signals: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """
-        Format and validate signals before returning.
-        
-        Args:
-            signals: List of signal dictionaries
-            
-        Returns:
-            Validated list of signals
-        """
-        validated = []
-        for signal in signals:
-            if self.validate_signal(signal):
-                validated.append(signal)
-        
-        return validated
+        return [s for s in signals if self.validate_signal(s)]

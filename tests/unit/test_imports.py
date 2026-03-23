@@ -13,9 +13,9 @@ tests = [
     ("src.scanning.validator", "pre_buy_check", "from src.scanning.validator import pre_buy_check"),
     ("src.scanning.scanner", "run_scan_as_of", "from src.scanning.scanner import run_scan_as_of"),
     ("src.notifications.email", "send_email_alert", "from src.notifications.email import send_email_alert"),
-    ("strategies.relative_strength", "check_relative_strength", "from strategies.relative_strength import check_relative_strength"),
+    ("src.strategies.relative_strength", "check_relative_strength", "from src.strategies.relative_strength import check_relative_strength"),
     ("main", "main module", "import main"),
-    ("core.pre_buy_check", "pre_buy_check module", "import core.pre_buy_check"),
+    ("src.scanning.validator", "pre_buy_check (via src)", "from src.scanning.validator import pre_buy_check"),
 ]
 
 passed = 0

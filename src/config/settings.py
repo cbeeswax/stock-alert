@@ -24,6 +24,7 @@ POSITION_MAX_TOTAL = 20            # Max 20 total positions
 
 # Per-Strategy Position Limits
 POSITION_MAX_PER_STRATEGY = {
+    "GapReversal_Position": 0,                # NEW: Breakaway Gap Reversal (disabled until backtest validated)
     "RelativeStrength_Ranker_Position": 10,   # ACTIVE: 48.5% WR, 2.52R, $497k profit
     "Industrials_Ranker_Position": 3,         # Phase 2: New sector
     "Healthcare_Ranker_Position": 3,          # Phase 3: New sector
@@ -160,6 +161,31 @@ RS_RANKER_TRAIL_MA = 100
 RS_RANKER_TRAIL_DAYS = 10
 RS_RANKER_MAX_DAYS = 150
 
+# 8. GAPREVERSAL_POSITION — Breakaway Gap Reversal Strategy
+# Long: gap up + smoothed RSI(10 on EMA21) < 10 + weekly trend UP
+# Short: gap down + smoothed RSI(10 on EMA21) > 90 + weekly trend DOWN
+# Stop: gap fill (prior close). Exit: trailing EMA21.
+GAP_REVERSAL_MIN_GAP_PCT = 0.005       # Minimum 0.5% gap to filter noise
+GAP_REVERSAL_RSI_OVERSOLD = 10         # smoothed RSI threshold for long
+GAP_REVERSAL_RSI_OVERBOUGHT = 90       # smoothed RSI threshold for short
+GAP_REVERSAL_EMA_PERIOD = 21           # EMA period used for price smoothing
+GAP_REVERSAL_RSI_PERIOD = 10           # RSI period computed on EMA series
+GAP_REVERSAL_TRAIL_MA = 21             # Trailing exit MA period
+GAP_REVERSAL_MAX_DAYS = 120            # Maximum hold period
+GAP_REVERSAL_DIRECTION = "both"        # "long", "short", or "both"
+GAP_REVERSAL_WEEKLY_TF_FILTER = True   # Require weekly trend alignment
+GAP_REVERSAL_PRIORITY = 1              # Signal priority (lower = higher priority)
+# Prior move filter: stock must have declined/rallied before the gap
+# For longs: prior close <= recent_high * (1 - DECLINE_PCT) — stock declined at least X%
+# For shorts: prior close >= recent_low * (1 + RALLY_PCT) — stock rallied at least X%
+GAP_REVERSAL_PRIOR_DECLINE_LOOKBACK = 20   # bars to look back for prior high/low
+GAP_REVERSAL_PRIOR_DECLINE_PCT = 0.10      # stock must be down ≥10% from lookback high (long)
+GAP_REVERSAL_PRIOR_RALLY_PCT = 0.10        # stock must be up ≥10% from lookback low (short)
+GAP_REVERSAL_SHORT_PRIOR_RALLY_PCT = 0.20  # shorts need ≥20% prior rally — stricter quality gate
+GAP_REVERSAL_SHORT_REGIME_FILTER = True    # enable regime filter for shorts
+GAP_REVERSAL_SHORT_REQUIRE_RISK_OFF = False  # False = block only RISK_ON (allow NEUTRAL+RISK_OFF)
+                                              # True  = block all except RISK_OFF (bear market only)
+
 # =============================================================================
 # INDEX REGIME FILTERS
 # =============================================================================
@@ -187,6 +213,25 @@ TECH_SECTORS = ["Information Technology", "Communication Services"]
 
 BACKTEST_START_DATE = "2022-01-01"
 BACKTEST_SCAN_FREQUENCY = "B"  # "B" = daily, "W-MON" = weekly Monday
+
+# --- Compounding ---
+# True  = position sizing uses current equity (grows with profits/losses)
+# False = fixed initial capital (original behavior)
+BACKTEST_COMPOUNDING = True
+
+# --- Brokerage (Robinhood / Fidelity zero-commission) ---
+# No per-trade commission, but regulatory fees apply on the SELL side:
+#   SEC fee:   $0.0000278 per $1 of sell proceeds
+#   FINRA TAF: $0.000119 per share sold, capped at $5.95/trade
+BACKTEST_BROKERAGE_ENABLED = True
+BACKTEST_SEC_FEE_RATE = 0.0000278       # per $ of sell proceeds
+BACKTEST_FINRA_TAF_RATE = 0.000119      # per share sold
+BACKTEST_FINRA_TAF_MAX = 5.95           # max FINRA TAF per trade
+
+# --- Taxation (US, high earner bracket) ---
+BACKTEST_TAX_ENABLED = True
+BACKTEST_TAX_SHORT_TERM_RATE = 0.37     # ≤ 365 days held
+BACKTEST_TAX_LONG_TERM_RATE = 0.20     # > 365 days held
 
 # =============================================================================
 # EMAIL & NOTIFICATION SETTINGS
@@ -222,6 +267,7 @@ PRICE_ABOVE_EMA20_MAX = 1.10
 # =============================================================================
 
 SHORT_ENABLED = False
+LEADER_SHORT_ALLOWED_REGIMES = ("bull", "sideways")
 SHORT_MAX_POSITIONS = 5
 SHORT_MAX_EQUITY_PCT = 0.30
 SHORT_RISK_PER_TRADE_PCT = 1.5

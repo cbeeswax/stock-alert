@@ -1,20 +1,18 @@
 """
-Long-Term Position Trading Backtester
-======================================
-Walk-forward backtester for 8 position strategies (60-120 day holds).
-Features: Strategy-specific exits, pyramiding, per-strategy position limits.
+Backward-compatibility shim. 
+The backtester has moved to src/backtesting/engine.py.
+This file is kept so existing scripts continue to work.
 """
-# -*- coding: utf-8 -*-
-
 import sys
 import io
-# Fix encoding on Windows
 if sys.platform == "win32":
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
 
+from src.backtesting.engine import WalkForwardBacktester  # noqa: F401
 import time
 import pandas as pd
+<<<<<<< HEAD
 from src.scanning.scanner import run_scan_as_of
 from src.scanning.validator import pre_buy_check
 from src.scanning.rs_bought_tracker import RSBoughtTracker
@@ -24,77 +22,14 @@ from src.data.indicators import compute_rsi, compute_bollinger_bands, compute_pe
 from src.analysis.regime import get_regime_config
 from src.analysis.market_regime import get_position_regime, PositionRegime, get_regime_params
 from scripts.download_history import download_ticker, was_update_session_today, mark_update_session
+=======
+>>>>>>> feature/restructure-and-gap-strategy
 from src.config.settings import (
-    # Position trading settings
-    POSITION_RISK_PER_TRADE_PCT,
-    POSITION_MAX_PER_STRATEGY,
-    POSITION_MAX_TOTAL,
-    POSITION_PARTIAL_ENABLED,
-    POSITION_PARTIAL_SIZE,
-    POSITION_PARTIAL_R_TRIGGER_LOW,
-    POSITION_PARTIAL_R_TRIGGER_MID,
-    POSITION_PARTIAL_R_TRIGGER_HIGH,
-    POSITION_MAX_DAYS_SHORT,
-    POSITION_MAX_DAYS_LONG,
-    SHORT_RISK_PER_TRADE_PCT,
-
-    # Pyramiding
-    POSITION_PYRAMID_ENABLED,
-    POSITION_PYRAMID_R_TRIGGER,
-    POSITION_PYRAMID_SIZE,
-    POSITION_PYRAMID_MAX_ADDS,
-    POSITION_PYRAMID_PULLBACK_EMA,
-    POSITION_PYRAMID_PULLBACK_ATR,
-
-    # Strategy-specific configs
-    EMA_CROSS_POS_PARTIAL_R,
-    EMA_CROSS_POS_PARTIAL_SIZE,
-    EMA_CROSS_POS_TRAIL_MA,
-    EMA_CROSS_POS_TRAIL_DAYS,
-
-    MR_POS_PARTIAL_R,
-    MR_POS_TRAIL_MA,
-    MR_POS_TRAIL_DAYS,
-
-    PERCENT_B_POS_PARTIAL_R,
-    PERCENT_B_POS_TRAIL_MA,
-    PERCENT_B_POS_TRAIL_DAYS,
-
-    HIGH52_POS_PARTIAL_R,
-    HIGH52_POS_PARTIAL_SIZE,
-    HIGH52_POS_TRAIL_MA,
-    HIGH52_POS_TRAIL_DAYS,
-
-    BIGBASE_PARTIAL_R,
-    BIGBASE_PARTIAL_SIZE,
-    BIGBASE_TRAIL_MA,
-    BIGBASE_TRAIL_DAYS,
-
-    TREND_CONT_PARTIAL_R,
-    TREND_CONT_PARTIAL_SIZE,
-    TREND_CONT_TRAIL_MA,
-    TREND_CONT_TRAIL_DAYS,
-
-    RS_RANKER_PARTIAL_R,
-    RS_RANKER_PARTIAL_SIZE,
-    RS_RANKER_TRAIL_MA,
-    RS_RANKER_TRAIL_DAYS,
-
-    # Short strategies (regime-based)
-    SHORT_ENABLED,
-    SHORT_CFG_BULL,
-    SHORT_CFG_SIDEWAYS,
-    SHORT_CFG_BEAR,
-    LEADER_SHORT_CFG_BULL,
-    MEGACAP_WEEKLY_SLIDE_CFG,
-
-    # Backtest settings
-    BACKTEST_START_DATE,
-    BACKTEST_SCAN_FREQUENCY,
-
-    # Legacy (for compatibility)
-    CAPITAL_PER_TRADE,
+    BACKTEST_START_DATE, BACKTEST_SCAN_FREQUENCY,
+    POSITION_RISK_PER_TRADE_PCT, POSITION_MAX_PER_STRATEGY,
+    POSITION_MAX_TOTAL, POSITION_PYRAMID_ENABLED
 )
+<<<<<<< HEAD
 
 
 class WalkForwardBacktester:
@@ -1176,6 +1111,9 @@ class WalkForwardBacktester:
 # =============================================================================
 # MAIN EXECUTION
 # =============================================================================
+=======
+from scripts.download_history import download_ticker, was_update_session_today, mark_update_session
+>>>>>>> feature/restructure-and-gap-strategy
 
 if __name__ == "__main__":
     import argparse
@@ -1190,10 +1128,8 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    # Load S&P 500 tickers
     tickers = pd.read_csv("data/sp500_constituents.csv")["Symbol"].tolist()
 
-    # Check if data update needed
     print("="*60)
     print("📥 CHECKING HISTORICAL DATA")
     print("="*60)
@@ -1203,28 +1139,19 @@ if __name__ == "__main__":
     else:
         import gc
         print("🔄 Updating historical data for all tickers...")
-        batch_size = 10  # Smaller batches to release file handles more frequently
-
+        batch_size = 10
         for i, ticker in enumerate(tickers, 1):
             if i % 50 == 0:
                 print(f"\n[Progress: {i}/{len(tickers)} tickers processed]")
-
             download_ticker(ticker)
-
-            # Force gc + brief pause every batch to release yfinance HTTP connections
             if i % batch_size == 0:
                 gc.collect()
                 time.sleep(0.2)
-
-        # Final garbage collection
         gc.collect()
-
-        # Update benchmarks
         print("\n📊 Updating benchmark data...")
         download_ticker("SPY")
         download_ticker("QQQ")
         gc.collect()
-
         mark_update_session()
         print("\n✅ Data update complete!")
 
@@ -1232,7 +1159,6 @@ if __name__ == "__main__":
     print("🚀 Starting position trading backtest...")
     print("="*60 + "\n")
 
-    # Run backtest
     bt = WalkForwardBacktester(
         tickers=tickers,
         start_date=BACKTEST_START_DATE,
@@ -1250,19 +1176,15 @@ if __name__ == "__main__":
     print(f"   Pyramiding: {'Enabled' if POSITION_PYRAMID_ENABLED else 'Disabled'}\n")
 
     trades = bt.run()
-
-    # Save results
     if not trades.empty:
         trades.to_csv("backtest_results.csv", index=False)
         print(f"\n💾 Results saved to: backtest_results.csv")
 
     stats = bt.evaluate(trades)
 
-    # Print results
     print("\n" + "="*80)
     print("📊 POSITION TRADING BACKTEST SUMMARY")
     print("="*80)
-
     print(f"\n📈 Overall Performance:")
     print(f"   Total Trades: {stats['TotalTrades']}")
     print(f"   Wins: {stats['Wins']} | Losses: {stats['Losses']}")
@@ -1270,34 +1192,4 @@ if __name__ == "__main__":
     print(f"   Total PnL: ${stats['TotalPnL_$']:,.2f}")
     print(f"   Avg R-Multiple: {stats['AvgRMultiple']}")
     print(f"   Avg Holding Days: {stats['AvgHoldingDays']}")
-
-    # Yearly breakdown
-    if "YearlySummary" in stats:
-        print(f"\n📅 Yearly Breakdown:")
-        for year, metrics in stats["YearlySummary"].items():
-            print(f"   {year}: {metrics['Trades']} trades, {metrics['Wins']} wins, ${metrics['TotalPnL_$']:,.2f} PnL")
-
-    # Strategy-wise analysis
-    if "StrategyAnalysis" in stats:
-        print(f"\n📊 Performance by Strategy:")
-        print("   " + "-"*90)
-        print(f"   {'Strategy':<30} {'Trades':<8} {'WinRate':<10} {'AvgR':<8} {'TotalPnL':<15} {'AvgDays':<8}")
-        print("   " + "-"*90)
-        for strategy, metrics in stats["StrategyAnalysis"].items():
-            print(f"   {strategy:<30} {int(metrics['Trades']):<8} "
-                  f"{metrics['WinRate%']:<9.1f}% {metrics['AvgRMultiple']:<8.2f} "
-                  f"${metrics['TotalPnL_$']:>12,.2f} {metrics['AvgHoldingDays']:<8.1f}")
-        print("   " + "-"*90)
-
-    # Exit reason analysis
-    if "ExitReasonAnalysis" in stats:
-        print(f"\n🚪 Exit Reason Breakdown:")
-        print("   " + "-"*60)
-        print(f"   {'Reason':<25} {'Count':<8} {'TotalPnL':<15} {'AvgR':<8}")
-        print("   " + "-"*60)
-        for reason, metrics in stats["ExitReasonAnalysis"].items():
-            print(f"   {reason:<25} {int(metrics['Count']):<8} "
-                  f"${metrics['TotalPnL_$']:>12,.2f} {metrics['AvgRMultiple']:<8.2f}")
-        print("   " + "-"*60)
-
     print("\n" + "="*80)
