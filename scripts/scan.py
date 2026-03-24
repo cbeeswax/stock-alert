@@ -32,46 +32,52 @@ from src.notifications.email import send_email_alert
 from src.position_management.tracker import PositionTracker, filter_trades_by_position
 from src.position_management.monitor import monitor_positions
 from src.data.market import get_historical_data
+from src.analysis.market_regime import get_position_regime, get_regime_params, PositionRegime
 from src.config.settings import (
     POSITION_MAX_TOTAL,
     POSITION_MAX_PER_STRATEGY,
     POSITION_RISK_PER_TRADE_PCT,
     POSITION_INITIAL_EQUITY,
     REGIME_INDEX,
-    UNIVERSAL_QQQ_BULL_MA,
 )
 
 
 def check_market_regime():
     """
-    Check if market is in bullish regime (Index > MA).
-    
-    Returns:
-        bool: True if bullish, False otherwise
+    Check market regime using the SAME logic as the backtester.
+    Returns (regime, regime_params, allow_new_entries).
+
+    3 states (matching backtester exactly):
+      RISK_ON  : QQQ > MA200 AND MA200 rising   → full aggression
+      NEUTRAL  : everything else (transitioning) → cautious, entries allowed
+      RISK_OFF : QQQ < MA200 AND MA200 declining → defensive, NO new entries
     """
     try:
-        df = get_historical_data(REGIME_INDEX)
-        if df.empty or len(df) < UNIVERSAL_QQQ_BULL_MA:
-            print("⚠️ Unable to determine market regime, assuming bullish.")
-            return True
-
-        close = df["Close"].iloc[-1]
-        ma = df["Close"].rolling(UNIVERSAL_QQQ_BULL_MA).mean().iloc[-1]
-        
-        # Check if MA is rising
-        ma_20d_ago = df["Close"].rolling(UNIVERSAL_QQQ_BULL_MA).mean().iloc[-21] if len(df) >= 21 else ma
-        ma_rising = ma > ma_20d_ago
-
-        bullish = close > ma and ma_rising
-
-        print(f"📊 Market Regime: {'✅ BULLISH' if bullish else '⚠️ BEARISH'}")
-        print(f"   {REGIME_INDEX}: ${close:.2f} | MA{UNIVERSAL_QQQ_BULL_MA}: ${ma:.2f} | MA Rising: {ma_rising}")
-
-        return bullish
+        today = pd.Timestamp.today()
+        regime = get_position_regime(as_of_date=today, index_symbol=REGIME_INDEX)
     except Exception as e:
-        print(f"⚠️  Error checking market regime: {e}")
-        print("   Assuming bullish regime to continue scanning.")
-        return True
+        print(f"⚠️  Error checking market regime: {e}. Defaulting to NEUTRAL.")
+        regime = PositionRegime.NEUTRAL
+
+    params = get_regime_params(regime)
+
+    df = get_historical_data(REGIME_INDEX)
+    if not df.empty and len(df) >= 200:
+        close = df["Close"].iloc[-1]
+        ma200 = df["Close"].rolling(200).mean().iloc[-1]
+        ma200_20d = df["Close"].rolling(200).mean().iloc[-21] if len(df) >= 221 else ma200
+        ma_rising = ma200 > ma200_20d
+        regime_label = {
+            PositionRegime.RISK_ON:  "🟢 RISK_ON  (QQQ > MA200, MA rising  — full entries)",
+            PositionRegime.NEUTRAL:  "🟡 NEUTRAL  (transitioning — cautious entries allowed)",
+            PositionRegime.RISK_OFF: "🔴 RISK_OFF (QQQ < MA200, MA declining — NO new entries)",
+        }[regime]
+        print(f"📊 Market Regime: {regime_label}")
+        print(f"   {REGIME_INDEX}: ${close:.2f} | MA200: ${ma200:.2f} | MA Rising: {ma_rising}")
+    else:
+        print(f"📊 Market Regime: {regime.value}")
+
+    return regime, params, params.get("allow_new_entries", True)
 
 
 def display_header():
@@ -176,17 +182,17 @@ def display_strategy_counts(strategy_counts: dict):
 
 def run_scanner(
     position_tracker: PositionTracker,
-    is_bullish: bool,
+    allow_new_entries: bool,
     strategy_counts: dict
 ) -> pd.DataFrame:
     """
     Run the position trading scanner.
-    
+
     Args:
         position_tracker: PositionTracker instance
-        is_bullish: Whether market is in bullish regime
+        allow_new_entries: Whether regime allows new entries
         strategy_counts: Current positions by strategy
-        
+
     Returns:
         DataFrame: Trade-ready signals
     """
@@ -397,45 +403,52 @@ Examples:
     # Initialize position tracker
     position_tracker = PositionTracker(mode="live", file=args.positions_file)
     
-    # Step 1: Check Market Regime
+    # Step 1: Check Market Regime (same logic as backtester)
     print("\n" + "=" * 80)
     print("🏛️ STEP 1: CHECK MARKET REGIME")
     print("=" * 80 + "\n")
-    
-    is_bullish = check_market_regime()
-    
-    if not is_bullish:
-        print("\n⚠️  BEARISH MARKET - Bull-only strategies will be skipped by scanner")
-    
+
+    regime, regime_params, allow_new_entries = check_market_regime()
+
+    if not allow_new_entries:
+        print("\n🔴 RISK_OFF — No new entries. Managing exits only.")
+    elif regime == PositionRegime.NEUTRAL:
+        print("\n🟡 NEUTRAL market — Cautious entries allowed (longs + quality shorts)")
+
     # Early exit if only checking regime
     if args.regime_only:
         print("\n" + "=" * 80)
         print("✨ Regime Check Complete")
         print("=" * 80)
         return
-    
+
     # Step 2: Monitor Open Positions
     print("\n" + "=" * 80)
     print("🏛️ STEP 2: MONITOR EXISTING POSITIONS")
     print("=" * 80)
-    
+
     action_signals = monitor_open_positions(position_tracker)
     strategy_counts = get_strategy_counts(position_tracker)
     display_strategy_counts(strategy_counts)
-    
+
     # Early exit if only monitoring
     if args.monitor_only:
         print("\n" + "=" * 80)
         print("✨ Monitoring Complete")
         print("=" * 80)
         return
-    
+
     # Step 3: Run Scanner
     print("\n" + "=" * 80)
     print("🏛️ STEP 3: RUN POSITION SCANNER")
     print("=" * 80)
-    
-    trade_ready = run_scanner(position_tracker, is_bullish, strategy_counts)
+
+    # RISK_OFF = no new entries (matches backtester exactly)
+    if not allow_new_entries:
+        print("\n🔴 RISK_OFF regime — skipping new entries, exits only.")
+        trade_ready = pd.DataFrame()
+    else:
+        trade_ready = run_scanner(position_tracker, allow_new_entries, strategy_counts)
     
     # Step 4: Display Results
     display_trade_ready_signals(trade_ready)
