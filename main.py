@@ -17,13 +17,13 @@ from src.notifications.email import send_email_alert
 from src.position_management.tracker import PositionTracker, filter_trades_by_position
 from src.position_management.monitor import monitor_positions
 from src.data.market import get_historical_data
+from src.analysis.market_regime import get_position_regime, get_regime_params, PositionRegime
 from src.config.settings import (
     POSITION_MAX_TOTAL,
     POSITION_MAX_PER_STRATEGY,
     POSITION_RISK_PER_TRADE_PCT,
     POSITION_INITIAL_EQUITY,
     REGIME_INDEX,
-    UNIVERSAL_QQQ_BULL_MA,
 )
 
 # Position tracker for live trading (persistent file)
@@ -35,27 +35,41 @@ rs_bought_tracker = RSBoughtTracker(file_path="data/rs_ranker_bought.json")
 
 def check_market_regime():
     """
-    Check if market is in bullish regime (QQQ > 100-MA).
-    Returns True if bullish, False otherwise.
+    Check market regime using the SAME logic as the backtester.
+    Returns (regime, regime_params, allow_new_entries).
+
+    3 states (matching backtester exactly):
+      RISK_ON  : QQQ > MA200 AND MA200 rising  → full aggression
+      NEUTRAL  : everything else (transitioning)→ cautious, entries allowed
+      RISK_OFF : QQQ < MA200 AND MA200 declining→ defensive, NO new entries
     """
+    today = pd.Timestamp.today()
+    try:
+        regime = get_position_regime(as_of_date=today, index_symbol=REGIME_INDEX)
+    except Exception:
+        print("⚠️ Unable to determine market regime, defaulting to NEUTRAL.")
+        regime = PositionRegime.NEUTRAL
+
+    params = get_regime_params(regime)
+
+    # Display (mirrors backtester console output)
     df = get_historical_data(REGIME_INDEX)
-    if df.empty or len(df) < UNIVERSAL_QQQ_BULL_MA:
-        print("⚠️ Unable to determine market regime, assuming bullish.")
-        return True
+    if not df.empty and len(df) >= 200:
+        close = df["Close"].iloc[-1]
+        ma200 = df["Close"].rolling(200).mean().iloc[-1]
+        ma200_20d = df["Close"].rolling(200).mean().iloc[-21] if len(df) >= 221 else ma200
+        ma_rising = ma200 > ma200_20d
+        regime_label = {
+            PositionRegime.RISK_ON:  "🟢 RISK_ON  (QQQ > MA200, MA rising  — full entries)",
+            PositionRegime.NEUTRAL:  "🟡 NEUTRAL  (transitioning — cautious entries allowed)",
+            PositionRegime.RISK_OFF: "🔴 RISK_OFF (QQQ < MA200, MA declining — NO new entries)",
+        }[regime]
+        print(f"📊 Market Regime: {regime_label}")
+        print(f"   {REGIME_INDEX}: ${close:.2f} | MA200: ${ma200:.2f} | MA Rising: {ma_rising}")
+    else:
+        print(f"📊 Market Regime: {regime.value}")
 
-    close = df["Close"].iloc[-1]
-    ma = df["Close"].rolling(UNIVERSAL_QQQ_BULL_MA).mean().iloc[-1]
-
-    # Check if MA is rising
-    ma_20d_ago = df["Close"].rolling(UNIVERSAL_QQQ_BULL_MA).mean().iloc[-21] if len(df) >= 21 else ma
-    ma_rising = ma > ma_20d_ago
-
-    bullish = close > ma and ma_rising
-
-    print(f"📊 Market Regime: {'✅ BULLISH' if bullish else '⚠️ BEARISH'}")
-    print(f"   {REGIME_INDEX}: ${close:.2f} | MA{UNIVERSAL_QQQ_BULL_MA}: ${ma:.2f} | MA Rising: {ma_rising}")
-
-    return bullish
+    return regime, params, params.get("allow_new_entries", True)
 
 
 if __name__ == "__main__":
@@ -69,12 +83,14 @@ if __name__ == "__main__":
     print("="*80 + "\n")
 
     # --------------------------------------------------
-    # Step 1: Check Market Regime
+    # Step 1: Check Market Regime (same logic as backtester)
     # --------------------------------------------------
-    is_bullish = check_market_regime()
+    regime, regime_params, allow_new_entries = check_market_regime()
 
-    if not is_bullish:
-        print("\n⚠️  BEARISH MARKET - Bull-only strategies will be skipped by scanner")
+    if not allow_new_entries:
+        print("\n🔴 RISK_OFF — No new entries. Managing exits only.")
+    elif regime == PositionRegime.NEUTRAL:
+        print("\n🟡 NEUTRAL market — Cautious entries allowed (longs + quality shorts)")
 
     # --------------------------------------------------
     # Step 2: Monitor Open Positions for Exits/Actions
@@ -179,7 +195,11 @@ if __name__ == "__main__":
     # --------------------------------------------------
     # Step 4: Pre-buy Check (Format & Deduplicate)
     # --------------------------------------------------
-    if signals:
+    # RISK_OFF = no new entries (matches backtester exactly)
+    if not allow_new_entries:
+        print("\n🔴 RISK_OFF regime — skipping new entries, exits only.")
+        trade_ready = pd.DataFrame()
+    elif signals:
         trade_ready = pre_buy_check(signals, benchmark=REGIME_INDEX, as_of_date=None)
 
         # Filter out positions we already hold
