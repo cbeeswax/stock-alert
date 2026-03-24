@@ -227,10 +227,13 @@ class GapReversalPosition(BaseStrategy):
                 gap_fill = position.get("metadata", {}).get("GapFillLevel")
 
             # 1. Gap fill stop
+            # LONG: gap fills when price drops back to prior close (check Low)
+            # SHORT: gap fills when price rallies back to prior close (check High)
             if gap_fill is not None:
+                last_high = float(df["High"].iloc[-1])
                 if direction == "LONG" and last_low <= float(gap_fill):
                     return {"reason": "gap_fill_stop", "exit_price": float(gap_fill)}
-                if direction == "SHORT" and last_close >= float(gap_fill):
+                if direction == "SHORT" and last_high >= float(gap_fill):
                     return {"reason": "gap_fill_stop", "exit_price": float(gap_fill)}
 
             # 2. EMA21 trailing exit

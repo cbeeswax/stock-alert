@@ -1612,37 +1612,6 @@ def run_scan_as_of(as_of_date, tickers, rs_bought_tracker=None):
                 continue
 
     # =========================================================================
-<<<<<<< HEAD
-=======
-    # Registry-based strategy dispatch (new strategies added via BaseStrategy)
-    # Any strategy registered in StrategyRegistry and enabled in config
-    # that is NOT in _LEGACY_STRATEGY_NAMES is dispatched here automatically.
-    # =========================================================================
-    _registry_strategies = _get_active_registry_strategies()
-    if _registry_strategies:
-        for ticker in tickers:
-            df = get_historical_data(ticker)
-            if df is None or df.empty:
-                continue
-            if not isinstance(df.index, pd.DatetimeIndex):
-                try:
-                    df.index = pd.to_datetime(df.index, errors="coerce")
-                    df = df[df.index.notna()]
-                except Exception:
-                    continue
-            df = df[df.index <= as_of_date]
-            if len(df) < 50:
-                continue
-            for _name, _strategy in _registry_strategies:
-                try:
-                    signal = _strategy.scan(ticker, df, as_of_date)
-                    if signal and isinstance(signal, dict):
-                        signals.append(signal)
-                except Exception:
-                    continue
-
-    # =========================================================================
->>>>>>> feature/restructure-and-gap-strategy
     # Phase 2-3: SECTOR-BASED STRATEGIES
     # =========================================================================
     
