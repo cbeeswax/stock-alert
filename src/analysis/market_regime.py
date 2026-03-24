@@ -17,11 +17,7 @@ Usage:
 
 from enum import Enum
 import pandas as pd
-<<<<<<< HEAD
-from utils.market_data import get_historical_data
-=======
 from src.data.market import get_historical_data
->>>>>>> feature/restructure-and-gap-strategy
 
 
 class PositionRegime(Enum):
