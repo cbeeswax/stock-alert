@@ -222,6 +222,7 @@ def pre_buy_check(combined_signals, rr_ratio=None, benchmark="SPY", as_of_date=N
         "TrendContinuation_Position": 3,
         "MeanReversion_Position": 2,
         "%B_MeanReversion_Position": 1,
+        "GapReversal_Position": 8,                # Highest - rare extreme RSI + gap setup
         "ShortWeakRS_Retrace_Position": 0,        # Shorts LOSE to longs in deduplication (priority 0)
 
         # Legacy Short-Term Strategies (OLD - for backward compatibility)
@@ -370,6 +371,9 @@ def pre_buy_check(combined_signals, rr_ratio=None, benchmark="SPY", as_of_date=N
             "Direction": s.get("Direction", "LONG"),
             "Priority": s.get("Priority"),           # Preserve Priority for email position-trading detection
             "MaxDays": s.get("MaxDays"),
+            "GapPct": s.get("GapPct"),               # GapReversal: gap size % (for trade log)
+            "SmoothedRSI": s.get("SmoothedRSI"),     # GapReversal: smoothed RSI at entry (for trade log)
+            "GapFillLevel": s.get("GapFillLevel"),   # GapReversal: gap fill stop level
         })
 
     df_trades = pd.DataFrame(trades)
