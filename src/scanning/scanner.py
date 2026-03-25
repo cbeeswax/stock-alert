@@ -1612,6 +1612,37 @@ def run_scan_as_of(as_of_date, tickers, rs_bought_tracker=None):
                 continue
 
     # =========================================================================
+    # GAP REVERSAL POSITION
+    # =========================================================================
+    # Runs as a separate pass so it can use its own 60-bar minimum
+    # (main loop requires 252 bars, which would filter out some valid setups).
+    if POSITION_MAX_PER_STRATEGY.get("GapReversal_Position", 0) > 0:
+        try:
+            from src.strategies.gap_reversal import GapReversalPosition
+            gap_strategy = GapReversalPosition()
+            for ticker in tickers:
+                try:
+                    df = get_historical_data(ticker)
+                    if df.empty:
+                        continue
+                    if not isinstance(df.index, pd.DatetimeIndex):
+                        try:
+                            df.index = pd.to_datetime(df.index, format='%Y-%m-%d', errors='coerce')
+                            df = df[df.index.notna()]
+                        except Exception:
+                            continue
+                    df = df[df.index <= as_of_date]
+                    if len(df) < 65:  # EMA21 + RSI10 + 30 warmup + buffer
+                        continue
+                    signal = gap_strategy.scan(ticker, df, as_of_date)
+                    if signal is not None:
+                        signals.append(signal)
+                except Exception:
+                    continue
+        except Exception:
+            pass
+
+    # =========================================================================
     # Phase 2-3: SECTOR-BASED STRATEGIES
     # =========================================================================
     
