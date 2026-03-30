@@ -24,13 +24,13 @@ POSITION_MAX_TOTAL = 20            # Max 20 total positions
 
 # Per-Strategy Position Limits
 POSITION_MAX_PER_STRATEGY = {
-    "GapReversal_Position": 0,                # NEW: Breakaway Gap Reversal (disabled until backtest validated)
-    "RelativeStrength_Ranker_Position": 10,   # ACTIVE: 48.5% WR, 2.52R, $497k profit
-    "Industrials_Ranker_Position": 3,         # Phase 2: New sector
-    "Healthcare_Ranker_Position": 3,          # Phase 3: New sector
-    "Energy_Ranker_Position": 3,              # Phase 3: New sector
-    "Materials_Ranker_Position": 3,           # Phase 3: New sector
-    "ConsumerDisc_Ranker_Position": 3,        # Phase 3: New sector
+    "GapReversal_Position": 10,               # ACTIVE: 46.8% WR, 0.58R, +$457k net (backtested)
+    "RelativeStrength_Ranker_Position": 10,   # ACTIVE: 48.8% WR, 2.16R, +$620k net (backtested)
+    "Industrials_Ranker_Position": 0,         # DISABLED: unvalidated
+    "Healthcare_Ranker_Position": 0,          # DISABLED: unvalidated
+    "Energy_Ranker_Position": 0,              # DISABLED: unvalidated
+    "Materials_Ranker_Position": 0,           # DISABLED: unvalidated
+    "ConsumerDisc_Ranker_Position": 0,        # DISABLED: unvalidated
     "High52_Position": 0,                      # DISABLED
     "BigBase_Breakout_Position": 0,           # DISABLED
     "EMA_Crossover_Position": 0,              # DISABLED
