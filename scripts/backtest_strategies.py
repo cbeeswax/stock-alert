@@ -48,6 +48,7 @@ import src.config.settings as cfg
 STRATEGY_ALIASES = {
     "gap":     "GapReversal_Position",
     "rs":      "RelativeStrength_Ranker_Position",
+    "vcp":     "VCP_Momentum_Position",
     "high52":  "High52_Position",
     "bigbase": "BigBase_Breakout_Position",
     "ema":     "EMA_Crossover_Position",
@@ -60,6 +61,7 @@ STRATEGY_ALIASES = {
 BACKTEST_MAX_POSITIONS = {
     "GapReversal_Position": 5,
     "RelativeStrength_Ranker_Position": 10,
+    "VCP_Momentum_Position": 8,
     # High52_Position: disabled — needs further tuning
     # MeanReversion_Position: disabled — needs further tuning
     # TrendContinuation_Position: disabled — needs further tuning

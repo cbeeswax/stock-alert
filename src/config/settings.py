@@ -26,6 +26,7 @@ POSITION_MAX_TOTAL = 20            # Max 20 total positions
 POSITION_MAX_PER_STRATEGY = {
     "GapReversal_Position": 10,               # ACTIVE: 46.8% WR, 0.58R, +$457k net (backtested)
     "RelativeStrength_Ranker_Position": 10,   # ACTIVE: 48.8% WR, 2.16R, +$620k net (backtested)
+    "VCP_Momentum_Position": 0,               # NEW: disabled until backtest validated
     "Industrials_Ranker_Position": 0,         # DISABLED: unvalidated
     "Healthcare_Ranker_Position": 0,          # DISABLED: unvalidated
     "Energy_Ranker_Position": 0,              # DISABLED: unvalidated
@@ -73,11 +74,12 @@ POSITION_PYRAMID_PULLBACK_ATR = 1.0   # Within 1 ATR of EMA21
 STRATEGY_PRIORITY = {
     "BigBase_Breakout_Position": 1,
     "RelativeStrength_Ranker_Position": 2,
-    "TrendContinuation_Position": 3,
-    "EMA_Crossover_Position": 4,
-    "High52_Position": 5,
-    "MeanReversion_Position": 6,
-    "%B_MeanReversion_Position": 7,
+    "VCP_Momentum_Position": 3,
+    "TrendContinuation_Position": 4,
+    "EMA_Crossover_Position": 5,
+    "High52_Position": 6,
+    "MeanReversion_Position": 7,
+    "%B_MeanReversion_Position": 8,
 }
 
 # =============================================================================
@@ -185,6 +187,28 @@ GAP_REVERSAL_SHORT_PRIOR_RALLY_PCT = 0.20  # shorts need ≥20% prior rally — 
 GAP_REVERSAL_SHORT_REGIME_FILTER = True    # enable regime filter for shorts
 GAP_REVERSAL_SHORT_REQUIRE_RISK_OFF = False  # False = block only RISK_ON (allow NEUTRAL+RISK_OFF)
                                               # True  = block all except RISK_OFF (bear market only)
+
+# 9. VCP_MOMENTUM_POSITION — Daily VCP Momentum Swing Strategy
+# Entry: strong uptrend + ATR contraction + 3-day tight close + volume dry-up → breakout close
+#        above 10-bar high with volume surge.
+# Stop:  lowest low of the 10-bar consolidation window.
+# Exit:  2 consecutive closes below EMA10 (momentum failure).
+VCP_EMA_SLOW = 200             # Trend filter: price must be above this EMA
+VCP_EMA_FAST = 10              # Trailing exit EMA period
+VCP_EMA_SLOW_RISING_BARS = 20  # EMA200 must be higher than N bars ago (rising trend)
+VCP_MONTHLY_GAIN_PCT = 0.20    # Monthly gain threshold (21 bars): ≥ 20%
+VCP_HIGH52W_THRESHOLD = 0.25   # Within 25% of 52-week high (close >= 52W_high * (1 - 0.25))
+VCP_CONSOLIDATION_BARS = 10    # Bars to look back for consolidation high/low
+VCP_ATR_CONTRACTION_RATIO = 0.80  # Current ATR14 < 80% of ATR14 from 20 bars ago
+VCP_TIGHT_CLOSE_BARS = 3       # Number of bars for tight close detection
+VCP_TIGHT_CLOSE_RANGE_PCT = 0.03  # Max close range (high-low / low) over tight bars: 3%
+VCP_VOLUME_DRY_RATIO = 0.80    # Last N bars avg vol < 80% of 20d avg (drying up)
+VCP_VOLUME_SURGE_RATIO = 1.5   # Breakout bar volume > 1.5x 20d avg
+VCP_TRAIL_CONSECUTIVE = 2      # Closes below EMA10 before exit
+VCP_MAX_DAYS = 60              # Maximum hold period (swing trade, not position)
+VCP_PARTIAL_R = 2.5            # Take 30% partial at 2.5R
+VCP_PARTIAL_SIZE = 0.30        # 30% of position sold at partial
+VCP_PRIORITY = 3               # Signal deduplication priority
 
 # =============================================================================
 # INDEX REGIME FILTERS

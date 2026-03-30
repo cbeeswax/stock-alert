@@ -1643,6 +1643,37 @@ def run_scan_as_of(as_of_date, tickers, rs_bought_tracker=None):
             pass
 
     # =========================================================================
+    # VCP MOMENTUM POSITION
+    # =========================================================================
+    # Separate pass: needs 252 bars (same as main loop), but isolated to allow
+    # independent tuning and clean separation of strategy logic.
+    if POSITION_MAX_PER_STRATEGY.get("VCP_Momentum_Position", 0) > 0:
+        try:
+            from src.strategies.vcp_momentum import VCPMomentumPosition
+            vcp_strategy = VCPMomentumPosition()
+            for ticker in tickers:
+                try:
+                    df = get_historical_data(ticker)
+                    if df.empty:
+                        continue
+                    if not isinstance(df.index, pd.DatetimeIndex):
+                        try:
+                            df.index = pd.to_datetime(df.index, format='%Y-%m-%d', errors='coerce')
+                            df = df[df.index.notna()]
+                        except Exception:
+                            continue
+                    df = df[df.index <= as_of_date]
+                    if len(df) < 252:  # EMA200 + 52W high need full year
+                        continue
+                    signal = vcp_strategy.scan(ticker, df, as_of_date)
+                    if signal is not None:
+                        signals.append(signal)
+                except Exception:
+                    continue
+        except Exception:
+            pass
+
+    # =========================================================================
     # Phase 2-3: SECTOR-BASED STRATEGIES
     # =========================================================================
     

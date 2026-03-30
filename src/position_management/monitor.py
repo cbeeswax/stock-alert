@@ -143,6 +143,10 @@ def monitor_positions(position_tracker):
             elif strategy == "GapReversal_Position":
                 partial_r_trigger = 999  # no partial exits for gap reversal
                 max_days = GAP_REVERSAL_MAX_DAYS
+            elif strategy == "VCP_Momentum_Position":
+                from src.config.settings import VCP_PARTIAL_R, VCP_MAX_DAYS
+                partial_r_trigger = VCP_PARTIAL_R
+                max_days = VCP_MAX_DAYS
             else:
                 partial_r_trigger = 2.5
                 max_days = 150
@@ -278,6 +282,29 @@ def monitor_positions(position_tracker):
                             'type': 'EMA21_TRAIL_GAP_SHORT',
                             'reason': f'Close ${current_close:.2f} crossed above EMA{GAP_REVERSAL_TRAIL_MA} (${ema21:.2f})',
                             'action': f'EXIT SHORT at market (${current_close:.2f})',
+                            'current_r': current_r,
+                            'days_held': days_held,
+                            'urgency': 'HIGH',
+                            'entry_price': entry_price,
+                            'current_price': current_close
+                        })
+                        trail_triggered = True
+
+            elif strategy == "VCP_Momentum_Position":
+                # VCP: EMA10 trail with 2 consecutive closes below EMA10
+                from src.config.settings import VCP_EMA_FAST
+                ema10_series = df['Close'].ewm(span=VCP_EMA_FAST, adjust=False).mean()
+                ema10_today = float(ema10_series.iloc[-1]) if len(ema10_series) >= VCP_EMA_FAST else None
+                ema10_prev = float(ema10_series.iloc[-2]) if len(ema10_series) >= VCP_EMA_FAST + 1 else ema10_today
+                prev_close_vcp = float(df['Close'].iloc[-2]) if len(df) >= 2 else current_close
+
+                if ema10_today and pd.notna(ema10_today):
+                    if current_close < ema10_today and prev_close_vcp < ema10_prev:
+                        exits.append({
+                            'ticker': ticker,
+                            'type': 'EMA10_TRAIL_VCP',
+                            'reason': f'2 closes below EMA{VCP_EMA_FAST} (${ema10_today:.2f})',
+                            'action': f'EXIT at market (${current_close:.2f})',
                             'current_r': current_r,
                             'days_held': days_held,
                             'urgency': 'HIGH',

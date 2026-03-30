@@ -490,6 +490,13 @@ class WalkForwardBacktester:
                         partial_trigger = f"{partial_r}R"
                         partial_size = position.get('PartialSize', 0.5)
 
+                elif strategy == "VCP_Momentum_Position":
+                    from src.config.settings import VCP_PARTIAL_R, VCP_PARTIAL_SIZE
+                    if current_r >= VCP_PARTIAL_R:
+                        should_partial = True
+                        partial_trigger = f"{VCP_PARTIAL_R}R"
+                        partial_size = VCP_PARTIAL_SIZE
+
                 if should_partial:
                     position['partial_exited'] = True
                     partial_shares = int(position['current_shares'] * partial_size)
@@ -884,6 +891,27 @@ class WalkForwardBacktester:
                             f"date={current_date} close={current_close:.2f} ema21={ema21:.2f} R={current_r:.2f}"
                         )
                         return self._close_position(position, current_date, current_close, "EMA21_TrailingExit_Short", current_r)
+
+
+        elif strategy == "VCP_Momentum_Position":
+            # VCP MOMENTUM: EMA10 trailing exit with 2 consecutive closes
+            from src.config.settings import VCP_EMA_FAST, VCP_TRAIL_CONSECUTIVE
+            ticker = position.get('ticker', '?')
+
+            if len(recent_df) >= VCP_EMA_FAST:
+                ema10 = recent_df['Close'].ewm(span=VCP_EMA_FAST, adjust=False).mean()
+                ema10_today = float(ema10.iloc[-1])
+                ema10_prev = float(ema10.iloc[-2]) if len(ema10) >= 2 else ema10_today
+                prev_close = float(recent_df['Close'].iloc[-2]) if len(recent_df) >= 2 else current_close
+
+                if pd.notna(ema10_today):
+                    # Both today AND yesterday closed below EMA10 → momentum failed
+                    if current_close < ema10_today and prev_close < ema10_prev:
+                        self.log.debug(
+                            f"VCP EXIT ema10_trail | {ticker} LONG | "
+                            f"date={current_date} close={current_close:.2f} ema10={ema10_today:.2f} R={current_r:.2f}"
+                        )
+                        return self._close_position(position, current_date, current_close, "EMA10_TrailingExit_VCP", current_r)
 
 
         has_pyramids = len(position['pyramid_adds']) > 0
