@@ -30,6 +30,7 @@ from src.config.settings import (
     BIGBASE_MAX_DAYS,
     GAP_REVERSAL_MAX_DAYS,
     GAP_REVERSAL_TRAIL_MA,
+    GAP_REVERSAL_TARGET_R_MULTIPLE,
     POSITION_PARTIAL_SIZE,
     POSITION_PYRAMID_R_TRIGGER,
     POSITION_PYRAMID_MAX_ADDS,
@@ -342,25 +343,55 @@ def monitor_positions(position_tracker):
             # =====================================================
             # 6. WARNING SIGNALS (NOT EXITS, JUST FYI)
             # =====================================================
-            # Approaching EMA21/MA100
-            if days_held <= 60 and ema21 and pd.notna(ema21):
-                distance_pct = ((current_close - ema21) / ema21) * 100
-                if 0 < distance_pct < 2:  # Within 2% above EMA21
+            # GapReversal: daily status — show EMA21 trail level and 2R progress
+            if strategy == "GapReversal_Position" and ema21 and pd.notna(ema21):
+                initial_target = pos.get('target', 0) or 0
+                r_target = GAP_REVERSAL_TARGET_R_MULTIPLE
+
+                if initial_target > 0 and current_r >= r_target:
+                    # At or beyond initial R target — trail now protects profit
                     warnings.append({
                         'ticker': ticker,
-                        'type': 'APPROACHING_EMA21',
-                        'message': f'{ticker} approaching EMA21 (${ema21:.2f}, current: ${current_close:.2f})',
-                        'closes_below': closes_below_trail
+                        'type': 'GAP_TARGET_REACHED',
+                        'message': (
+                            f'{ticker} ✅ {r_target}R target reached '
+                            f'(+{current_r:.1f}R, ${current_close:.2f}) | '
+                            f'EMA{GAP_REVERSAL_TRAIL_MA} trail: ${ema21:.2f} — '
+                            f'hold until close < ${ema21:.2f}'
+                        ),
                     })
-            elif days_held > 60 and ma100 and pd.notna(ma100):
-                distance_pct = ((current_close - ma100) / ma100) * 100
-                if 0 < distance_pct < 3:  # Within 3% above MA100
+                else:
+                    # Still working toward initial target — show trail level for awareness
                     warnings.append({
                         'ticker': ticker,
-                        'type': 'APPROACHING_MA100',
-                        'message': f'{ticker} approaching MA100 (${ma100:.2f}, current: ${current_close:.2f})',
-                        'closes_below': closes_below_trail
+                        'type': 'GAP_TRAIL_STATUS',
+                        'message': (
+                            f'{ticker} GapReversal +{current_r:.1f}R (${current_close:.2f}) | '
+                            f'EMA{GAP_REVERSAL_TRAIL_MA} trail: ${ema21:.2f} | '
+                            f'{r_target}R target: ${initial_target:.2f}'
+                        ),
                     })
+
+            # Approaching EMA21/MA100 (other strategies)
+            elif strategy != "GapReversal_Position":
+                if days_held <= 60 and ema21 and pd.notna(ema21):
+                    distance_pct = ((current_close - ema21) / ema21) * 100
+                    if 0 < distance_pct < 2:  # Within 2% above EMA21
+                        warnings.append({
+                            'ticker': ticker,
+                            'type': 'APPROACHING_EMA21',
+                            'message': f'{ticker} approaching EMA21 (${ema21:.2f}, current: ${current_close:.2f})',
+                            'closes_below': closes_below_trail
+                        })
+                elif days_held > 60 and ma100 and pd.notna(ma100):
+                    distance_pct = ((current_close - ma100) / ma100) * 100
+                    if 0 < distance_pct < 3:  # Within 3% above MA100
+                        warnings.append({
+                            'ticker': ticker,
+                            'type': 'APPROACHING_MA100',
+                            'message': f'{ticker} approaching MA100 (${ma100:.2f}, current: ${current_close:.2f})',
+                            'closes_below': closes_below_trail
+                        })
 
         except Exception as e:
             warnings.append({

@@ -56,6 +56,7 @@ class GapReversalPosition(BaseStrategy):
             GAP_REVERSAL_DIRECTION,
             GAP_REVERSAL_WEEKLY_TF_FILTER,
             GAP_REVERSAL_MAX_DAYS,
+            GAP_REVERSAL_TARGET_R_MULTIPLE,
             GAP_REVERSAL_MAX_GAP_AGE_DAYS,
             GAP_REVERSAL_PRIORITY,
             GAP_REVERSAL_PRIOR_DECLINE_LOOKBACK,
@@ -179,6 +180,14 @@ class GapReversalPosition(BaseStrategy):
             # Stop loss = gap fill level (prior close)
             stop_loss = fill_level
 
+            # Initial target = entry ± N×risk (2R default)
+            # This is the minimum expectation; EMA21 trail manages the exit.
+            risk = abs(entry_price - stop_loss)
+            if is_long:
+                target_price = round(entry_price + GAP_REVERSAL_TARGET_R_MULTIPLE * risk, 2)
+            else:
+                target_price = round(entry_price - GAP_REVERSAL_TARGET_R_MULTIPLE * risk, 2)
+
             # Score: how extreme is the RSI? More extreme = higher conviction
             if is_long:
                 # Lower RSI = stronger oversold = higher score
@@ -201,7 +210,7 @@ class GapReversalPosition(BaseStrategy):
                 "StopLoss": round(stop_loss, 2),
                 "StopPrice": round(stop_loss, 2),
                 "GapFillLevel": round(fill_level, 2),
-                "Target": None,         # Trailing exit — no fixed target
+                "Target": target_price,
                 "SmoothedRSI": round(current_srsi, 2),
                 "GapPct": round(gap * 100, 2),
                 "Score": score,

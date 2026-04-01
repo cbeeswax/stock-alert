@@ -172,6 +172,7 @@ GAP_REVERSAL_EMA_PERIOD = 21           # EMA period used for price smoothing
 GAP_REVERSAL_RSI_PERIOD = 10           # RSI period computed on EMA series
 GAP_REVERSAL_TRAIL_MA = 21             # Trailing exit MA period
 GAP_REVERSAL_MAX_DAYS = 120            # Maximum hold period
+GAP_REVERSAL_TARGET_R_MULTIPLE = 2     # Initial target = entry + N×risk (2R default)
 GAP_REVERSAL_DIRECTION = "both"        # "long", "short", or "both"
 GAP_REVERSAL_WEEKLY_TF_FILTER = True   # Require weekly trend alignment
 GAP_REVERSAL_PRIORITY = 1              # Signal priority (lower = higher priority)
