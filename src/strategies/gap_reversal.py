@@ -56,6 +56,7 @@ class GapReversalPosition(BaseStrategy):
             GAP_REVERSAL_DIRECTION,
             GAP_REVERSAL_WEEKLY_TF_FILTER,
             GAP_REVERSAL_MAX_DAYS,
+            GAP_REVERSAL_MAX_GAP_AGE_DAYS,
             GAP_REVERSAL_PRIORITY,
             GAP_REVERSAL_PRIOR_DECLINE_LOOKBACK,
             GAP_REVERSAL_PRIOR_DECLINE_PCT,
@@ -75,6 +76,15 @@ class GapReversalPosition(BaseStrategy):
 
             if "Open" not in df.columns:
                 return None
+
+            # Bug 2 fix: reject stale gap bars
+            # If the last bar in df is older than GAP_REVERSAL_MAX_GAP_AGE_DAYS calendar days
+            # before as_of_date, the gap is from old data — skip it to avoid phantom signals.
+            if as_of_date is not None:
+                gap_bar_date = df.index[-1]
+                as_of_ts = pd.Timestamp(as_of_date)
+                if (as_of_ts - gap_bar_date).days > GAP_REVERSAL_MAX_GAP_AGE_DAYS:
+                    return None
 
             close = df["Close"]
             last_close = float(close.iloc[-1])
@@ -148,10 +158,13 @@ class GapReversalPosition(BaseStrategy):
                     pass  # If regime check fails, allow the trade
 
             # Higher-timeframe weekly trend filter
+            # Bug 1 fix: use the gap bar's date, NOT as_of_date (today).
+            # Using today's date would look ahead into the future when data is stale.
             if GAP_REVERSAL_WEEKLY_TF_FILTER:
                 try:
                     from src.ta.timeframes import get_weekly_trend
-                    weekly_trend = get_weekly_trend(ticker, as_of_date)
+                    gap_bar_date = df.index[-1]
+                    weekly_trend = get_weekly_trend(ticker, gap_bar_date)
                     if is_long and weekly_trend == "DOWN":
                         return None
                     if is_short and weekly_trend == "UP":

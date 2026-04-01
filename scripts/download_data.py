@@ -27,7 +27,7 @@ import pandas as pd
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from src.data.market import get_historical_data
+from src.data.market import download_historical as _download_historical
 
 
 def parse_tickers(tickers_str: str) -> list:
@@ -37,47 +37,43 @@ def parse_tickers(tickers_str: str) -> list:
 
 def download_single_ticker(
     ticker: str,
-    start_date: datetime = None,
-    end_date: datetime = None,
+    start_date=None,
+    end_date=None,
     output_dir: Path = None
 ) -> bool:
     """
     Download data for single ticker.
-    
+
     Args:
         ticker: Stock ticker
-        start_date: Start date (default: 2 years ago)
-        end_date: End date (default: today)
-        output_dir: Output directory for CSV
-        
+        start_date: Unused — kept for API compatibility (download_historical uses period)
+        end_date: Unused — kept for API compatibility
+        output_dir: Optional output directory for an extra CSV copy
+
     Returns:
         bool: Success
     """
     print(f"Downloading {ticker}...", end=" ", flush=True)
-    
+
     try:
-        data = get_historical_data(
-            ticker,
-            start_date=start_date,
-            end_date=end_date
-        )
-        
+        data = _download_historical(ticker)
+
         if data.empty:
             print("⚠️  No data found")
             return False
-        
+
         if output_dir:
             output_dir = Path(output_dir)
             output_dir.mkdir(parents=True, exist_ok=True)
-            
+
             output_file = output_dir / f"{ticker}_data.csv"
-            data.to_csv(output_file, index=False)
+            data.to_csv(output_file)
             print(f"✅ ({len(data)} rows → {output_file.name})")
         else:
             print(f"✅ ({len(data)} rows)")
-        
+
         return True
-    
+
     except Exception as e:
         print(f"❌ Error: {e}")
         return False
