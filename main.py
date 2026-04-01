@@ -8,6 +8,7 @@ Scans for 3 active strategies:
 - BigBase_Breakout_Position
 """
 
+import argparse
 import pandas as pd
 from datetime import datetime
 from src.scanning.scanner import run_scan_as_of
@@ -73,13 +74,59 @@ def check_market_regime():
 
 
 if __name__ == "__main__":
+    # --------------------------------------------------
+    # CLI Arguments
+    # --------------------------------------------------
+    parser = argparse.ArgumentParser(description="Live Position Trading Scanner")
+    parser.add_argument(
+        "--strategies",
+        help="Comma-separated list of strategies to scan (e.g. GapReversal_Position). "
+             "If set, only these strategies run for new entries.",
+    )
+    parser.add_argument(
+        "--skip-strategies",
+        dest="skip_strategies",
+        help="Comma-separated list of strategies to exclude from new entries "
+             "(e.g. GapReversal_Position). Position monitoring always runs for all.",
+    )
+    parser.add_argument(
+        "--skip-monitor",
+        dest="skip_monitor",
+        action="store_true",
+        default=False,
+        help="Skip position exit/pyramid monitoring (use for morning scans where "
+             "the day's close is not yet available).",
+    )
+    parser.add_argument(
+        "--label",
+        default="",
+        help="Optional label appended to the email subject (e.g. 'Morning Gap Scan').",
+    )
+    args = parser.parse_args()
+
+    # Apply strategy filters by modifying POSITION_MAX_PER_STRATEGY in-place.
+    # scanner.py imported the same dict object so this propagates automatically.
+    if args.strategies:
+        allowed = {s.strip() for s in args.strategies.split(",")}
+        for key in list(POSITION_MAX_PER_STRATEGY.keys()):
+            if key not in allowed:
+                POSITION_MAX_PER_STRATEGY[key] = 0
+    elif args.skip_strategies:
+        for s in args.skip_strategies.split(","):
+            key = s.strip()
+            if key in POSITION_MAX_PER_STRATEGY:
+                POSITION_MAX_PER_STRATEGY[key] = 0
+
+    scan_label = args.label or ("Morning Gap Scan" if args.strategies else "Evening Scan")
+
     print("="*80)
     print("🚀 LIVE POSITION TRADING SCANNER")
     print("="*80)
-    print(f"📅 Scan Date: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+    print(f"📅 Scan Date: {datetime.now().strftime('%Y-%m-%d %H:%M')}  [{scan_label}]")
     print(f"⚠️  Risk per trade: {POSITION_RISK_PER_TRADE_PCT}%")
     print(f"📊 Max positions: {POSITION_MAX_TOTAL} total")
-    print(f"📊 Active strategies: RS_Ranker (10), High52 (6), BigBase (4)")
+    active = [k for k, v in POSITION_MAX_PER_STRATEGY.items() if v > 0]
+    print(f"📊 Active strategies: {', '.join(active) if active else 'None'}")
     print("="*80 + "\n")
 
     # --------------------------------------------------
@@ -99,7 +146,9 @@ if __name__ == "__main__":
 
     action_signals = {'exits': [], 'partials': [], 'pyramids': [], 'warnings': []}
 
-    if position_tracker.get_position_count() > 0:
+    if args.skip_monitor:
+        print("⏭️  Position monitoring skipped (morning scan — no close prices yet)")
+    elif position_tracker.get_position_count() > 0:
         print(position_tracker)
 
         print("\n" + "="*80)
@@ -334,7 +383,7 @@ if __name__ == "__main__":
         send_email_alert(
             trade_df=trade_ready,
             all_signals=signals if signals else [],
-            subject_prefix="📊 Position Trading Scan",
+            subject_prefix=f"📊 {scan_label}",
             position_tracker=position_tracker,
             action_signals=action_signals
         )

@@ -1,12 +1,12 @@
-name: Daily Stock Alerts
+name: Gap Reversal Morning Scan
 
 on:
   schedule:
-    - cron: "0 22 * * 1-5"  # Every weekday at 10 PM UTC (~5 PM EST)
-  workflow_dispatch:        # Allow manual trigger
+    - cron: "35 14 * * 1-5"  # Every weekday at 14:35 UTC = 9:35 AM ET
+  workflow_dispatch:          # Allow manual trigger
 
 jobs:
-  run-stock-scan:
+  gap-reversal-scan:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -27,22 +27,16 @@ jobs:
           echo "EMAIL_RECEIVER=${{ secrets.EMAIL_RECEIVER }}" >> $GITHUB_ENV
           echo "EMAIL_PASSWORD=${{ secrets.EMAIL_PASSWORD }}" >> $GITHUB_ENV
 
-      - name: Refresh historical data
+      - name: Refresh historical data (last month only — fast)
         run: |
           python scripts/refresh_data.py --period 1mo
 
-      - name: Run stock alert scan
+      - name: Run Gap Reversal morning scan
         run: |
           python main.py \
-            --skip-strategies GapReversal_Position \
-            --label "Evening Scan"
-
-      # 🗂️ Upload historical data for traceability
-      - name: Upload historical data
-        uses: actions/upload-artifact@v4
-        with:
-          name: historical-data
-          path: data/historical/
+            --strategies GapReversal_Position \
+            --skip-monitor \
+            --label "Gap Reversal Morning Scan"
 
       # 🚨 Send failure alert email if any step above failed
       - name: Send failure alert
@@ -54,11 +48,11 @@ jobs:
           secure: true
           username: ${{ secrets.EMAIL_SENDER }}
           password: ${{ secrets.EMAIL_PASSWORD }}
-          subject: "🚨 Stock Alert GitHub Action FAILED – ${{ github.run_id }}"
+          subject: "🚨 Gap Reversal Morning Scan FAILED – ${{ github.run_id }}"
           to: ${{ secrets.EMAIL_FAILURE_RECEIVER }}
           from: ${{ secrets.EMAIL_SENDER }}
           body: |
-            The daily stock alert workflow failed.
+            The Gap Reversal morning scan workflow failed.
 
             Workflow: ${{ github.workflow }}
             Run ID:   ${{ github.run_id }}
