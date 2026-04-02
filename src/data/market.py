@@ -24,6 +24,17 @@ def get_market_cap(ticker):
         return 0
 
 
+def _sanitize_df(df: pd.DataFrame) -> pd.DataFrame:
+    """Remove corrupt rows: unparseable dates and prices > 100x median close."""
+    df.index = pd.to_datetime(df.index, errors='coerce')
+    df = df[df.index.notna()].sort_index()
+    if "Close" in df.columns and not df.empty:
+        median_close = df["Close"].median()
+        if median_close > 0:
+            df = df[df["Close"] <= median_close * 100]
+    return df
+
+
 def get_historical_data(ticker: str) -> pd.DataFrame:
     """Load cached daily OHLCV from data/historical/{ticker}.csv.
     Falls back to GCS if not cached locally."""
@@ -37,23 +48,8 @@ def get_historical_data(ticker: str) -> pd.DataFrame:
 
     if not file.exists():
         return pd.DataFrame()
-    # parse_dates=True no longer reliably converts the index in pandas 2.x,
-    # so we explicitly convert after loading.
     df = pd.read_csv(file, index_col=0)
-    df.index = pd.to_datetime(df.index, errors='coerce')
-
-    # Drop rows with unparseable / corrupt index (e.g. PLTR's 81469727 row)
-    df = df[df.index.notna()]
-    df = df.sort_index()
-
-    # Drop rows with obviously corrupt prices (> 100x the median close).
-    # This catches data errors without rejecting legitimate high-priced stocks.
-    if "Close" in df.columns and not df.empty:
-        median_close = df["Close"].median()
-        if median_close > 0:
-            df = df[df["Close"] <= median_close * 100]
-
-    return df
+    return _sanitize_df(df)
 
 
 def download_historical(
@@ -105,6 +101,7 @@ def download_historical(
             if file_path.exists():
                 try:
                     cached = pd.read_csv(file_path, index_col=0, parse_dates=True)
+                    cached = _sanitize_df(cached)  # purge any corrupt rows from GCS
                     new_rows = data[~data.index.isin(cached.index)]
                     if not new_rows.empty:
                         updated = pd.concat([cached, new_rows]).sort_index()
