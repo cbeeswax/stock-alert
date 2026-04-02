@@ -25,6 +25,7 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 from src.data.market import download_historical
+from src.storage.gcs import sync_from_gcs, sync_to_gcs
 
 # Market indices always included regardless of S&P 500 list
 ALWAYS_REFRESH = ["QQQ", "SPY", "IWM", "XLI", "XLV", "XLE", "XLB", "XLY"]
@@ -51,6 +52,13 @@ def main():
 
     tickers = load_tickers()
     total = len(tickers)
+
+    # Pull existing CSVs from GCS so incremental updates work correctly
+    historical_dir = project_root / "data" / "historical"
+    print("☁️  Syncing historical data from GCS…")
+    pulled = sync_from_gcs("historical-data", historical_dir)
+    print(f"   ↓ {pulled} new files downloaded from GCS")
+
     print(f"📥 Refreshing {total} tickers (period={args.period})…")
 
     failed = []
@@ -71,6 +79,12 @@ def main():
     print(f"\n✅ Done. {total - len(failed)}/{total} refreshed.")
     if failed:
         print(f"❌ Failed ({len(failed)}): {', '.join(failed)}")
+
+    # Note: individual download_historical() calls already upload each file
+    # to GCS as they complete. This final sync catches any that were skipped.
+    print("\n☁️  Final sync of all local CSVs → GCS…")
+    uploaded = sync_to_gcs(historical_dir, "historical-data")
+    print(f"   ↑ {uploaded} files pushed to GCS")
 
     return 0 if not failed else 1
 

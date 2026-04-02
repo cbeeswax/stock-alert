@@ -24,7 +24,9 @@ ENV/
 # Data and logs
 *.log
 *.csv.tmp
+data/historical/
 data/weekly/
+data/monthly/
 data/earnings_cache/
 ema_data/
 

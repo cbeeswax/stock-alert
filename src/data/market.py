@@ -25,8 +25,16 @@ def get_market_cap(ticker):
 
 
 def get_historical_data(ticker: str) -> pd.DataFrame:
-    """Load cached daily OHLCV from data/historical/{ticker}.csv."""
+    """Load cached daily OHLCV from data/historical/{ticker}.csv.
+    Falls back to GCS if not cached locally."""
     file = DATA_DIR / f"{ticker}.csv"
+
+    # Pull from GCS if not cached locally
+    if not file.exists():
+        from src.storage.gcs import download_file
+        gcs_path = f"historical-data/{ticker}.csv"
+        download_file(gcs_path, file)
+
     if not file.exists():
         return pd.DataFrame()
     # parse_dates=True no longer reliably converts the index in pandas 2.x,
@@ -101,12 +109,19 @@ def download_historical(
                     if not new_rows.empty:
                         updated = pd.concat([cached, new_rows]).sort_index()
                         updated.to_csv(file_path)
+                        from src.storage.gcs import upload_file
+                        upload_file(file_path, f"historical-data/{ticker}.csv")
                         return updated
                     return cached
                 except Exception:
                     pass
 
             data.to_csv(file_path)
+
+            # Upload to GCS
+            from src.storage.gcs import upload_file
+            upload_file(file_path, f"historical-data/{ticker}.csv")
+
             return data
 
         except Exception as e:
