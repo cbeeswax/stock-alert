@@ -123,10 +123,10 @@ def send_email_alert(
 
         if is_position_trading:
             body_html = "<h1>📊 Position Trading Scanner - Long-Term Setups</h1>"
-            body_html += f"<p><strong>Config:</strong> 2% risk/trade, 60-150 day holds, RS≥30%, ADX≥30, Vol≥2.5x | {datetime.now().strftime('%Y-%m-%d')}</p>"
+            body_html += f"<p>{datetime.now().strftime('%Y-%m-%d')}</p>"
         else:
             body_html = "<h1>📊 Daily Market Scan - Actionable Trades</h1>"
-            body_html += f"<p><strong>Config:</strong> 2:1 R/R, ADX≥24, RSI 50-66, Vol≥1.4x | {datetime.now().strftime('%Y-%m-%d')}</p>"
+            body_html += f"<p>{datetime.now().strftime('%Y-%m-%d')}</p>"
 
         # 🚨 ACTION SIGNALS (HIGHEST PRIORITY - SHOW FIRST)
         if action_signals:
@@ -288,17 +288,7 @@ def send_email_alert(
                     body_html += f"<td>{max_days}d</td>"
                     body_html += "</tr>"
 
-                body_html += "</table>"
-
-                # Add summary instructions
-                body_html += "<br><h3>📋 EXECUTION CHECKLIST:</h3>"
-                body_html += "<ol>"
-                body_html += "<li><strong>Place Orders:</strong> Buy the shares at market or limit order</li>"
-                body_html += "<li><strong>Set Stop Loss:</strong> Place stop-loss order at the Stop $ price</li>"
-                body_html += "<li><strong>Set Alert:</strong> Set price alert at Target $ for partial profit (30%)</li>"
-                body_html += f"<li><strong>Track Position:</strong> Run <code>python manage_positions.py add TICKER ENTRY_PRICE</code></li>"
-                body_html += "<li><strong>Monitor Daily:</strong> Next scan will check for exit signals automatically</li>"
-                body_html += "</ol><br>"
+                body_html += "</table><br>"
 
             else:
                 # Short-term trading columns (old system)
