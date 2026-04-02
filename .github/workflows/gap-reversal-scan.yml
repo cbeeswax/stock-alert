@@ -2,7 +2,7 @@ name: Gap Reversal Morning Scan
 
 on:
   schedule:
-    - cron: "35 14 * * 1-5"  # Every weekday at 14:35 UTC = 9:35 AM ET
+    - cron: "35 13 * * 1-5"  # Every weekday at 13:35 UTC = 9:35 AM EDT (Mar-Nov)
   workflow_dispatch:          # Allow manual trigger
 
 jobs:
