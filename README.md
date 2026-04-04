@@ -183,35 +183,13 @@ SMTP_SERVER=smtp.gmail.com
 SMTP_PORT=587
 SMTP_PASSWORD=your-app-password
 
-# Market Data (optional)
-ALPHA_VANTAGE_KEY=your-key-here
-IB_ACCOUNT=your-account-id
-
-# Trading Configuration
-POSITION_MAX_TOTAL=20
-POSITION_RISK_PERCENT=2.0
-POSITION_INITIAL_EQUITY=100000
-
-# Market Regime
-REGIME_INDEX=QQQ
-UNIVERSAL_QQQ_BULL_MA=100
+# Google Cloud Storage
+GCS_BUCKET=your-bucket-name
 ```
 
 ### Strategy Configuration
 
-Modify `src/config/strategies.py`:
-
-```python
-STRATEGIES_CONFIG = {
-    'RelativeStrength_Ranker_Position': {
-        'lookback_weeks': 52,
-        'ma_period': 50,
-        'rsi_period': 14,
-        'rsi_threshold': 40,
-        # ...
-    }
-}
-```
+Strategy parameters (entry filters, stop multipliers, targets, time limits) are stored privately in **GCS** (`config/settings.json`) and loaded at runtime. See `src/config/settings.py` for the full list of configurable parameters.
 
 ## Documentation
 
@@ -222,46 +200,45 @@ STRATEGIES_CONFIG = {
 ## Strategies
 
 ### RelativeStrength_Ranker_Position
-Ranks stocks by 6-month relative strength against QQQ. Looks for momentum leaders breaking above their 50-day MA with rising RSI.
+Ranks stocks by relative strength against QQQ. Looks for momentum leaders with strong trend alignment across multiple timeframes.
 
 **Entry:**
-- Relative strength: +30% vs QQQ
+- Relative strength vs QQQ above threshold
 - Price > MA50 > MA100 > MA200 (all rising)
-- ADX(14) ≥ 30
-- Market bullish (QQQ > 100-MA)
+- ADX filter for trend strength
+- Market regime filter (QQQ bull confirmation)
 
 **Exit:**
-- Stop: Entry - 4.5× ATR(20)
-- Target: 3.0R profit
-- Time: 150 days max
+- ATR-based stop loss
+- R-multiple profit target
+- Maximum hold period (time stop)
+- Trailing MA exit
 
 ### High52_Position
 Identifies breakouts near 52-week highs with Bollinger Band confirmation.
 
 **Entry:**
-- Price within 2% of 52-week high
+- Price near 52-week high
 - Bollinger Bands tightening (consolidation)
-- Breakout above upper band
-- Volume surge
+- Breakout above upper band with volume surge
 
 **Exit:**
-- Stop: Close outside bands
-- Target: 2.5R profit
-- Time: 150 days max
+- ATR-based stop loss
+- R-multiple profit target
+- Maximum hold period (time stop)
 
 ### BigBase_Breakout_Position
-Finds large consolidation bases and breakouts from them.
+Finds large consolidation bases and trades breakouts from them.
 
 **Entry:**
-- Consolidation 20+ days
-- Price range < 5%
-- Breakout above consolidation
-- Volume surge
+- Extended consolidation period
+- Tight price range
+- Breakout above consolidation with volume surge
 
 **Exit:**
-- Stop: Close back into consolidation
-- Target: 2.0R profit
-- Time: 100 days max
+- ATR-based stop loss
+- R-multiple profit target
+- Maximum hold period (time stop)
 
 ## Testing
 
