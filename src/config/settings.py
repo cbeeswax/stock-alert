@@ -385,3 +385,36 @@ MAX_PRICE = 999.0
 
 TECH_SECTORS = ["Information Technology", "Communication Services"]
 
+
+# =============================================================================
+# GCS SETTINGS OVERRIDE
+# Load config/settings.json from GCS and override any values defined above.
+# This keeps sensitive strategy parameters out of the public repo.
+# Local dev without GCS credentials runs on the defaults above.
+# =============================================================================
+
+def _apply_gcs_overrides():
+    import json
+    import tempfile
+    import os
+    try:
+        from src.storage.gcs import download_file
+        tmp = tempfile.mktemp(suffix=".json")
+        if download_file("config/settings.json", tmp):
+            with open(tmp) as f:
+                overrides = json.load(f)
+            g = globals()
+            applied = []
+            for key, value in overrides.items():
+                if key in g:
+                    g[key] = value
+                    applied.append(key)
+            if applied:
+                print(f"⚙️  [settings] Loaded {len(applied)} override(s) from GCS config/settings.json")
+            os.unlink(tmp)
+    except Exception as exc:
+        print(f"⚠️  [settings] Could not load GCS overrides: {exc}")
+
+
+_apply_gcs_overrides()
+
