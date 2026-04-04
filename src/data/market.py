@@ -65,10 +65,11 @@ def download_historical(
 
     Returns cached DataFrame (may be empty on persistent failure).
     """
+    yf_ticker = ticker.replace(".", "-")  # BRK.B → BRK-B for Yahoo Finance
     for attempt in range(1, max_retries + 1):
         try:
             data = yf.download(
-                ticker, period=period, interval=interval,
+                yf_ticker, period=period, interval=interval,
                 progress=False, auto_adjust=False, group_by="ticker",
             )
 
@@ -78,7 +79,7 @@ def download_historical(
             if isinstance(data.columns, pd.MultiIndex):
                 data.columns = ["_".join(col).strip() for col in data.columns.values]
 
-            tkr_upper = ticker.upper()
+            tkr_upper = yf_ticker.upper()
             renamed = {}
             for col in list(data.columns):
                 if col.startswith(tkr_upper + "_"):
