@@ -34,6 +34,12 @@ ALWAYS_REFRESH = ["QQQ", "SPY", "IWM", "XLI", "XLV", "XLE", "XLB", "XLY"]
 def load_tickers() -> list:
     sp500_file = project_root / "data" / "sp500_constituents.csv"
     if not sp500_file.exists():
+        try:
+            from src.storage.gcs import download_file
+            download_file("config/sp500_constituents.csv", sp500_file)
+        except Exception as exc:
+            print(f"⚠️  Could not pull sp500_constituents.csv from GCS: {exc}")
+    if not sp500_file.exists():
         print(f"⚠️  {sp500_file} not found — refreshing indices only")
         return ALWAYS_REFRESH
     df = pd.read_csv(sp500_file)
