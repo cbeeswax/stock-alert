@@ -30,6 +30,9 @@ data/monthly/
 data/earnings_cache/
 ema_data/
 
+# Local settings override (keep strategy params out of git)
+config/settings.json
+
 # Backtest results (temporary - regenerated on each run)
 backtest_results.csv
 *_output.txt
