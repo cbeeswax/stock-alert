@@ -5,6 +5,10 @@ on:
     - cron: "0 22 * * 1-5"  # Every weekday at 10 PM UTC (~5 PM EST)
   workflow_dispatch:        # Allow manual trigger
 
+permissions:
+  id-token: write
+  contents: read
+
 jobs:
   run-stock-scan:
     runs-on: ubuntu-latest

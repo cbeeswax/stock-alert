@@ -5,6 +5,10 @@ on:
     - cron: "35 13 * * 1-5"  # Every weekday at 13:35 UTC = 9:35 AM EDT (Mar-Nov)
   workflow_dispatch:          # Allow manual trigger
 
+permissions:
+  id-token: write
+  contents: read
+
 jobs:
   gap-reversal-scan:
     runs-on: ubuntu-latest
