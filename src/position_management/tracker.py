@@ -42,8 +42,13 @@ class PositionTracker:
         self.file = Path(file)
         self.positions = {}  # {ticker: {entry_date, entry_price, strategy, ...}}
 
-        if mode == "live" and self.file.exists():
-            self._load_positions()
+        if mode == "live":
+            if not self.file.exists():
+                # Try to pull from GCS before giving up
+                from src.storage.gcs import download_file
+                download_file(f"config/{self.file.name}", self.file)
+            if self.file.exists():
+                self._load_positions()
 
     def _load_positions(self):
         """Load positions from JSON file (live mode only)."""
@@ -76,6 +81,10 @@ class PositionTracker:
             self.file.parent.mkdir(parents=True, exist_ok=True)
             with open(self.file, 'w') as f:
                 json.dump(data, f, indent=2)
+
+            # Push to GCS so state persists across GitHub Actions runs
+            from src.storage.gcs import upload_file
+            upload_file(self.file, f"config/{self.file.name}")
         except Exception as e:
             print(f"⚠️ Error saving positions: {e}")
 

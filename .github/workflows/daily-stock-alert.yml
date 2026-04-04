@@ -5,6 +5,10 @@ on:
     - cron: "0 22 * * 1-5"  # Every weekday at 10 PM UTC (~5 PM EST)
   workflow_dispatch:        # Allow manual trigger
 
+permissions:
+  id-token: write
+  contents: read
+
 jobs:
   run-stock-scan:
     runs-on: ubuntu-latest
@@ -21,6 +25,12 @@ jobs:
         run: |
           pip install -r requirements.txt
 
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCS_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCS_SERVICE_ACCOUNT }}
+
       - name: Set environment variables
         run: |
           echo "EMAIL_SENDER=${{ secrets.EMAIL_SENDER }}" >> $GITHUB_ENV
@@ -36,13 +46,6 @@ jobs:
           python main.py \
             --skip-strategies GapReversal_Position \
             --label "Evening Scan"
-
-      # 🗂️ Upload historical data for traceability
-      - name: Upload historical data
-        uses: actions/upload-artifact@v4
-        with:
-          name: historical-data
-          path: data/historical/
 
       # 🚨 Send failure alert email if any step above failed
       - name: Send failure alert

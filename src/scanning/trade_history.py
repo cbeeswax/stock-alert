@@ -24,7 +24,11 @@ class TradeHistory:
         self._load()
 
     def _load(self) -> None:
-        """Load trade history from JSON file."""
+        """Load trade history from JSON file, falling back to GCS if missing locally."""
+        if not self.file_path.exists() and "backtest" not in str(self.file_path):
+            from src.storage.gcs import download_file
+            download_file(f"config/{self.file_path.name}", self.file_path)
+
         if self.file_path.exists():
             try:
                 with open(self.file_path, 'r') as f:
@@ -36,11 +40,14 @@ class TradeHistory:
             self.trades = {}
 
     def _save(self) -> None:
-        """Save trade history to JSON file."""
+        """Save trade history to JSON file and push to GCS."""
         try:
             self.file_path.parent.mkdir(parents=True, exist_ok=True)
             with open(self.file_path, 'w') as f:
                 json.dump(self.trades, f, indent=2)
+            if "backtest" not in str(self.file_path):
+                from src.storage.gcs import upload_file
+                upload_file(self.file_path, f"config/{self.file_path.name}")
         except Exception as e:
             print(f"⚠️ Error saving trade history: {e}")
 

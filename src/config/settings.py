@@ -385,3 +385,49 @@ MAX_PRICE = 999.0
 
 TECH_SECTORS = ["Information Technology", "Communication Services"]
 
+
+# =============================================================================
+# GCS SETTINGS OVERRIDE
+# Load config/settings.json from GCS and override any values defined above.
+# This keeps sensitive strategy parameters out of the public repo.
+# Local dev without GCS credentials runs on the defaults above.
+# =============================================================================
+
+def _apply_gcs_overrides():
+    import json
+    import tempfile
+    import os
+    from pathlib import Path
+
+    def _apply(data: dict, source: str):
+        g = globals()
+        applied = [k for k in data if k in g]
+        for key in applied:
+            g[key] = data[key]
+        if applied:
+            print(f"⚙️  [settings] Loaded {len(applied)} override(s) from {source}")
+
+    # 1. Local config/settings.json — used for local dev and backtesting
+    local_file = Path(__file__).parent.parent.parent / "config" / "settings.json"
+    if local_file.exists():
+        try:
+            with open(local_file) as f:
+                _apply(json.load(f), f"local {local_file}")
+            return  # local file takes full precedence; skip GCS
+        except Exception as exc:
+            print(f"⚠️  [settings] Could not load local settings: {exc}")
+
+    # 2. GCS config/settings.json — used in GitHub Actions (production)
+    try:
+        from src.storage.gcs import download_file
+        tmp = tempfile.mktemp(suffix=".json")
+        if download_file("config/settings.json", tmp):
+            with open(tmp) as f:
+                _apply(json.load(f), "GCS config/settings.json")
+            os.unlink(tmp)
+    except Exception as exc:
+        print(f"⚠️  [settings] Could not load GCS overrides: {exc}")
+
+
+_apply_gcs_overrides()
+

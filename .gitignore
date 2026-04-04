@@ -24,9 +24,18 @@ ENV/
 # Data and logs
 *.log
 *.csv.tmp
+data/historical/
 data/weekly/
+data/monthly/
 data/earnings_cache/
 ema_data/
+
+# Local settings override (keep strategy params out of git)
+config/settings.json
+
+# S&P 500 constituents (stored in GCS config/)
+data/sp500_constituents.csv
+sp500_constituents.csv
 
 # Backtest results (temporary - regenerated on each run)
 backtest_results.csv

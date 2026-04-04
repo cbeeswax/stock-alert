@@ -24,28 +24,32 @@ def get_market_cap(ticker):
         return 0
 
 
-def get_historical_data(ticker: str) -> pd.DataFrame:
-    """Load cached daily OHLCV from data/historical/{ticker}.csv."""
-    file = DATA_DIR / f"{ticker}.csv"
-    if not file.exists():
-        return pd.DataFrame()
-    # parse_dates=True no longer reliably converts the index in pandas 2.x,
-    # so we explicitly convert after loading.
-    df = pd.read_csv(file, index_col=0)
+def _sanitize_df(df: pd.DataFrame) -> pd.DataFrame:
+    """Remove corrupt rows: unparseable dates and prices > 100x median close."""
     df.index = pd.to_datetime(df.index, errors='coerce')
-
-    # Drop rows with unparseable / corrupt index (e.g. PLTR's 81469727 row)
-    df = df[df.index.notna()]
-    df = df.sort_index()
-
-    # Drop rows with obviously corrupt prices (> 100x the median close).
-    # This catches data errors without rejecting legitimate high-priced stocks.
+    df = df[df.index.notna()].sort_index()
     if "Close" in df.columns and not df.empty:
         median_close = df["Close"].median()
         if median_close > 0:
             df = df[df["Close"] <= median_close * 100]
-
     return df
+
+
+def get_historical_data(ticker: str) -> pd.DataFrame:
+    """Load cached daily OHLCV from data/historical/{ticker}.csv.
+    Falls back to GCS if not cached locally."""
+    file = DATA_DIR / f"{ticker}.csv"
+
+    # Pull from GCS if not cached locally
+    if not file.exists():
+        from src.storage.gcs import download_file
+        gcs_path = f"historical-data/{ticker}.csv"
+        download_file(gcs_path, file)
+
+    if not file.exists():
+        return pd.DataFrame()
+    df = pd.read_csv(file, index_col=0)
+    return _sanitize_df(df)
 
 
 def download_historical(
@@ -61,10 +65,11 @@ def download_historical(
 
     Returns cached DataFrame (may be empty on persistent failure).
     """
+    yf_ticker = ticker.replace(".", "-")  # BRK.B → BRK-B for Yahoo Finance
     for attempt in range(1, max_retries + 1):
         try:
             data = yf.download(
-                ticker, period=period, interval=interval,
+                yf_ticker, period=period, interval=interval,
                 progress=False, auto_adjust=False, group_by="ticker",
             )
 
@@ -74,7 +79,7 @@ def download_historical(
             if isinstance(data.columns, pd.MultiIndex):
                 data.columns = ["_".join(col).strip() for col in data.columns.values]
 
-            tkr_upper = ticker.upper()
+            tkr_upper = yf_ticker.upper()
             renamed = {}
             for col in list(data.columns):
                 if col.startswith(tkr_upper + "_"):
@@ -97,16 +102,24 @@ def download_historical(
             if file_path.exists():
                 try:
                     cached = pd.read_csv(file_path, index_col=0, parse_dates=True)
+                    cached = _sanitize_df(cached)  # purge any corrupt rows from GCS
                     new_rows = data[~data.index.isin(cached.index)]
                     if not new_rows.empty:
                         updated = pd.concat([cached, new_rows]).sort_index()
                         updated.to_csv(file_path)
+                        from src.storage.gcs import upload_file
+                        upload_file(file_path, f"historical-data/{ticker}.csv")
                         return updated
                     return cached
                 except Exception:
                     pass
 
             data.to_csv(file_path)
+
+            # Upload to GCS
+            from src.storage.gcs import upload_file
+            upload_file(file_path, f"historical-data/{ticker}.csv")
+
             return data
 
         except Exception as e:

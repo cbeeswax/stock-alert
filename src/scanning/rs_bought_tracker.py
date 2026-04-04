@@ -56,8 +56,20 @@ class RSBoughtTracker:
         if load_from_file:
             self._load()
 
+    def _gcs_path(self) -> str | None:
+        """Return GCS config path for this tracker, or None if it's a backtest tracker."""
+        if "backtest" in str(self.file_path):
+            return None
+        return f"config/{self.file_path.name}"
+
     def _load(self) -> None:
-        """Load bought list from JSON file."""
+        """Load bought list from JSON file, falling back to GCS if missing locally."""
+        if not self.file_path.exists():
+            gcs_path = self._gcs_path()
+            if gcs_path:
+                from src.storage.gcs import download_file
+                download_file(gcs_path, self.file_path)
+
         if self.file_path.exists():
             try:
                 with open(self.file_path, 'r') as f:
@@ -69,11 +81,15 @@ class RSBoughtTracker:
             self.bought_tickers = {}
 
     def _save(self) -> None:
-        """Save bought list to JSON file."""
+        """Save bought list to JSON file and push to GCS."""
         try:
             self.file_path.parent.mkdir(parents=True, exist_ok=True)
             with open(self.file_path, 'w') as f:
                 json.dump(self.bought_tickers, f, indent=2)
+            gcs_path = self._gcs_path()
+            if gcs_path:
+                from src.storage.gcs import upload_file
+                upload_file(self.file_path, gcs_path)
         except Exception as e:
             print(f"⚠️  Error saving RS bought tracker: {e}")
 
