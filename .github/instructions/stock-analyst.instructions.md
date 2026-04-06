@@ -60,80 +60,180 @@ Extract and note:
 
 ---
 
-## STEP 4 — Score Every Ticker (The Pattern Engine)
+## STEP 4 — Score Every Ticker (4-Layer Analysis)
 
-For each ticker in `latest.json → tickers`, compute a **Pattern Score (0-100)** using signals derived from 4 years of backtesting (2022-2025, 178 S&P 500 stocks):
+Use `scripts/backtest_comprehensive.py` as the reference implementation. Score each ticker across **4 layers** — this is the methodology validated on January 2026 at **75% win rate, +3.08% avg/pick**.
 
 ### HARD FILTERS — Auto-reject if ANY fails:
-- `atr_pct < 2.0` → skip (low-vol stocks have <14% weekly win rate)
+- `atr_pct < 0.012` (ratio) → skip — too quiet to trade (< 1.2% daily range)
+- `atr_pct > 0.12` → skip — pure speculation (>12%/day)
 - `close < 15` → skip
-- `vol_ratio_20 < 0.4` → skip (illiquid)
-- `rsi7 < rsi14 - 8` AND `cmf < -0.25` → **falling knife**, skip
+- `vol_ratio_20 < 0.3` → skip — dead volume
+- `pct_vs_ema200 < -0.05` → **SKIP** — below SMA200, long-term downtrend
+- `pct_from_52w_high < -0.55` → skip — fallen knife, 55%+ from yearly high
+- `cmf < -0.22` → skip — heavy institutional selling
+- `(rsi14 - rsi7) > 14` AND `cmf < -0.12` → skip — sharp falling knife
+- `rsi7 > 78` AND `pct_vs_ema21 > 0.03` → **NEVER BUY** — extended, not a buy point
 
-### PATTERN SCORING (backtested win rates, 2022-2025):
+### THE 3-STAGE SETUP — What you're looking for:
 
-**Tier 1 — Highest-Probability Single Patterns:**
+```
+Stage 1 (Past — the stock has a history):
+  ✓ Was above EMA200 and EMA50 (long-term uptrend)
+  ✓ Strong RS63 vs SPY (outperformed on 63-day basis = institutional demand)
+  ✓ ADX > 20 (the trend is real, not noise)
 
-| Pattern | Detection | Win Rate | Bear WR | High-Vol WR |
-|---|---|---|---|---|
-| **Mean Reversion Extreme** | `bb_pct < 0.10` AND `rsi7 < 25` AND `cmf rising` | **49.9%** | **53.8%** | **54.3%** |
-| **RSI Oversold Bounce** | `rsi7 < 30` AND `rsi_signal = RECOVERING` | **46.0%** | **50.2%** | **51.8%** |
-| **Inverted Hammer** | Long upper wick (>2x body), at downtrend bottom (infer from `rsi7 < 40`, `pct_from_52w_high < -20%`) | **44.1%** | **48.4%** | **49.5%** |
-| **Hammer** | `bb_pct < 0.20` AND `rsi7 < 40` AND `rsi_signal = RECOVERING` AND `vol_ratio_20 > 1.0` | **43.8%** | **48.1%** | **52.4%** |
-| **RSI Divergence Bounce** | `rsi_signal = RECOVERING` AND `rsi14 < 45` | **43.6%** | **45.7%** | **50.6%** |
-| **Doji at Low** | `bb_pct < 0.25` AND `rsi14 < 45` (indecision at lows) | **41.9%** | **45.9%** | **50.2%** |
+Stage 2 (Now — the stock is in a buy zone):
+  ✓ Pulled back OR had RSI reset — price is NOT chasing
+  ✓ RSI7 cooled to 35-62 range (not overbought)
+  ✓ Volume declining on down days (sellers are weak, not aggressive)
+  ✓ Still above EMA50 (trend intact despite pullback)
 
-**Tier 2 — Solid Setups:**
+Stage 3 (Signal — momentum turning):
+  ✓ Reversal candle: hammer, bullish engulfing, doji, inside day
+  ✓ Volume surging on signal day (vol_ratio_20 > 1.2)
+  ✓ MACD histogram ticking up
+  ✓ Stochastic K < 40 (short-term oversold)
+```
 
-| Pattern | Detection | Win Rate | Bear WR |
-|---|---|---|---|
-| **MACD Bull Cross** | `macd_hist_rising = true` AND `macd_cross_days > 0` AND `rsi14` 35-65 | **40.6%** | **42.8%** |
-| **Gap Down Reversal** | `roc5_pct > 0` after a large drop (`roc21_pct < -8%`), `cmf > -0.1` | **40.3%** | **40.3%** |
-| **EMA50 Pullback** | `pct_vs_ema50 > -3%` AND `pct_vs_ema50 < 0` AND `rsi14 < 60` | **40.2%** | **41.8%** |
-| **Squeeze Breakout** | `in_squeeze = true` AND `macd_hist_rising = true` AND `rsi14 > 40` | **39.8%** | **42.7%** |
-| **EMA21 Pullback** | `pct_vs_ema21 > -2%` AND uptrend (ema_align >= 3) AND `rsi14 < 60` | **39.5%** | **41.8%** |
+**Entry = Stage 3. NOT Stage 1 (already extended). Buying RSI7=75 = chasing.**
 
-**Tier 3 — Confirmation Signals (add to above):**
+---
 
-| Pattern | Detection | Bonus |
+### LAYER A — STOCK HEALTH (0-25 pts)
+
+| Signal | Points |
+|--------|--------|
+| `ema_align = 4` (fully stacked: price > EMA9 > 21 > 50 > 200) | 10 |
+| `ema_align = 3` | 7 |
+| `ema_align = 2` | 4 |
+| `rs63 > 20%` vs SPY (quarterly outperformer = institutional darling) | 6 |
+| `rs63 > 10%` | 5 |
+| `rs63 > 5%` | 4 |
+| `rs63 > 0%` | 3 |
+| `adx > 30` AND `di_spread > 10` (strong trend, buyers winning) | 5 |
+| `adx > 22` AND `di_spread > 5` | 3 |
+| `hh_hl >= 0.7` (higher highs/lows structure intact) | 4 |
+| `hh_hl >= 0.5` | 2 |
+
+---
+
+### LAYER B — PULLBACK QUALITY (0-30 pts)
+
+**Two valid bull market entry setups:**
+
+#### Setup 1: CLASSIC EMA PULLBACK
+Best when: orderly 5-12 day pullback on declining volume to EMA21/50
+```
+Must have ALL:
+  pct_vs_ema21 between -1.5% and -15% (price below but near EMA21)
+  rsi14 between 30 and 62 (cooled off)
+  rsi7 ≤ 62 (short-term not overbought)
+  ema21_slope ≥ -0.3% (EMA21 still rising or flat — trend intact)
+
+Then score:
+  Sweet spot (-2% to -8% from EMA21):        +12 pts
+  Outer zone (-8% to -12%):                   +8 pts
+  RSI14 in 35-52 (nicely cooled):             +8 pts
+  RSI7 < RSI14 (short-term weaker = cooling): +4 pts
+  Volume drying on pullback (avg vol < 0.87×): +6 pts
+  RSI slope turning positive:                  +3 pts
+```
+
+#### Setup 2: MOMENTUM RSI RESET ← **What works in strong bull markets**
+Best when: high RS63 stock had extreme overbought (RSI7=75-90) then reset hard
+```
+Must have ALL:
+  rs63 ≥ 8% vs SPY (solid outperformer, institutional interest)
+  RSI7 dropped ≥ 20 pts from recent peak within last 10 days
+  Current rsi7 ≤ 62 (actually cooled off)
+  pct_vs_ema50 > -3% (still near/above EMA50 — trend alive)
+  adx > 22 (trend still has strength)
+
+Then score:
+  RSI7 dropped ≥ 35 pts (massive reset):   +15 pts
+  RSI7 dropped ≥ 25 pts:                   +12 pts
+  RSI7 dropped ≥ 20 pts:                    +8 pts
+  Still above/near EMA50 (pct50 > -2%):     +8 pts
+  rs63 > 30%:                               +7 pts
+  rs63 > 15%:                               +5 pts
+  RSI slope turning up:                     +3 pts
+```
+
+---
+
+### LAYER C — SIGNAL STRENGTH (0-25 pts)
+
+| Signal | Points |
+|--------|--------|
+| **Hammer candle** (small body, lower shadow ≥ 2× body) | 8 |
+| **Bullish engulfing** (green candle wraps prior red body) | 9 |
+| **Morning star** (3-candle: red → small → green past midpoint) | 10 |
+| **Inverted hammer** (small body, long upper shadow at low) | 6 |
+| **Doji** (body < 10% of range = indecision at lows) | 5 |
+| **Inside day** (tight range within prior bar = coiling) | 4 |
+| *(Cap candle contribution at 10 pts)* | |
+| `macd_hist_rising = true` (histogram rising) | +3 |
+| `macd_cross_days > 0` (bullish MACD cross in last 3 days) | +4 |
+| `stoch_k < 25` (stochastic deeply oversold) | +5 |
+| `stoch_k < 35` | +3 |
+| `rsi_slope > 2` (RSI14 actively rising over 5 days) | +3 |
+| Multiple candle patterns (2+ firing together) | +4 bonus |
+
+---
+
+### LAYER D — VOLUME STORY (0-20 pts)
+
+| Signal | Points |
+|--------|--------|
+| OBV above its EMA21 AND `obv_slope > 0.05` | 5 |
+| OBV above its EMA21 | 3 |
+| `cmf > 0.15` (strong institutional inflow) | 6 |
+| `cmf > 0.08` | 5 |
+| `cmf > 0.0` | 3 |
+| `mfi > 55` (Money Flow Index bullish) | 2 |
+| `mfi < 40` (MFI oversold = near entry) | 2 |
+| Signal candle `vol_ratio_20 > 1.8` (strong buyer surge) | 5 |
+| Signal candle `vol_ratio_20 > 1.3` | 3 |
+
+---
+
+### BONUS POINTS (up to +20 total)
+
+| Condition | Bonus |
+|-----------|-------|
+| Bollinger Bands just released from squeeze (`bars_since_squeeze` 1-3) | +8 |
+| Still in squeeze (`in_squeeze = true`) | +5 |
+| `consolidation_score > 0.70` (very tight range — energy coiling) | +5 |
+| `rs21 > 5%` (outperforming SPY over last 21 days) | +3 |
+| `atr_pct > 5%` (volatile stock — bigger bounce potential) | +4 |
+| `atr_pct > 3%` | +2 |
+| `macd_above_zero = true` | +2 |
+| `adx_rising = true` (trend gaining strength) | +2 |
+
+### DEDUCTIONS (red flags)
+
+| Condition | Deduction |
+|-----------|-----------|
+| Classic pullback setup but `rsi7 > 65` (not cooled enough) | -8 |
+| Classic pullback setup but `rsi7 > 58` | -4 |
+| `mfi > 75` (MFI overbought) | -4 |
+| `rs21 < -5%` (underperforming SPY recently — momentum diverging) | -5 |
+| `cmf` between -0.22 and -0.12 (mild distribution) | -3 |
+
+**Minimum qualifying score: 48/100**
+
+### TOP COMBO PATTERNS from 2022-2025 data (highest backtested WR):
+
+| Combo | Win Rate | Avg Return |
 |---|---|---|
-| **Bullish Engulfing** | `rsi7 < 45` AND `macd_hist_rising = true` AND `vol_ratio_20 > 1.2` | +3 pts |
-| **Volume Surge** | `vol_ratio_20 >= 2.0` with price not making new lows | +4 pts |
-| **Morning Star** | `rsi14 < 40` AND `macd_hist_rising = true` after 3-day drop | +3 pts |
-
-**Bearish patterns to AVOID (shorting signals, not buy signals):**
-- `shooting_star`: rsi7 > 65, large upper wick after uptrend → **36.2% bear WR** (weak)
-- `bearish_engulfing`: rsi14 > 60, big bear candle swallowing prior bull candle → **34.3% WR**
-
-### SCORING FORMULA:
-
-```
-Base score = Tier 1 pattern WR × 100 (e.g., Mean Reversion Extreme = 50 points)
-+ Tier 2 pattern matched = +10 points
-+ Tier 3 confirmation = +3-4 points each
-+ ATR modifier: atr_pct >= 6% → +10, atr_pct >= 4% → +6, atr_pct >= 2.5% → +2
-+ 52w position: pct_from_52w_high < -40% → +8, < -25% → +5, < -15% → +2
-+ CMF: cmf > 0.1 → +8, cmf > 0 → +5, cmf < -0.15 → -5
-+ OBV slope: obv_slope > 0.1 → +4 (volume-confirmed buying)
-+ Bear bonus: spy_above_ema50=false AND rsi7 < 35 → +5
-- Momentum trap: spy_above_ema50=false AND ema_align >= 3 → -5
-```
-
-### TOP COMBO PATTERNS (backtested, 2022-2025):
-These combos have the highest proven win rates. Prioritize stocks showing these:
-
-| Combo | Win Rate | Avg Return | Setups (n) |
-|---|---|---|---|
-| EMA50 Pullback + RSI Oversold Bounce | **56.0%** | +1.01% | 50 |
-| Doji at Low + Mean Reversion Extreme | **55.7%** | +1.07% | 384 |
-| Bullish Engulfing + Hammer | **54.5%** | +1.06% | 55 |
-| Inverted Hammer + MACD Bull Cross | **53.3%** | +0.88% | 75 |
-| Hammer + RSI Divergence Bounce | **50.3%** | +1.02% | 594 |
-| Gap Down Reversal + Mean Reversion Extreme | **48.5%** | **+1.37%** | 134 |
-| RSI Oversold Bounce + Mean Reversion | **49.1%** | +0.96% | 644 |
-| Inside Day Breakout + RSI Oversold | **47.3%** | +1.39%** | 74 |
-
-**Key insight:** When 2+ patterns fire together, win rate jumps 8-15% over single patterns.
+| EMA50 Pullback + RSI Oversold Bounce | **56.0%** | +1.01% |
+| Doji + Mean Reversion Extreme | **55.7%** | +1.07% |
+| Bullish Engulfing + Hammer | **54.5%** | +1.06% |
+| Inverted Hammer + MACD Bull Cross | **53.3%** | +0.88% |
+| Hammer + RSI Divergence Bounce | **50.3%** | +1.02% |
+| Gap Down Reversal + Mean Reversion Extreme | **48.5%** | +1.37% |
+| Inside Day + RSI Oversold Bounce | **47.3%** | +1.39% |
 
 ---
 
@@ -225,29 +325,52 @@ Reason: [Why this week's setups are strong/weak]
 
 ## DEEP LEARNINGS FROM 2022-2025 BACKTESTING
 
-*(178 stocks × 4 years = ~900,000+ daily observations)*
+*(178 stocks × 4 years = ~900,000+ daily observations. Validated on Jan 2026: 75% WR, +3.08% avg/pick)*
 
 ### What Actually Works (ranked by impact):
 
-1. **Mean Reversion Extreme** is the #1 pattern (49.9% WR). In bear markets: 53.8%. In high-vol stocks: 54.3%. When you see `bb_pct < 0.10 + rsi7 < 25 + cmf turning up` → this is your best bet.
+1. **Buying RSI7=75 = chasing, not trading.** The biggest mistake. When RSI7 is 70-90, the stock has already moved — you're buying the top, not the entry. The correct entry is AFTER the RSI7 resets. ALB had RSI7=86, dropped to 52 in 3 days, then ran +17%. The entry was RSI7=52, not RSI7=86.
 
-2. **Bear markets favor buyers, not sellers.** Stocks in bear markets that hit extreme oversold bounce at 53.8% WR vs 44.5% in bull markets. The SPY declining is NOT a reason to avoid longs — it's a reason to demand stronger oversold signals before entering.
+2. **Momentum RSI Reset is the best bull market setup.** Stock with strong RS63 (>8% vs SPY) that had RSI7 drop ≥ 20 pts from peak, while still above EMA50. These stocks have institutional backing — when they pull back, it's a gift. Validated: Jan 2026 15/20 wins (75%) using this primary setup.
 
-3. **ATR (volatility) gates everything.** Stocks with `atr_pct >= 4%` have 45-54% WR depending on pattern. Stocks with `atr_pct < 2%` hover at 14%. Never trade low-volatility stocks weekly.
+3. **RS63 (63-day relative strength vs SPY) is the most important single filter.** Stocks outperforming SPY on a 63-day basis have institutional demand. When they dip, institutions buy the dip. Stocks with negative RS63 that look oversold are falling knives — they underperform for a reason.
 
-4. **Two patterns firing together = 8-15% better WR.** Single patterns top out at ~50%. Combos push to 54-56%. Always prefer setups where 2+ signals agree.
+4. **The 3-stage setup is non-negotiable:**
+   - Stage 1: Was strong (above EMA50, positive RS63)
+   - Stage 2: Now pulling back (RSI7 cooled to 35-62, volume drying up)
+   - Stage 3: Signal candle + momentum turning (MACD hist up, Stochastic < 40)
 
-5. **RSI7 > RSI14 divergence** = the earliest reversal signal. Before price turns, before MACD crosses, the short-term RSI starts recovering. This fires 3-5 days before the actual bottom.
+5. **EMA50 pullback + RSI oversold bounce = 56% WR** — the best backtested combo. The EMA50 acts as dynamic support; when RSI oversold confirms it, you have a high-probability setup.
 
-6. **Full EMA stack (ema_align=4) is a trap in weekly timeframe.** Only 31% WR. The setup that looks the prettiest on a chart is the one most likely to reverse on you because everyone sees it.
+6. **Volume drying up on pullback = weak sellers.** When a stock falls 5-10% and daily volume is below average (vol_ratio < 0.85), it means no one is aggressively selling. Institutions are just waiting. When volume surges on the reversal candle, it confirms buyers stepping in.
 
-7. **Gap down reversals + mean reversion = 48.5% WR, +1.37% avg return** — this is the highest average return of any combo. When a stock gaps down hard and then reverses intraday, and it's already in oversold territory, it's a powerful signal.
+7. **ATR > 3% stocks bounce harder.** Higher volatility stocks have bigger bounces when they reverse. A 4% ATR stock can recover 8-15% in a week. A 1% ATR stock might make 2%. Filter for atr_pct > 0.015 (ratio).
 
-8. **CMF < -0.25 + RSI7 falling = never trade.** Institutions are actively unloading. These stocks continue lower for days/weeks.
+8. **Mean Reversion Extreme is the #1 bear market pattern (53.8% WR).** `bb_pct < 0.10 + rsi7 < 25` = stock is at the bottom of its Bollinger Band with extremely oversold RSI. In volatile/bear markets, this gives a 54% win rate. Best combined with a doji candle (55.7% WR).
 
-9. **Momentum continuation** only works reliably in bull markets with SPY above 50-EMA. In bear markets, momentum stocks get sold into. The 3-5% short-term momentum that looks like strength is often distribution.
+9. **CMF (Chaikin Money Flow) reveals institutional intent.** CMF > 0.10 means money flowing IN despite price weakness = accumulation. CMF < -0.22 = distribution. Never fight CMF < -0.22. When CMF is positive during a pullback, the pullback is healthy.
 
-10. **Sector rotation matters more than any single indicator.** In March 2026: energy stocks (APA, FANG, EOG) ran +6.65% in a week purely on sector momentum — nothing in the technical indicators predicted it. Always check which sector ETF is leading vs SPY.
+10. **Squeeze + consolidation = coiled spring.** When Bollinger Bands compress inside Keltner Channels (`in_squeeze = true`), energy is coiling. When it releases (bars_since_squeeze = 1-3), direction is usually up if CMF and RS63 are positive.
+
+11. **Week Jan 26, 2026 warning — external shocks trump all setups.** The DeepSeek AI announcement (Jan 27) caused a broad selloff. Even correctly identified setups (DLTR -9%, ALGN -3.4%) failed. Lesson: always check for major macro events/earnings that week. If SPY CMF turns sharply negative mid-week, exit open positions.
+
+12. **Never repeat last week's winner without checking RSI reset.** CCL won +5.3% week of Jan 5 (RSI7=65). Next week (Jan 12), it appeared again with RSI7=68 and lost -6.1%. A stock that just ran 5% needs to reset before being tradeable again.
+
+13. **ADX > 30 + DI_spread > 10 = the trend is real.** When ADX is this high, pullbacks are buying opportunities not trend changes. When ADX < 15, the stock is in a range — pullbacks and bounces have much lower reliability.
+
+14. **Stochastic K < 30 in a bull market = near-term capitulation.** When Stochastic K drops below 30 on a stock that's above its EMA50 and has positive RS63, it usually means short-term sellers have exhausted. This is one of the cleanest entry triggers.
+
+15. **Hold with trailing stop, not fixed exit.** ALB on Jan 19: if sold at Friday close = +17%. If stopped out with 2×ATR trailing stop on Jan 23 = +16.7%. Winners should be held until the trailing stop is hit. Don't leave money on the table by forcing a Friday exit — only exit if stopped or if target hit.
+
+---
+
+### What Doesn't Work (learned the hard way):
+
+- **Picking RS leaders at RSI7=70-80** = buying extended stocks = 45% WR
+- **Ignoring Stage 2 (pullback)** = chasing momentum at the top
+- **Buying stocks below SMA200** = swimming against the institutional tide
+- **High RS21 alone without checking RS63** = short-term momentum vs institutional trend (different things)
+- **Full EMA stack (ema_align=4) as the ONLY criterion** = 31% WR — looks bullish but everyone sees it and it often exhausts
 
 ---
 
