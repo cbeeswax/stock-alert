@@ -1,0 +1,14 @@
+{
+  "as_of": "2025-10-31",
+  "risk_level": "HIGH",
+  "max_picks": 2,
+  "reasoning": "Government shutdown at 31+ days -- new record. Market in -5% pullback from ATH (Oct to Nov 20 decline underway). VIX climbing. 900K federal workers furloughed. GDP drag -1-2% annualized. Shutdown with no clear resolution in sight.",
+  "source": "web_search",
+  "signals": {
+    "tariff": 1,
+    "recession": 6,
+    "volatility": 7,
+    "fed": 5,
+    "geopolitical": 1
+  }
+}

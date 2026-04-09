@@ -1,0 +1,14 @@
+{
+  "as_of": "2025-01-17",
+  "risk_level": "MEDIUM",
+  "max_picks": 3,
+  "reasoning": "Inauguration (Jan 20) imminent, tariff policy direction unknown. Tech slightly optimistic but defensive sectors bid up. DeepSeek R1 began circulating mid-week, early AI narrative disruption. Elevated uncertainty justifies reduced sizing.",
+  "source": "web_search",
+  "signals": {
+    "tariff": 5,
+    "recession": 2,
+    "volatility": 3,
+    "fed": 1,
+    "geopolitical": 1
+  }
+}

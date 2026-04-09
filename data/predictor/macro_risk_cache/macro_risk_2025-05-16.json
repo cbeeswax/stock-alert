@@ -1,0 +1,14 @@
+{
+  "as_of": "2025-05-16",
+  "risk_level": "LOW",
+  "max_picks": 5,
+  "reasoning": "US-China 90-day tariff truce announced May 12: tariffs cut from 145% to 30% (US) and 125% to 10% (China). Markets surged +2.7% S&P, +3.7% Nasdaq futures. Major de-escalation -- risk environment dramatically improved.",
+  "source": "web_search",
+  "signals": {
+    "tariff": 3,
+    "recession": 2,
+    "volatility": 2,
+    "fed": 1,
+    "geopolitical": 2
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "as_of": "2025-04-04",
+  "risk_level": "EXTREME",
+  "max_picks": 0,
+  "reasoning": "Liberation Day tariffs hit April 2: S&P crashed 9-13% in days, VIX spiked to 60, index entered bear market (-21% from Feb peak). $3-6T in market cap destroyed. China facing 145% tariffs. Worst crash since COVID. Skip all trading.",
+  "source": "web_search",
+  "signals": {
+    "tariff": 20,
+    "recession": 10,
+    "volatility": 10,
+    "fed": 3,
+    "geopolitical": 7
+  }
+}

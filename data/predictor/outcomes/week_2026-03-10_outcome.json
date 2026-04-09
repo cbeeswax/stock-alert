@@ -1,0 +1,226 @@
+{
+  "week_start": "2026-03-10",
+  "week_end": "2026-03-14",
+  "outcomes": [
+    {
+      "ticker": "DELL",
+      "score": 67.13,
+      "entry": 146.29,
+      "stop": 126.646,
+      "target": 195.4,
+      "risk_pct": 13.43,
+      "atr": 13.096,
+      "category_scores": {
+        "trend": 0.832,
+        "momentum": 0.721,
+        "strength": 0.0,
+        "volatility": 1.0,
+        "fibonacci": 1.0,
+        "volume": 1.0
+      },
+      "exit_price": 151.62,
+      "exit_reason": "WIN",
+      "pnl_pct": 3.64,
+      "hit_target": false,
+      "hit_stop": false
+    },
+    {
+      "ticker": "APA",
+      "score": 64.06,
+      "entry": 32.06,
+      "stop": 28.5844,
+      "target": 40.749,
+      "risk_pct": 10.84,
+      "atr": 2.3171,
+      "category_scores": {
+        "trend": 0.875,
+        "momentum": 0.523,
+        "strength": 0.5,
+        "volatility": 1.0,
+        "fibonacci": 0.0,
+        "volume": 1.0
+      },
+      "exit_price": 34.47,
+      "exit_reason": "WIN",
+      "pnl_pct": 7.52,
+      "hit_target": false,
+      "hit_stop": false
+    },
+    {
+      "ticker": "EIX",
+      "score": 63.52,
+      "entry": 70.53,
+      "stop": 65.454,
+      "target": 83.22,
+      "risk_pct": 7.2,
+      "atr": 3.384,
+      "category_scores": {
+        "trend": 1.0,
+        "momentum": 0.789,
+        "strength": 0.5,
+        "volatility": 0.0,
+        "fibonacci": 0.0,
+        "volume": 1.0
+      },
+      "exit_price": 71.73,
+      "exit_reason": "WIN",
+      "pnl_pct": 1.7,
+      "hit_target": false,
+      "hit_stop": false
+    },
+    {
+      "ticker": "GLW",
+      "score": 61.32,
+      "entry": 132.02,
+      "stop": 114.6641,
+      "target": 175.4098,
+      "risk_pct": 13.15,
+      "atr": 11.5706,
+      "category_scores": {
+        "trend": 1.0,
+        "momentum": 0.685,
+        "strength": 0.5,
+        "volatility": 0.0,
+        "fibonacci": 0.0,
+        "volume": 1.0
+      },
+      "exit_price": 129.12,
+      "exit_reason": "LOSS",
+      "pnl_pct": -2.2,
+      "hit_target": false,
+      "hit_stop": false
+    },
+    {
+      "ticker": "CF",
+      "score": 60.93,
+      "entry": 110.2,
+      "stop": 99.7129,
+      "target": 136.4177,
+      "risk_pct": 9.52,
+      "atr": 6.9914,
+      "category_scores": {
+        "trend": 1.0,
+        "momentum": 0.667,
+        "strength": 0.5,
+        "volatility": 0.0,
+        "fibonacci": 0.0,
+        "volume": 1.0
+      },
+      "exit_price": 136.4177,
+      "exit_reason": "WIN",
+      "pnl_pct": 23.79,
+      "hit_target": true,
+      "hit_stop": false
+    },
+    {
+      "ticker": "BKR",
+      "score": 59.09,
+      "entry": 59.95,
+      "stop": 54.5763,
+      "target": 73.3843,
+      "risk_pct": 8.96,
+      "atr": 3.5825,
+      "category_scores": {
+        "trend": 1.0,
+        "momentum": 0.581,
+        "strength": 0.5,
+        "volatility": 0.0,
+        "fibonacci": 0.0,
+        "volume": 1.0
+      },
+      "exit_price": 54.5763,
+      "exit_reason": "STOPPED",
+      "pnl_pct": -8.96,
+      "hit_target": false,
+      "hit_stop": true
+    },
+    {
+      "ticker": "CBOE",
+      "score": 58.1,
+      "entry": 296.75,
+      "stop": 277.5583,
+      "target": 344.7293,
+      "risk_pct": 6.47,
+      "atr": 12.7945,
+      "category_scores": {
+        "trend": 0.832,
+        "momentum": 0.7,
+        "strength": 0.5,
+        "volatility": 0.0,
+        "fibonacci": 0.0,
+        "volume": 1.0
+      },
+      "exit_price": 289.9,
+      "exit_reason": "LOSS",
+      "pnl_pct": -2.31,
+      "hit_target": false,
+      "hit_stop": false
+    },
+    {
+      "ticker": "DOW",
+      "score": 57.77,
+      "entry": 34.62,
+      "stop": 30.4343,
+      "target": 45.0842,
+      "risk_pct": 12.09,
+      "atr": 2.7905,
+      "category_scores": {
+        "trend": 0.75,
+        "momentum": 0.766,
+        "strength": 0.5,
+        "volatility": 0.0,
+        "fibonacci": 0.0,
+        "volume": 1.0
+      },
+      "exit_price": 36.62,
+      "exit_reason": "WIN",
+      "pnl_pct": 5.78,
+      "hit_target": false,
+      "hit_stop": false
+    },
+    {
+      "ticker": "FANG",
+      "score": 57.28,
+      "entry": 181.29,
+      "stop": 165.3408,
+      "target": 221.163,
+      "risk_pct": 8.8,
+      "atr": 10.6328,
+      "category_scores": {
+        "trend": 0.876,
+        "momentum": 0.618,
+        "strength": 0.5,
+        "volatility": 0.0,
+        "fibonacci": 0.0,
+        "volume": 1.0
+      },
+      "exit_price": 182.37,
+      "exit_reason": "WIN",
+      "pnl_pct": 0.6,
+      "hit_target": false,
+      "hit_stop": false
+    },
+    {
+      "ticker": "DTE",
+      "score": 56.89,
+      "entry": 147.254,
+      "stop": 139.1189,
+      "target": 167.5919,
+      "risk_pct": 5.52,
+      "atr": 5.4234,
+      "category_scores": {
+        "trend": 0.807,
+        "momentum": 0.668,
+        "strength": 0.5,
+        "volatility": 0.0,
+        "fibonacci": 0.0,
+        "volume": 1.0
+      },
+      "exit_price": 148.405,
+      "exit_reason": "WIN",
+      "pnl_pct": 0.78,
+      "hit_target": false,
+      "hit_stop": false
+    }
+  ]
+}

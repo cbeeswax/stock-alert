@@ -239,15 +239,44 @@ def compute_daily_indicators(df: pd.DataFrame, spy: pd.DataFrame = None) -> pd.D
     out["bb_pct"] = bb_pct
     out["bb_width"] = bb_width
     out["bb_width_percentile"] = bb_width.rolling(252).rank(pct=True)
+    out["bb_lower"] = bb_lower   # support level — lower band = mean-reversion floor
 
     # --- Volatility: Keltner Channels ---
     kc_upper, kc_lower = _keltner(df, 20)
+    out["kc_lower"] = kc_lower   # support level — volatility-adjusted dynamic floor
 
     # --- Squeeze: BB inside KC ---
     out["in_squeeze"] = _squeeze(bb_upper, bb_lower, kc_upper, kc_lower).astype(int)
     # Bars since squeeze released
     squeeze_off = (~out["in_squeeze"].astype(bool)).astype(int)
     out["bars_since_squeeze"] = squeeze_off.groupby((out["in_squeeze"] == 1).cumsum()).cumcount()
+
+    # --- Swing lows at multiple lookbacks (structural support) ---
+    out["swing_low_5d"]  = df["low"].rolling(5).min()
+    out["swing_low_10d"] = df["low"].rolling(10).min()
+    out["swing_low_15d"] = df["low"].rolling(15).min()
+    out["swing_low_20d"] = df["low"].rolling(20).min()
+
+    # --- Volume shelf (POC): price with highest cumulative volume over last 60 days ---
+    def _vol_shelf_series(df_w: pd.DataFrame, n_bins: int = 20) -> pd.Series:
+        result = pd.Series(np.nan, index=df_w.index)
+        for i in range(20, len(df_w)):
+            window = df_w.iloc[max(0, i - 59): i + 1]
+            lo, hi = window["low"].min(), window["high"].max()
+            if hi <= lo:
+                continue
+            bins    = np.linspace(lo, hi, n_bins + 1)
+            mid     = (bins[:-1] + bins[1:]) / 2
+            tp      = (window["high"] + window["low"] + window["close"]) / 3
+            vols    = window["volume"].values
+            vol_bin = np.zeros(n_bins)
+            for tp_val, v in zip(tp.values, vols):
+                idx = min(int(np.searchsorted(bins, tp_val, side="right")) - 1, n_bins - 1)
+                vol_bin[max(0, idx)] += v
+            result.iloc[i] = mid[int(np.argmax(vol_bin))]
+        return result
+
+    out["vol_shelf"] = _vol_shelf_series(df)
 
     # --- ATR ---
     out["atr14"] = _atr(df, 14)
@@ -296,11 +325,38 @@ def compute_daily_indicators(df: pd.DataFrame, spy: pd.DataFrame = None) -> pd.D
         # SPY trend
         spy_ema50 = _ema(spy_close, 50)
         out["spy_uptrend"] = (spy_close > spy_ema50).astype(int)
+        # SPY weekly structure (above 200-day EMA = broad market healthy)
+        spy_ema200 = _ema(spy_close, 200)
+        out["spy_above_ema200"] = (spy_close > spy_ema200).astype(int)
     else:
         out["rs_21d"] = np.nan
         out["rs_63d"] = np.nan
         out["rs_positive"] = 0
         out["spy_uptrend"] = 1  # assume neutral
+        out["spy_above_ema200"] = 1
+
+    # --- RS line trend: direction and acceleration of the RS line itself ---
+    # The RS line's own trend often leads price — a new RS high before price = early signal
+    if "rs_63d" in out.columns and not out["rs_63d"].isna().all():
+        rs_line = out["rs_63d"]
+        # Smooth RS line with EMA21 to reduce noise
+        out["rs_line_ema21"] = _ema(rs_line, 21)
+        # Is RS line above its own EMA? = RS line in uptrend
+        out["rs_line_above_ema21"] = (rs_line > out["rs_line_ema21"]).astype(int)
+        # Rate of change of RS line over 10 days: positive = RS accelerating vs SPY
+        out["rs_line_slope_10d"] = rs_line.diff(10)
+        # RS line at new 52-week high: earliest institutional leadership signal
+        rs_52w_max = rs_line.rolling(252, min_periods=126).max()
+        out["rs_line_new_high"] = (rs_line >= rs_52w_max).astype(int)
+        # RS line vs its own 63-day max (shorter-term new high = momentum)
+        rs_63d_max = rs_line.rolling(63, min_periods=21).max()
+        out["rs_line_63d_high"] = (rs_line >= rs_63d_max).astype(int)
+    else:
+        out["rs_line_ema21"] = np.nan
+        out["rs_line_above_ema21"] = 0
+        out["rs_line_slope_10d"] = np.nan
+        out["rs_line_new_high"] = 0
+        out["rs_line_63d_high"] = 0
 
     return out
 
@@ -315,6 +371,197 @@ def get_snapshot(df_indicators: pd.DataFrame, as_of_date: str) -> pd.Series:
     if past.empty:
         return pd.Series(dtype=float)
     return past.iloc[-1]
+
+
+# ---------------------------------------------------------------------------
+# Weekly indicator engine
+# ---------------------------------------------------------------------------
+
+def compute_weekly_indicators(df: pd.DataFrame, spy: pd.DataFrame = None) -> pd.DataFrame:
+    """
+    Resample daily OHLCV to weekly bars and compute weekly-timeframe indicators.
+
+    Weekly chart is the CONTEXT chart — used to determine trend stage and structural
+    quality. Daily chart is the DECISION/TIMING chart. Never reverse this hierarchy.
+
+    Parameters
+    ----------
+    df  : daily OHLCV DataFrame (must have DatetimeIndex, columns: open/high/low/close/volume)
+    spy : daily OHLCV for SPY (for weekly relative strength)
+
+    Returns
+    -------
+    DataFrame indexed by week-ending Friday with weekly indicator columns.
+    """
+    if len(df) < 60:
+        return pd.DataFrame()
+
+    # Resample daily → weekly (anchor on Friday close)
+    agg = {"open": "first", "high": "max", "low": "min", "close": "last", "volume": "sum"}
+    w = df.resample("W-FRI").agg(agg).dropna(subset=["close"])
+
+    if len(w) < 10:
+        return pd.DataFrame()
+
+    close = w["close"]
+    volume = w["volume"]
+    out = w.copy()
+
+    # --- Trend: Weekly EMAs ---
+    # 10-week EMA ≈ 50-day; 40-week EMA ≈ 200-day (Weinstein's stage system uses 40-week)
+    out["weekly_ema10"] = _ema(close, 10)
+    out["weekly_ema40"] = _ema(close, 40)
+    out["weekly_above_ema10"] = (close > out["weekly_ema10"]).astype(int)
+    out["weekly_above_ema40"] = (close > out["weekly_ema40"]).astype(int)
+    # Slope of 10-week EMA: positive = uptrend context confirmed
+    out["weekly_ema10_slope"] = out["weekly_ema10"].pct_change(4)  # 4-week rate of change
+    out["weekly_ema40_slope"] = out["weekly_ema40"].pct_change(13)  # quarter rate of change
+
+    # Distance from weekly EMAs
+    out["weekly_pct_vs_ema10"] = (close - out["weekly_ema10"]) / out["weekly_ema10"]
+    out["weekly_pct_vs_ema40"] = (close - out["weekly_ema40"]) / out["weekly_ema40"]
+
+    # --- Momentum: Weekly RSI ---
+    out["weekly_rsi14"] = _rsi(close, 14)
+
+    # --- Momentum: Weekly MACD ---
+    _, _, weekly_macd_hist = _macd(close, fast=12, slow=26, signal=9)
+    out["weekly_macd_hist"] = weekly_macd_hist
+    out["weekly_macd_bullish"] = (weekly_macd_hist > 0).astype(int)
+    out["weekly_macd_hist_rising"] = (weekly_macd_hist > weekly_macd_hist.shift(1)).astype(int)
+
+    # --- Volatility: Weekly Bollinger Bands (20-week) ---
+    bb_pct, bb_width, _, _ = _bollinger(close, n=20)
+    out["weekly_bb_pct"] = bb_pct
+    out["weekly_bb_width"] = bb_width
+
+    # --- Volume: Weekly volume ratio ---
+    vol_ma10 = volume.rolling(10).mean()
+    out["weekly_vol_ratio"] = volume / vol_ma10.replace(0, np.nan)
+    out["weekly_vol_expansion"] = (out["weekly_vol_ratio"] > 1.5).astype(int)
+    out["weekly_vol_dryup"] = (out["weekly_vol_ratio"] < 0.7).astype(int)
+
+    # --- Price structure: 52-week high proximity ---
+    rolling_high_52w = close.rolling(52, min_periods=26).max()
+    out["weekly_pct_from_52w_high"] = (close - rolling_high_52w) / rolling_high_52w
+    out["weekly_near_52w_high"] = (out["weekly_pct_from_52w_high"] > -0.05).astype(int)
+
+    # Prior week's candle low — key structural support level for stop placement
+    out["prior_week_low"] = w["low"].shift(1)
+    out["prior_week_high"] = w["high"].shift(1)
+
+    # Consolidation: range over last 8 weeks relative to ATR
+    high8 = w["high"].rolling(8).max()
+    low8 = w["low"].rolling(8).min()
+    weekly_atr = _atr(w, 10)
+    out["weekly_atr"] = weekly_atr
+    out["weekly_consolidating"] = (
+        ((high8 - low8) / (weekly_atr * 8).replace(0, np.nan)) < 0.8
+    ).astype(int)
+
+    # Weeks in base: consecutive weeks where price is within 15% range (Stage 1 detection)
+    base_range = (high8 - low8) / low8.replace(0, np.nan)
+    in_base = (base_range < 0.15) & (out["weekly_above_ema40"] == 0)
+    out["weeks_in_base"] = in_base.astype(int).groupby(
+        (~in_base).cumsum()
+    ).cumcount()
+
+    # --- Relative strength vs SPY on weekly bars ---
+    if spy is not None and not spy.empty:
+        spy_w = spy["close"].resample("W-FRI").last().reindex(w.index, method="ffill")
+        out["weekly_rs_4w"] = close.pct_change(4) - spy_w.pct_change(4)
+        out["weekly_rs_13w"] = close.pct_change(13) - spy_w.pct_change(13)
+        out["weekly_rs_26w"] = close.pct_change(26) - spy_w.pct_change(26)
+        # Weekly RS line trend: is the RS line making new highs on the weekly chart?
+        rs_line_w = out["weekly_rs_13w"]
+        rs_52w_max = rs_line_w.rolling(52, min_periods=26).max()
+        out["weekly_rs_line_new_high"] = (rs_line_w >= rs_52w_max).astype(int)
+        out["weekly_rs_line_rising"] = (rs_line_w > rs_line_w.shift(4)).astype(int)
+    else:
+        out["weekly_rs_4w"] = np.nan
+        out["weekly_rs_13w"] = np.nan
+        out["weekly_rs_26w"] = np.nan
+        out["weekly_rs_line_new_high"] = 0
+        out["weekly_rs_line_rising"] = 0
+
+    return out
+
+
+def get_weekly_snapshot(df_weekly: pd.DataFrame, as_of_date: str) -> pd.Series:
+    """
+    Get the weekly indicator snapshot for the last completed week on or before as_of_date.
+    The weekly chart provides STRUCTURAL CONTEXT for daily entry decisions.
+    """
+    ts = pd.Timestamp(as_of_date)
+    past = df_weekly[df_weekly.index <= ts]
+    if past.empty:
+        return pd.Series(dtype=float)
+    return past.iloc[-1]
+
+
+# ---------------------------------------------------------------------------
+# Sector relative strength
+# ---------------------------------------------------------------------------
+
+def compute_sector_rs(df: pd.DataFrame, sector_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Add sector-relative strength columns to the daily OHLCV DataFrame.
+
+    A true market leader beats its sector AND its sector beats SPY.
+    This function computes stock vs sector RS (not stock vs SPY).
+
+    Parameters
+    ----------
+    df          : daily OHLCV (must already have DatetimeIndex)
+    sector_df   : daily OHLCV for the sector ETF
+
+    Returns
+    -------
+    DataFrame with added columns: rs_vs_sector_21d, rs_vs_sector_63d,
+    rs_vs_sector_positive, sector_leader
+    """
+    if df.empty or sector_df.empty:
+        df["rs_vs_sector_21d"] = np.nan
+        df["rs_vs_sector_63d"] = np.nan
+        df["rs_vs_sector_positive"] = 0
+        df["sector_leader"] = 0
+        return df
+
+    close = df["close"]
+    sector_close = sector_df["close"].reindex(close.index, method="ffill")
+
+    out = df.copy()
+    out["rs_vs_sector_21d"] = close.pct_change(21) - sector_close.pct_change(21)
+    out["rs_vs_sector_63d"] = close.pct_change(63) - sector_close.pct_change(63)
+    out["rs_vs_sector_positive"] = (out["rs_vs_sector_21d"] > 0).astype(int)
+    # True sector leader = beats sector on both 21d and 63d timeframes
+    out["sector_leader"] = (
+        (out["rs_vs_sector_21d"] > 0) & (out["rs_vs_sector_63d"] > 0)
+    ).astype(int)
+    return out
+
+
+def compute_sector_regime(sector_df: pd.DataFrame, spy: pd.DataFrame) -> pd.DataFrame:
+    """
+    Compute sector ETF regime: is the sector itself leading or lagging SPY?
+
+    Returns a DataFrame with sector RS vs SPY columns, used to assess whether
+    we are buying from a strong or weak sector group.
+    """
+    if sector_df.empty or spy.empty:
+        return pd.DataFrame()
+
+    close = sector_df["close"]
+    spy_close = spy["close"].reindex(close.index, method="ffill")
+
+    out = sector_df[["close"]].copy()
+    out["sector_rs_21d"] = close.pct_change(21) - spy_close.pct_change(21)
+    out["sector_rs_63d"] = close.pct_change(63) - spy_close.pct_change(63)
+    out["sector_above_spy_21d"] = (out["sector_rs_21d"] > 0).astype(int)
+    out["sector_above_spy_63d"] = (out["sector_rs_63d"] > 0).astype(int)
+    # Sector leadership score: 2 = leading on both tf, 1 = mixed, 0 = lagging
+    out["sector_leadership"] = out["sector_above_spy_21d"] + out["sector_above_spy_63d"]
+    return out
 
 
 def make_fingerprint(snap: pd.Series) -> dict:

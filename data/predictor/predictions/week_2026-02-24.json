@@ -1,0 +1,183 @@
+{
+  "week_start": "2026-02-24",
+  "weights_used": {
+    "trend": 0.273843670653062,
+    "momentum": 0.1931282214437077,
+    "strength": 0.21869441914593982,
+    "volatility": 0.07442019247467799,
+    "fibonacci": 0.10934720957296991,
+    "volume": 0.13056628670964263
+  },
+  "picks": [
+    {
+      "ticker": "DE",
+      "score": 64.25,
+      "entry": 641.424,
+      "stop": 591.417,
+      "target": 766.4414,
+      "risk_pct": 7.8,
+      "atr": 33.338,
+      "category_scores": {
+        "trend": 1.0,
+        "momentum": 0.667,
+        "strength": 0.5,
+        "volatility": 0.0,
+        "fibonacci": 0.0,
+        "volume": 1.0
+      }
+    },
+    {
+      "ticker": "CSCO",
+      "score": 63.2,
+      "entry": 77.321,
+      "stop": 71.2,
+      "target": 92.6236,
+      "risk_pct": 7.92,
+      "atr": 4.0807,
+      "category_scores": {
+        "trend": 0.663,
+        "momentum": 0.477,
+        "strength": 0.5,
+        "volatility": 1.0,
+        "fibonacci": 1.0,
+        "volume": 0.5
+      }
+    },
+    {
+      "ticker": "ADI",
+      "score": 63.02,
+      "entry": 357.8794,
+      "stop": 331.89,
+      "target": 422.853,
+      "risk_pct": 7.26,
+      "atr": 17.3263,
+      "category_scores": {
+        "trend": 1.0,
+        "momentum": 0.603,
+        "strength": 0.5,
+        "volatility": 0.0,
+        "fibonacci": 0.0,
+        "volume": 1.0
+      }
+    },
+    {
+      "ticker": "AES",
+      "score": 62.19,
+      "entry": 16.33,
+      "stop": 14.9494,
+      "target": 19.7815,
+      "risk_pct": 8.45,
+      "atr": 0.9204,
+      "category_scores": {
+        "trend": 0.782,
+        "momentum": 0.821,
+        "strength": 0.5,
+        "volatility": 1.0,
+        "fibonacci": 0.0,
+        "volume": 0.5
+      }
+    },
+    {
+      "ticker": "CARR",
+      "score": 61.51,
+      "entry": 63.69,
+      "stop": 57.8572,
+      "target": 78.272,
+      "risk_pct": 9.16,
+      "atr": 3.8885,
+      "category_scores": {
+        "trend": 0.804,
+        "momentum": 0.756,
+        "strength": 0.5,
+        "volatility": 1.0,
+        "fibonacci": 0.0,
+        "volume": 0.5
+      }
+    },
+    {
+      "ticker": "ETN",
+      "score": 60.69,
+      "entry": 362.8685,
+      "stop": 326.3222,
+      "target": 454.2343,
+      "risk_pct": 10.07,
+      "atr": 24.3642,
+      "category_scores": {
+        "trend": 0.836,
+        "momentum": 0.668,
+        "strength": 0.0,
+        "volatility": 1.0,
+        "fibonacci": 1.0,
+        "volume": 0.5
+      }
+    },
+    {
+      "ticker": "CCL",
+      "score": 60.51,
+      "entry": 30.32,
+      "stop": 26.7492,
+      "target": 39.247,
+      "risk_pct": 11.78,
+      "atr": 2.3805,
+      "category_scores": {
+        "trend": 0.773,
+        "momentum": 0.747,
+        "strength": 0.5,
+        "volatility": 1.0,
+        "fibonacci": 0.0,
+        "volume": 0.5
+      }
+    },
+    {
+      "ticker": "CTRA",
+      "score": 59.79,
+      "entry": 30.6467,
+      "stop": 28.0533,
+      "target": 37.1301,
+      "risk_pct": 8.46,
+      "atr": 1.7289,
+      "category_scores": {
+        "trend": 1.0,
+        "momentum": 0.774,
+        "strength": 0.5,
+        "volatility": 0.0,
+        "fibonacci": 0.0,
+        "volume": 0.5
+      }
+    },
+    {
+      "ticker": "EQIX",
+      "score": 59.36,
+      "entry": 941.1703,
+      "stop": 871.9011,
+      "target": 1114.3433,
+      "risk_pct": 7.36,
+      "atr": 46.1795,
+      "category_scores": {
+        "trend": 0.934,
+        "momentum": 0.845,
+        "strength": 0.5,
+        "volatility": 0.0,
+        "fibonacci": 0.0,
+        "volume": 0.5
+      }
+    },
+    {
+      "ticker": "DVA",
+      "score": 59.19,
+      "entry": 150.5,
+      "stop": 135.8263,
+      "target": 187.1842,
+      "risk_pct": 9.75,
+      "atr": 9.7825,
+      "category_scores": {
+        "trend": 0.875,
+        "momentum": 0.92,
+        "strength": 0.5,
+        "volatility": 0.0,
+        "fibonacci": 0.0,
+        "volume": 0.5
+      }
+    }
+  ]
+}

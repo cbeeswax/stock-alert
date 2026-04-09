@@ -1,0 +1,14 @@
+{
+  "as_of": "2025-05-30",
+  "risk_level": "LOW",
+  "max_picks": 5,
+  "reasoning": "May ended +6.29%. US-China truce holding, 90-day pause for most countries, markets recovering strongly from April crash. Bull case re-established. Normal trading conditions.",
+  "source": "web_search",
+  "signals": {
+    "tariff": 2,
+    "recession": 1,
+    "volatility": 2,
+    "fed": 1,
+    "geopolitical": 1
+  }
+}

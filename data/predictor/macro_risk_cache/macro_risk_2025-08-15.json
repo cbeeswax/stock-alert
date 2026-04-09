@@ -1,0 +1,14 @@
+{
+  "as_of": "2025-08-15",
+  "risk_level": "LOW",
+  "max_picks": 5,
+  "reasoning": "Jackson Hole symposium week: Fed Chair strongly signaled September rate cut (>90% probability). Markets rallied on easing expectations. Small caps outperforming. VIX declining sharply. Full positioning appropriate.",
+  "source": "web_search",
+  "signals": {
+    "tariff": 2,
+    "recession": 2,
+    "volatility": 2,
+    "fed": 1,
+    "geopolitical": 1
+  }
+}

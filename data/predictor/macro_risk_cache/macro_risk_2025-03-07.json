@@ -1,0 +1,14 @@
+{
+  "as_of": "2025-03-07",
+  "risk_level": "HIGH",
+  "max_picks": 2,
+  "reasoning": "Tariffs on Canada/Mexico went into effect March 4. S&P fell ~2% in a single day (March 3-4). Index down 6%+ from ATH and negative for the year. Auto sector, retail, tech all selling off sharply. Recession probability rising.",
+  "source": "web_search",
+  "signals": {
+    "tariff": 16,
+    "recession": 8,
+    "volatility": 8,
+    "fed": 2,
+    "geopolitical": 4
+  }
+}

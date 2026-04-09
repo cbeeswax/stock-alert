@@ -1,0 +1,226 @@
+{
+  "week_start": "2026-02-03",
+  "week_end": "2026-02-07",
+  "outcomes": [
+    {
+      "ticker": "BKR",
+      "score": 71.19,
+      "entry": 56.1283,
+      "stop": 51.4716,
+      "target": 67.7699,
+      "risk_pct": 8.3,
+      "atr": 3.1044,
+      "category_scores": {
+        "trend": 0.9,
+        "momentum": 0.799,
+        "strength": 0.5,
+        "volatility": 1.0,
+        "fibonacci": 0.0,
+        "volume": 1.0
+      },
+      "exit_price": 58.6986,
+      "exit_reason": "WIN",
+      "pnl_pct": 4.58,
+      "hit_target": false,
+      "hit_stop": false
+    },
+    {
+      "ticker": "CVX",
+      "score": 65.98,
+      "entry": 172.1955,
+      "stop": 162.7575,
+      "target": 195.7906,
+      "risk_pct": 5.48,
+      "atr": 6.292,
+      "category_scores": {
+        "trend": 0.814,
+        "momentum": 0.663,
+        "strength": 0.5,
+        "volatility": 1.0,
+        "fibonacci": 0.0,
+        "volume": 1.0
+      },
+      "exit_price": 179.1079,
+      "exit_reason": "WIN",
+      "pnl_pct": 4.01,
+      "hit_target": false,
+      "hit_stop": false
+    },
+    {
+      "ticker": "APH",
+      "score": 64.96,
+      "entry": 146.5603,
+      "stop": 131.2002,
+      "target": 184.9607,
+      "risk_pct": 10.48,
+      "atr": 10.2401,
+      "category_scores": {
+        "trend": 0.769,
+        "momentum": 0.416,
+        "strength": 0.5,
+        "volatility": 1.0,
+        "fibonacci": 1.0,
+        "volume": 0.5
+      },
+      "exit_price": 131.2002,
+      "exit_reason": "STOPPED",
+      "pnl_pct": -10.48,
+      "hit_target": false,
+      "hit_stop": true
+    },
+    {
+      "ticker": "DOW",
+      "score": 64.62,
+      "entry": 28.5617,
+      "stop": 25.2546,
+      "target": 36.8295,
+      "risk_pct": 11.58,
+      "atr": 2.2047,
+      "category_scores": {
+        "trend": 0.737,
+        "momentum": 0.695,
+        "strength": 0.5,
+        "volatility": 1.0,
+        "fibonacci": 0.0,
+        "volume": 1.0
+      },
+      "exit_price": 31.408,
+      "exit_reason": "WIN",
+      "pnl_pct": 9.97,
+      "hit_target": false,
+      "hit_stop": false
+    },
+    {
+      "ticker": "T",
+      "score": 62.5,
+      "entry": 26.11,
+      "stop": 24.4002,
+      "target": 30.3845,
+      "risk_pct": 6.55,
+      "atr": 1.1398,
+      "category_scores": {
+        "trend": 0.375,
+        "momentum": 0.538,
+        "strength": 0.5,
+        "volatility": 1.0,
+        "fibonacci": 1.0,
+        "volume": 1.0
+      },
+      "exit_price": 27.13,
+      "exit_reason": "WIN",
+      "pnl_pct": 3.91,
+      "hit_target": false,
+      "hit_stop": false
+    },
+    {
+      "ticker": "BG",
+      "score": 61.75,
+      "entry": 111.211,
+      "stop": 101.8852,
+      "target": 134.5256,
+      "risk_pct": 8.39,
+      "atr": 6.2172,
+      "category_scores": {
+        "trend": 1.0,
+        "momentum": 0.872,
+        "strength": 0.5,
+        "volatility": 0.0,
+        "fibonacci": 0.0,
+        "volume": 0.5
+      },
+      "exit_price": 115.1981,
+      "exit_reason": "WIN",
+      "pnl_pct": 3.59,
+      "hit_target": false,
+      "hit_stop": false
+    },
+    {
+      "ticker": "ADI",
+      "score": 60.55,
+      "entry": 315.871,
+      "stop": 292.3872,
+      "target": 374.5803,
+      "risk_pct": 7.43,
+      "atr": 15.6559,
+      "category_scores": {
+        "trend": 0.948,
+        "momentum": 0.882,
+        "strength": 0.5,
+        "volatility": 0.0,
+        "fibonacci": 0.0,
+        "volume": 0.5
+      },
+      "exit_price": 319.4498,
+      "exit_reason": "WIN",
+      "pnl_pct": 1.13,
+      "hit_target": false,
+      "hit_stop": false
+    },
+    {
+      "ticker": "ALB",
+      "score": 60.51,
+      "entry": 172.7919,
+      "stop": 149.4924,
+      "target": 231.0408,
+      "risk_pct": 13.48,
+      "atr": 15.533,
+      "category_scores": {
+        "trend": 0.875,
+        "momentum": 0.971,
+        "strength": 0.5,
+        "volatility": 0.0,
+        "fibonacci": 0.0,
+        "volume": 0.5
+      },
+      "exit_price": 162.9663,
+      "exit_reason": "LOSS",
+      "pnl_pct": -5.69,
+      "hit_target": false,
+      "hit_stop": false
+    },
+    {
+      "ticker": "CHRW",
+      "score": 59.86,
+      "entry": 198.3216,
+      "stop": 184.7982,
+      "target": 232.1302,
+      "risk_pct": 6.82,
+      "atr": 9.0157,
+      "category_scores": {
+        "trend": 0.961,
+        "momentum": 0.578,
+        "strength": 0.5,
+        "volatility": 0.0,
+        "fibonacci": 0.0,
+        "volume": 1.0
+      },
+      "exit_price": 199.9062,
+      "exit_reason": "WIN",
+      "pnl_pct": 0.8,
+      "hit_target": false,
+      "hit_stop": false
+    },
+    {
+      "ticker": "GLW",
+      "score": 59.63,
+      "entry": 117.0815,
+      "stop": 106.7496,
+      "target": 142.9112,
+      "risk_pct": 8.82,
+      "atr": 6.8879,
+      "category_scores": {
+        "trend": 0.796,
+        "momentum": 0.389,
+        "strength": 0.5,
+        "volatility": 1.0,
+        "fibonacci": 0.0,
+        "volume": 1.0
+      },
+      "exit_price": 106.7496,
+      "exit_reason": "STOPPED",
+      "pnl_pct": -8.82,
+      "hit_target": false,
+      "hit_stop": true
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "as_of": "2025-04-25",
+  "risk_level": "HIGH",
+  "max_picks": 2,
+  "reasoning": "S&P on 8+ trading day winning streak post-April 9, approaching flat for month. But China at 145% tariffs, earnings season amid extreme macro uncertainty, US-China trade war escalating. Strong recovery momentum but tail risks remain severe.",
+  "source": "web_search",
+  "signals": {
+    "tariff": 14,
+    "recession": 5,
+    "volatility": 6,
+    "fed": 2,
+    "geopolitical": 5
+  }
+}

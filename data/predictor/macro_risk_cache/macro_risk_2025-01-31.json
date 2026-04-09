@@ -1,0 +1,14 @@
+{
+  "as_of": "2025-01-31",
+  "risk_level": "HIGH",
+  "max_picks": 2,
+  "reasoning": "Trump announced 25% tariffs on Canada and Mexico, 10% on China effective Feb 1 -- a major trade war escalation. Canada/Mexico retaliation imminent. Market bracing for significant supply chain and inflation disruption.",
+  "source": "web_search",
+  "signals": {
+    "tariff": 14,
+    "recession": 4,
+    "volatility": 6,
+    "fed": 2,
+    "geopolitical": 3
+  }
+}

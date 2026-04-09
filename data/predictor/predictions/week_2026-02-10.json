@@ -1,0 +1,183 @@
+{
+  "week_start": "2026-02-10",
+  "weights_used": {
+    "trend": 0.2805938038022445,
+    "momentum": 0.2010097944101289,
+    "strength": 0.21623838249751648,
+    "volatility": 0.08267606105513094,
+    "fibonacci": 0.10811919124875824,
+    "volume": 0.111362766986221
+  },
+  "picks": [
+    {
+      "ticker": "BKR",
+      "score": 67.09,
+      "entry": 59.5155,
+      "stop": 54.7357,
+      "target": 71.465,
+      "risk_pct": 8.03,
+      "atr": 3.1865,
+      "category_scores": {
+        "trend": 0.999,
+        "momentum": 0.851,
+        "strength": 0.5,
+        "volatility": 0.0,
+        "fibonacci": 0.0,
+        "volume": 1.0
+      }
+    },
+    {
+      "ticker": "DE",
+      "score": 65.59,
+      "entry": 584.4007,
+      "stop": 542.6982,
+      "target": 688.6571,
+      "risk_pct": 7.14,
+      "atr": 27.8017,
+      "category_scores": {
+        "trend": 0.911,
+        "momentum": 0.899,
+        "strength": 0.5,
+        "volatility": 0.0,
+        "fibonacci": 0.0,
+        "volume": 1.0
+      }
+    },
+    {
+      "ticker": "MO",
+      "score": 63.43,
+      "entry": 63.0633,
+      "stop": 59.2804,
+      "target": 72.5205,
+      "risk_pct": 6.0,
+      "atr": 2.5219,
+      "category_scores": {
+        "trend": 0.712,
+        "momentum": 0.659,
+        "strength": 0.5,
+        "volatility": 1.0,
+        "fibonacci": 0.0,
+        "volume": 1.0
+      }
+    },
+    {
+      "ticker": "GLW",
+      "score": 63.41,
+      "entry": 128.7697,
+      "stop": 117.0893,
+      "target": 157.9706,
+      "risk_pct": 9.07,
+      "atr": 7.7869,
+      "category_scores": {
+        "trend": 1.0,
+        "momentum": 0.667,
+        "strength": 0.5,
+        "volatility": 0.0,
+        "fibonacci": 0.0,
+        "volume": 1.0
+      }
+    },
+    {
+      "ticker": "ENPH",
+      "score": 63.09,
+      "entry": 50.93,
+      "stop": 42.5134,
+      "target": 71.9715,
+      "risk_pct": 16.53,
+      "atr": 5.6111,
+      "category_scores": {
+        "trend": 0.75,
+        "momentum": 1.0,
+        "strength": 0.5,
+        "volatility": 0.0,
+        "fibonacci": 0.0,
+        "volume": 1.0
+      }
+    },
+    {
+      "ticker": "DOW",
+      "score": 62.85,
+      "entry": 32.0207,
+      "stop": 28.341,
+      "target": 41.2201,
+      "risk_pct": 11.49,
+      "atr": 2.4531,
+      "category_scores": {
+        "trend": 0.75,
+        "momentum": 0.988,
+        "strength": 0.5,
+        "volatility": 0.0,
+        "fibonacci": 0.0,
+        "volume": 1.0
+      }
+    },
+    {
+      "ticker": "CHRW",
+      "score": 62.42,
+      "entry": 198.8199,
+      "stop": 185.1989,
+      "target": 232.8725,
+      "risk_pct": 6.85,
+      "atr": 9.0807,
+      "category_scores": {
+        "trend": 1.0,
+        "momentum": 0.618,
+        "strength": 0.5,
+        "volatility": 0.0,
+        "fibonacci": 0.0,
+        "volume": 1.0
+      }
+    },
+    {
+      "ticker": "EMN",
+      "score": 62.21,
+      "entry": 77.4671,
+      "stop": 70.3654,
+      "target": 95.2212,
+      "risk_pct": 9.17,
+      "atr": 4.7344,
+      "category_scores": {
+        "trend": 0.577,
+        "momentum": 0.787,
+        "strength": 0.5,
+        "volatility": 1.0,
+        "fibonacci": 0.0,
+        "volume": 1.0
+      }
+    },
+    {
+      "ticker": "CTRA",
+      "score": 61.39,
+      "entry": 30.3191,
+      "stop": 27.734,
+      "target": 36.7817,
+      "risk_pct": 8.53,
+      "atr": 1.7234,
+      "category_scores": {
+        "trend": 0.817,
+        "momentum": 0.822,
+        "strength": 0.5,
+        "volatility": 0.0,
+        "fibonacci": 0.0,
+        "volume": 1.0
+      }
+    },
+    {
+      "ticker": "CCL",
+      "score": 61.07,
+      "entry": 32.4002,
+      "stop": 28.7693,
+      "target": 41.4776,
+      "risk_pct": 11.21,
+      "atr": 2.4206,
+      "category_scores": {
+        "trend": 0.607,
+        "momentum": 0.687,
+        "strength": 0.5,
+        "volatility": 1.0,
+        "fibonacci": 0.0,
+        "volume": 1.0
+      }
+    }
+  ]
+}

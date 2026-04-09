@@ -1,0 +1,14 @@
+{
+  "as_of": "2025-10-17",
+  "risk_level": "MEDIUM",
+  "max_picks": 3,
+  "reasoning": "Shutdown at 17 days, political resolution uncertain. However: 86% of S&P 500 companies beat Q3 earnings, AI/tech driving new highs, second Fed cut in effect. Market at record but shutdown overhang.",
+  "source": "web_search",
+  "signals": {
+    "tariff": 1,
+    "recession": 3,
+    "volatility": 3,
+    "fed": 3,
+    "geopolitical": 1
+  }
+}

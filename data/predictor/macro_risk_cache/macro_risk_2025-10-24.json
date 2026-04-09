@@ -1,0 +1,14 @@
+{
+  "as_of": "2025-10-24",
+  "risk_level": "MEDIUM",
+  "max_picks": 3,
+  "reasoning": "Shutdown at 24 days -- approaching record length. Markets starting to pull back from ATH as shutdown extends. The ~5% decline from late October to Nov 20 is beginning. Political stalemate over ACA subsidies and budget cuts.",
+  "source": "web_search",
+  "signals": {
+    "tariff": 1,
+    "recession": 4,
+    "volatility": 5,
+    "fed": 4,
+    "geopolitical": 1
+  }
+}

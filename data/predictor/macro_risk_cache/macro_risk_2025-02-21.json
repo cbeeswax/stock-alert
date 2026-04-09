@@ -1,0 +1,14 @@
+{
+  "as_of": "2025-02-21",
+  "risk_level": "HIGH",
+  "max_picks": 2,
+  "reasoning": "Market correction deepening: NASDAQ -4% for month, consumer confidence largest monthly drop in 3+ years, tariff pause expiry March 4 looming. Recession fears building, defensive rotation evident. S&P on multi-week losing streak.",
+  "source": "web_search",
+  "signals": {
+    "tariff": 10,
+    "recession": 6,
+    "volatility": 6,
+    "fed": 2,
+    "geopolitical": 2
+  }
+}

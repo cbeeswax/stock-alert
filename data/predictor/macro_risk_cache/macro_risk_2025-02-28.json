@@ -1,0 +1,14 @@
+{
+  "as_of": "2025-02-28",
+  "risk_level": "HIGH",
+  "max_picks": 2,
+  "reasoning": "Trump confirmed 25% tariffs on Canada/Mexico resume March 4 -- 30-day pause ending. S&P already down 6%+ from ATH. Canada retaliating with $155B in tariffs. Recession fears and trade war escalation are acute heading into next week.",
+  "source": "web_search",
+  "signals": {
+    "tariff": 15,
+    "recession": 7,
+    "volatility": 7,
+    "fed": 2,
+    "geopolitical": 4
+  }
+}

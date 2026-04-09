@@ -1,0 +1,14 @@
+{
+  "as_of": "2025-05-02",
+  "risk_level": "MEDIUM",
+  "max_picks": 3,
+  "reasoning": "April ended flat (+0.8%), recovery fully in motion. May starting strong with tariff deal hopes. China talks progressing but US-China at 145%/125% tariffs still. Market optimistic but not resolved. Reduced but not minimal sizing.",
+  "source": "web_search",
+  "signals": {
+    "tariff": 10,
+    "recession": 4,
+    "volatility": 4,
+    "fed": 2,
+    "geopolitical": 4
+  }
+}

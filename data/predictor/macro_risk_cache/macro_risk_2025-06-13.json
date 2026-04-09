@@ -1,0 +1,14 @@
+{
+  "as_of": "2025-06-13",
+  "risk_level": "LOW",
+  "max_picks": 5,
+  "reasoning": "Mid-June: S&P approaching record highs. Tech sector up ~10% for month, AI enthusiasm high. VIX around 16. Tariff negotiations making progress. Clean bull market environment.",
+  "source": "web_search",
+  "signals": {
+    "tariff": 2,
+    "recession": 1,
+    "volatility": 2,
+    "fed": 1,
+    "geopolitical": 1
+  }
+}

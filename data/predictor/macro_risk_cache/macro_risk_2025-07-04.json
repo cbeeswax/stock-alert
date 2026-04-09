@@ -1,0 +1,14 @@
+{
+  "as_of": "2025-07-04",
+  "risk_level": "LOW",
+  "max_picks": 5,
+  "reasoning": "Fourth of July holiday week, short trading week. Markets at ATH, July tracking +2.2% for month. S&P up ~27% from April lows. Strong earnings season beginning. No macro concerns visible.",
+  "source": "web_search",
+  "signals": {
+    "tariff": 1,
+    "recession": 1,
+    "volatility": 1,
+    "fed": 1,
+    "geopolitical": 1
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "as_of": "2025-10-03",
+  "risk_level": "MEDIUM",
+  "max_picks": 3,
+  "reasoning": "Government shutdown started Oct 1 -- longest in US history (43 days). Equity futures initially declined. Economic data blackout complicating Fed decisions. October gains continued but uncertainty elevated. Markets looking past noise but risk is real.",
+  "source": "web_search",
+  "signals": {
+    "tariff": 1,
+    "recession": 4,
+    "volatility": 4,
+    "fed": 5,
+    "geopolitical": 1
+  }
+}

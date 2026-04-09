@@ -1,0 +1,14 @@
+{
+  "as_of": "2025-08-22",
+  "risk_level": "LOW",
+  "max_picks": 5,
+  "reasoning": "Late August: S&P at new ATH, +2% for month. Broad rally -- narrowest sector performance gap since 1995. Russell 2000 up 7%+. VIX ending at 15.36. Strong breadth and momentum.",
+  "source": "web_search",
+  "signals": {
+    "tariff": 2,
+    "recession": 1,
+    "volatility": 2,
+    "fed": 1,
+    "geopolitical": 1
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "as_of": "2025-06-20",
+  "risk_level": "LOW",
+  "max_picks": 5,
+  "reasoning": "Last two weeks of June especially strong on tariff optimism. S&P at or near record highs. VIX suppressed. Bull market fully confirmed, Mag-7 stocks leading broad rally.",
+  "source": "web_search",
+  "signals": {
+    "tariff": 1,
+    "recession": 1,
+    "volatility": 1,
+    "fed": 1,
+    "geopolitical": 1
+  }
+}

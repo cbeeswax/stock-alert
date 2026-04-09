@@ -1,0 +1,183 @@
+{
+  "week_start": "2026-03-31",
+  "weights_used": {
+    "trend": 0.20618211197735167,
+    "momentum": 0.2033923509651214,
+    "strength": 0.21709615228104545,
+    "volatility": 0.08699362891109279,
+    "fibonacci": 0.10940072127860655,
+    "volume": 0.17693503458678217
+  },
+  "picks": [
+    {
+      "ticker": "DELL",
+      "score": 68.08,
+      "entry": 164.29,
+      "stop": 141.7363,
+      "target": 220.6742,
+      "risk_pct": 13.73,
+      "atr": 15.0358,
+      "category_scores": {
+        "trend": 1.0,
+        "momentum": 0.93,
+        "strength": 0.5,
+        "volatility": 0.0,
+        "fibonacci": 0.0,
+        "volume": 1.0
+      }
+    },
+    {
+      "ticker": "AKAM",
+      "score": 63.18,
+      "entry": 110.67,
+      "stop": 97.952,
+      "target": 142.465,
+      "risk_pct": 11.49,
+      "atr": 8.4787,
+      "category_scores": {
+        "trend": 0.791,
+        "momentum": 0.901,
+        "strength": 0.5,
+        "volatility": 0.0,
+        "fibonacci": 0.0,
+        "volume": 1.0
+      }
+    },
+    {
+      "ticker": "CF",
+      "score": 62.73,
+      "entry": 135.91,
+      "stop": 121.2527,
+      "target": 172.5533,
+      "risk_pct": 10.78,
+      "atr": 9.7715,
+      "category_scores": {
+        "trend": 1.0,
+        "momentum": 0.667,
+        "strength": 0.5,
+        "volatility": 0.0,
+        "fibonacci": 0.0,
+        "volume": 1.0
+      }
+    },
+    {
+      "ticker": "DVN",
+      "score": 62.73,
+      "entry": 51.69,
+      "stop": 47.1719,
+      "target": 62.9852,
+      "risk_pct": 8.74,
+      "atr": 3.0121,
+      "category_scores": {
+        "trend": 1.0,
+        "momentum": 0.667,
+        "strength": 0.5,
+        "volatility": 0.0,
+        "fibonacci": 0.0,
+        "volume": 1.0
+      }
+    },
+    {
+      "ticker": "APA",
+      "score": 62.73,
+      "entry": 43.58,
+      "stop": 39.2112,
+      "target": 54.502,
+      "risk_pct": 10.02,
+      "atr": 2.9125,
+      "category_scores": {
+        "trend": 1.0,
+        "momentum": 0.667,
+        "strength": 0.5,
+        "volatility": 0.0,
+        "fibonacci": 0.0,
+        "volume": 1.0
+      }
+    },
+    {
+      "ticker": "FANG",
+      "score": 61.59,
+      "entry": 199.52,
+      "stop": 181.9574,
+      "target": 243.4265,
+      "risk_pct": 8.8,
+      "atr": 11.7084,
+      "category_scores": {
+        "trend": 1.0,
+        "momentum": 0.611,
+        "strength": 0.5,
+        "volatility": 0.0,
+        "fibonacci": 0.0,
+        "volume": 1.0
+      }
+    },
+    {
+      "ticker": "CVX",
+      "score": 59.6,
+      "entry": 210.9,
+      "stop": 198.9761,
+      "target": 240.7097,
+      "risk_pct": 5.65,
+      "atr": 7.9493,
+      "category_scores": {
+        "trend": 0.963,
+        "momentum": 0.551,
+        "strength": 0.5,
+        "volatility": 0.0,
+        "fibonacci": 0.0,
+        "volume": 1.0
+      }
+    },
+    {
+      "ticker": "EOG",
+      "score": 53.88,
+      "entry": 149.0,
+      "stop": 137.8736,
+      "target": 176.816,
+      "risk_pct": 7.47,
+      "atr": 7.4176,
+      "category_scores": {
+        "trend": 1.0,
+        "momentum": 0.667,
+        "strength": 0.5,
+        "volatility": 0.0,
+        "fibonacci": 0.0,
+        "volume": 0.5
+      }
+    },
+    {
+      "ticker": "CTRA",
+      "score": 53.55,
+      "entry": 36.18,
+      "stop": 33.1204,
+      "target": 43.829,
+      "risk_pct": 8.46,
+      "atr": 2.0398,
+      "category_scores": {
+        "trend": 0.991,
+        "momentum": 0.659,
+        "strength": 0.5,
+        "volatility": 0.0,
+        "fibonacci": 0.0,
+        "volume": 0.5
+      }
+    },
+    {
+      "ticker": "ETR",
+      "score": 53.51,
+      "entry": 111.13,
+      "stop": 103.908,
+      "target": 129.185,
+      "risk_pct": 6.5,
+      "atr": 4.8147,
+      "category_scores": {
+        "trend": 0.658,
+        "momentum": 0.56,
+        "strength": 0.5,
+        "volatility": 0.0,
+        "fibonacci": 0.0,
+        "volume": 1.0
+      }
+    }
+  ]
+}

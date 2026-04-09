@@ -1,0 +1,14 @@
+{
+  "as_of": "2025-08-01",
+  "risk_level": "MEDIUM",
+  "max_picks": 3,
+  "reasoning": "VIX peaked Aug 1. Weak August jobs report: only 22K jobs vs 75K expected. Tariff implementation details causing concern. Volatility elevated but fourth consecutive monthly decline would follow. Moderate caution warranted.",
+  "source": "web_search",
+  "signals": {
+    "tariff": 6,
+    "recession": 5,
+    "volatility": 5,
+    "fed": 3,
+    "geopolitical": 2
+  }
+}

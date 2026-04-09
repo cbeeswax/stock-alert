@@ -1,0 +1,14 @@
+{
+  "as_of": "2025-10-10",
+  "risk_level": "MEDIUM",
+  "max_picks": 3,
+  "reasoning": "Shutdown now 10+ days. Second Fed rate cut (0.25%) supporting markets. Mega-cap tech earnings driving gains. October on track for +2.3-3.1%. Shutdown uncertainty persists but market resilient.",
+  "source": "web_search",
+  "signals": {
+    "tariff": 1,
+    "recession": 3,
+    "volatility": 3,
+    "fed": 4,
+    "geopolitical": 1
+  }
+}

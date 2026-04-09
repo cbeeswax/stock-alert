@@ -1,0 +1,14 @@
+{
+  "as_of": "2025-02-07",
+  "risk_level": "HIGH",
+  "max_picks": 2,
+  "reasoning": "Canada/Mexico tariffs paused 30 days (Feb 4) but China tariffs (10%) remain. Tit-for-tat retaliation threats ongoing. S&P choppy and declining, NASDAQ leading losses. 30-day clock creates a known future shock. Elevated uncertainty.",
+  "source": "web_search",
+  "signals": {
+    "tariff": 12,
+    "recession": 4,
+    "volatility": 5,
+    "fed": 2,
+    "geopolitical": 3
+  }
+}

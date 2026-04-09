@@ -1,0 +1,14 @@
+{
+  "as_of": "2025-08-29",
+  "risk_level": "LOW",
+  "max_picks": 5,
+  "reasoning": "Labor Day week. August ended strong (+2%, new ATH). Fed rate cut September FOMC all but certain. VIX low and declining. No acute macro risks. Holiday-shortened week. Full sizing appropriate.",
+  "source": "web_search",
+  "signals": {
+    "tariff": 2,
+    "recession": 1,
+    "volatility": 1,
+    "fed": 1,
+    "geopolitical": 1
+  }
+}

@@ -1,0 +1,226 @@
+{
+  "week_start": "2026-03-03",
+  "week_end": "2026-03-07",
+  "outcomes": [
+    {
+      "ticker": "AES",
+      "score": 71.95,
+      "entry": 14.19,
+      "stop": 12.7227,
+      "target": 17.8582,
+      "risk_pct": 10.34,
+      "atr": 0.9782,
+      "category_scores": {
+        "trend": 0.875,
+        "momentum": 0.862,
+        "strength": 0.5,
+        "volatility": 1.0,
+        "fibonacci": 0.0,
+        "volume": 1.0
+      },
+      "exit_price": 14.15,
+      "exit_reason": "LOSS",
+      "pnl_pct": -0.28,
+      "hit_target": false,
+      "hit_stop": false
+    },
+    {
+      "ticker": "DE",
+      "score": 68.81,
+      "entry": 618.1919,
+      "stop": 565.7413,
+      "target": 749.3185,
+      "risk_pct": 8.48,
+      "atr": 34.9671,
+      "category_scores": {
+        "trend": 1.0,
+        "momentum": 0.988,
+        "strength": 0.5,
+        "volatility": 0.0,
+        "fibonacci": 0.0,
+        "volume": 1.0
+      },
+      "exit_price": 588.0501,
+      "exit_reason": "LOSS",
+      "pnl_pct": -4.88,
+      "hit_target": false,
+      "hit_stop": false
+    },
+    {
+      "ticker": "APA",
+      "score": 68.75,
+      "entry": 32.1,
+      "stop": 28.7297,
+      "target": 40.5257,
+      "risk_pct": 10.5,
+      "atr": 2.2469,
+      "category_scores": {
+        "trend": 0.796,
+        "momentum": 0.799,
+        "strength": 0.5,
+        "volatility": 1.0,
+        "fibonacci": 0.0,
+        "volume": 1.0
+      },
+      "exit_price": 32.68,
+      "exit_reason": "WIN",
+      "pnl_pct": 1.81,
+      "hit_target": false,
+      "hit_stop": false
+    },
+    {
+      "ticker": "EQIX",
+      "score": 68.02,
+      "entry": 942.26,
+      "stop": 871.9856,
+      "target": 1117.946,
+      "risk_pct": 7.46,
+      "atr": 46.8496,
+      "category_scores": {
+        "trend": 1.0,
+        "momentum": 0.949,
+        "strength": 0.5,
+        "volatility": 0.0,
+        "fibonacci": 0.0,
+        "volume": 1.0
+      },
+      "exit_price": 937.2,
+      "exit_reason": "LOSS",
+      "pnl_pct": -0.54,
+      "hit_target": false,
+      "hit_stop": false
+    },
+    {
+      "ticker": "ENPH",
+      "score": 65.48,
+      "entry": 42.93,
+      "stop": 33.8874,
+      "target": 65.5365,
+      "risk_pct": 21.06,
+      "atr": 6.0284,
+      "category_scores": {
+        "trend": 0.75,
+        "momentum": 0.905,
+        "strength": 0.5,
+        "volatility": 0.0,
+        "fibonacci": 1.0,
+        "volume": 0.5
+      },
+      "exit_price": 40.23,
+      "exit_reason": "LOSS",
+      "pnl_pct": -6.29,
+      "hit_target": false,
+      "hit_stop": false
+    },
+    {
+      "ticker": "GLW",
+      "score": 62.33,
+      "entry": 151.75,
+      "stop": 137.4517,
+      "target": 187.4958,
+      "risk_pct": 9.42,
+      "atr": 9.5322,
+      "category_scores": {
+        "trend": 1.0,
+        "momentum": 0.667,
+        "strength": 0.5,
+        "volatility": 0.0,
+        "fibonacci": 0.0,
+        "volume": 1.0
+      },
+      "exit_price": 137.4517,
+      "exit_reason": "STOPPED",
+      "pnl_pct": -9.42,
+      "hit_target": false,
+      "hit_stop": true
+    },
+    {
+      "ticker": "CSCO",
+      "score": 61.25,
+      "entry": 77.9576,
+      "stop": 71.9978,
+      "target": 92.857,
+      "risk_pct": 7.64,
+      "atr": 3.9732,
+      "category_scores": {
+        "trend": 0.644,
+        "momentum": 0.39,
+        "strength": 0.5,
+        "volatility": 1.0,
+        "fibonacci": 1.0,
+        "volume": 0.5
+      },
+      "exit_price": 78.2162,
+      "exit_reason": "WIN",
+      "pnl_pct": 0.33,
+      "hit_target": false,
+      "hit_stop": false
+    },
+    {
+      "ticker": "AKAM",
+      "score": 60.98,
+      "entry": 95.61,
+      "stop": 83.8432,
+      "target": 125.027,
+      "risk_pct": 12.31,
+      "atr": 7.8445,
+      "category_scores": {
+        "trend": 0.668,
+        "momentum": 0.454,
+        "strength": 0.5,
+        "volatility": 0.0,
+        "fibonacci": 1.0,
+        "volume": 1.0
+      },
+      "exit_price": 99.89,
+      "exit_reason": "WIN",
+      "pnl_pct": 4.48,
+      "hit_target": false,
+      "hit_stop": false
+    },
+    {
+      "ticker": "ADI",
+      "score": 60.46,
+      "entry": 339.15,
+      "stop": 313.2407,
+      "target": 403.9232,
+      "risk_pct": 7.64,
+      "atr": 17.2728,
+      "category_scores": {
+        "trend": 1.0,
+        "momentum": 0.574,
+        "strength": 0.5,
+        "volatility": 0.0,
+        "fibonacci": 0.0,
+        "volume": 1.0
+      },
+      "exit_price": 315.81,
+      "exit_reason": "LOSS",
+      "pnl_pct": -6.88,
+      "hit_target": false,
+      "hit_stop": false
+    },
+    {
+      "ticker": "BK",
+      "score": 59.31,
+      "entry": 117.0,
+      "stop": 108.7361,
+      "target": 137.6598,
+      "risk_pct": 7.06,
+      "atr": 5.5092,
+      "category_scores": {
+        "trend": 0.561,
+        "momentum": 0.396,
+        "strength": 0.5,
+        "volatility": 1.0,
+        "fibonacci": 1.0,
+        "volume": 0.5
+      },
+      "exit_price": 115.23,
+      "exit_reason": "LOSS",
+      "pnl_pct": -1.51,
+      "hit_target": false,
+      "hit_stop": false
+    }
+  ]
+}

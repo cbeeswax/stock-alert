@@ -1,0 +1,37 @@
+{
+  "as_of_date": "2026-02-14",
+  "level": "HIGH",
+  "reasoning": "Elevated macro risk: tariff escalation (10 signals). Reduce exposure significantly.",
+  "sectors_at_risk": [
+    "XLK",
+    "XLY",
+    "XLRE",
+    "XLC"
+  ],
+  "safe_sectors": [
+    "XLU",
+    "XLP",
+    "XLV",
+    "XLB"
+  ],
+  "top_headlines": [
+    "Uber Stock Drops 6.4% This Week After Earnings Miss and Robotaxi Expansion",
+    "January CPI Inflation: Yet Another Stock Market Positive",
+    "Goldilocks Data To Be Challenged Next Week: The Preview For GDP And PCE Inflation Reports",
+    "CPI Marches Toward 2% But Non-Tariff Hurdles Remain",
+    "Whale's Insight: High Leverage Meets Tight Liquidity",
+    "Markets Weekly Outlook: Supreme Court Tariff Decision And Key Tests Ahead",
+    "Inflation Is Cooling: Jan 2026 Increase Below Seasonal Norms",
+    "Reuters Reported U.S. Military Preparing For Weeks-Long Operations Against Iran If President Donald Trump Orders Attack"
+  ],
+  "signal_counts": {
+    "TARIFF": 10,
+    "FED": 32,
+    "GEOPOLITICAL": 16,
+    "OIL_SHOCK": 1,
+    "RECESSION": 1,
+    "CREDIT_STRESS": 1,
+    "MARKET_CRASH": 2,
+    "EARNINGS": 2
+  }
+}

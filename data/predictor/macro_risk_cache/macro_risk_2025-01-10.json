@@ -1,0 +1,14 @@
+{
+  "as_of": "2025-01-10",
+  "risk_level": "MEDIUM",
+  "max_picks": 3,
+  "reasoning": "Pre-inauguration jitters: investors cautious about incoming Trump trade and fiscal policy, modest equity declines. Elevated policy uncertainty ahead of Jan 20 transition but no acute shock.",
+  "source": "web_search",
+  "signals": {
+    "tariff": 4,
+    "recession": 2,
+    "volatility": 3,
+    "fed": 2,
+    "geopolitical": 1
+  }
+}

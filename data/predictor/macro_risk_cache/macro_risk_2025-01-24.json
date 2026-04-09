@@ -1,0 +1,14 @@
+{
+  "as_of": "2025-01-24",
+  "risk_level": "HIGH",
+  "max_picks": 2,
+  "reasoning": "DeepSeek R1 AI shock in full swing: NVIDIA fell ~17% Monday Jan 27, record $589B market cap loss, Nasdaq -3%. Trump inauguration tariff uncertainty also present. A rational trader would severely limit exposure heading into the next week.",
+  "source": "web_search",
+  "signals": {
+    "tariff": 5,
+    "recession": 2,
+    "volatility": 7,
+    "fed": 1,
+    "geopolitical": 2
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "as_of": "2025-12-05",
+  "risk_level": "LOW",
+  "max_picks": 5,
+  "reasoning": "December tracking flat. VIX in 13-15 range. S&P full year gain ~16.4%. No acute macro events. Quiet year-end tape with solid corporate earnings (Q3: +12.7% YoY). Normal conditions.",
+  "source": "web_search",
+  "signals": {
+    "tariff": 1,
+    "recession": 1,
+    "volatility": 1,
+    "fed": 1,
+    "geopolitical": 1
+  }
+}

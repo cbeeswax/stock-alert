@@ -1,0 +1,14 @@
+{
+  "as_of": "2025-08-08",
+  "risk_level": "LOW",
+  "max_picks": 5,
+  "reasoning": "August volatility receding from Aug 1 peak. Fed signaling strong rate cut readiness at Jackson Hole. S&P recovering toward ATH. VIX declining. Markets broadly positive -- 10 of 11 sectors up for August.",
+  "source": "web_search",
+  "signals": {
+    "tariff": 3,
+    "recession": 2,
+    "volatility": 2,
+    "fed": 2,
+    "geopolitical": 1
+  }
+}

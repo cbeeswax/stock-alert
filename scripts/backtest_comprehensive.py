@@ -5,11 +5,12 @@ Full multi-layer stock scorer using ALL technical indicators.
 Thinks like a senior analyst, not just a momentum chaser.
 
 SCORING LAYERS:
-  A. Stock Health      (0-25 pts)  — uptrend structure, RS, trend strength
+  0. Context Filter    — Stage classification, weekly trend, REJECT Stage3/4/FAILED
+  A. Stock Health      (0-25 pts)  — uptrend structure, RS, trend strength, sector leadership
   B. Pullback Quality  (0-30 pts)  — is this a BUY POINT, not a chase?
   C. Signal Strength   (0-25 pts)  — candle pattern + momentum turning
-  D. Volume Story      (0-20 pts)  — institutional footprint
-  Bonus:              (0-20 pts)  — squeeze, consolidation, stochastic, etc.
+  D. Volume Story      (0-20 pts)  — institutional pattern (ACCUMULATING/MARKUP/DISTRIBUTING)
+  Bonus:              (0-25 pts)  — weekly context, RS line new high, squeeze, etc.
 
 Minimum score to qualify: 48/100
 
@@ -25,13 +26,29 @@ import pandas as pd
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from src.analysis.predictor.data_loader import load_daily, DATA_DIR
-from src.analysis.predictor.daily_indicators import compute_daily_indicators, get_snapshot
+from src.analysis.predictor.daily_indicators import (
+    compute_daily_indicators, compute_weekly_indicators,
+    compute_sector_rs, get_snapshot, get_weekly_snapshot
+)
+from src.analysis.predictor.stage_classifier import classify_stage, classify_institutional
 
 WEEKS = [
+    # January 2026
     {"week_label": "Jan 5",  "as_of": "2026-01-02", "entry_date": "2026-01-05", "exit_date": "2026-01-09"},
     {"week_label": "Jan 12", "as_of": "2026-01-09", "entry_date": "2026-01-12", "exit_date": "2026-01-16"},
     {"week_label": "Jan 19", "as_of": "2026-01-16", "entry_date": "2026-01-20", "exit_date": "2026-01-24"},
     {"week_label": "Jan 26", "as_of": "2026-01-23", "entry_date": "2026-01-26", "exit_date": "2026-01-30"},
+    # February 2026
+    {"week_label": "Feb 2",  "as_of": "2026-01-30", "entry_date": "2026-02-02", "exit_date": "2026-02-06"},
+    {"week_label": "Feb 9",  "as_of": "2026-02-06", "entry_date": "2026-02-09", "exit_date": "2026-02-13"},
+    {"week_label": "Feb 17", "as_of": "2026-02-13", "entry_date": "2026-02-17", "exit_date": "2026-02-20"},  # Presidents Day Feb 16
+    {"week_label": "Feb 23", "as_of": "2026-02-20", "entry_date": "2026-02-23", "exit_date": "2026-02-27"},
+    # March 2026
+    {"week_label": "Mar 2",  "as_of": "2026-02-27", "entry_date": "2026-03-02", "exit_date": "2026-03-06"},
+    {"week_label": "Mar 9",  "as_of": "2026-03-06", "entry_date": "2026-03-09", "exit_date": "2026-03-13"},
+    {"week_label": "Mar 16", "as_of": "2026-03-13", "entry_date": "2026-03-16", "exit_date": "2026-03-20"},
+    {"week_label": "Mar 23", "as_of": "2026-03-20", "entry_date": "2026-03-23", "exit_date": "2026-03-27"},
+    {"week_label": "Mar 30", "as_of": "2026-03-27", "entry_date": "2026-03-30", "exit_date": "2026-04-03"},
 ]
 TOP_N        = 5
 QUALIFY_SCORE = 48
@@ -146,14 +163,152 @@ def _pullback_days(df_ind: pd.DataFrame, n=12) -> int:
     return count
 
 
+def _detect_support(df_ind: pd.DataFrame, wsnap: pd.Series = None) -> dict:
+    """
+    Collect ALL meaningful support levels below the current price,
+    then select the CLOSEST one as the stop anchor.
+
+    Support levels checked (in descending priority of reliability):
+      - EMA9, EMA21, EMA50, EMA200         (dynamic trend support)
+      - Swing low 5d, 10d, 15d, 20d        (recent structural lows)
+      - Bollinger lower band (20-day)       (mean-reversion floor)
+      - Keltner lower band (20-day)         (volatility-adjusted floor)
+      - Prior week's candle low             (weekly structure support)
+      - Volume shelf / POC (60-day)         (institutional accumulation zone)
+      - Nearest round numbers               ($5/$10/$25/$50 levels)
+
+    Stop = closest support level below price - ATR-proportional buffer.
+
+    Rationale: if the nearest support breaks, price falls to the next level.
+    We exit before that cascade begins — thesis is invalidated at first break.
+    """
+    if len(df_ind) < 20:
+        close = float(df_ind["close"].iloc[-1]) if len(df_ind) > 0 else 0
+        return {"structural_stop": close * 0.95, "note": "insufficient data",
+                "ema_confluence": False, "structural_target": close * 1.10,
+                "all_levels": []}
+
+    close = float(df_ind["close"].iloc[-1])
+    atr   = float(df_ind["atr14"].iloc[-1]) if "atr14" in df_ind.columns else close * 0.02
+
+    def _get(col):
+        if col in df_ind.columns:
+            v = df_ind[col].iloc[-1]
+            if pd.notna(v):
+                return float(v)
+        return None
+
+    # ── Collect every support level below close ───────────────────────────────
+    candidates: list[tuple[str, float]] = []
+
+    def _add(label, value):
+        if value is not None and value > 0 and value < close:
+            candidates.append((label, round(value, 2)))
+
+    # EMAs — dynamic trend support (most reliable for swing trades)
+    _add("EMA9",   _get("ema9"))
+    _add("EMA21",  _get("ema21"))
+    _add("EMA50",  _get("ema50"))
+    _add("EMA200", _get("ema200"))
+
+    # Swing lows — recent structural lows
+    _add("swing_5d",  _get("swing_low_5d"))
+    _add("swing_10d", _get("swing_low_10d"))
+    _add("swing_15d", _get("swing_low_15d"))
+    _add("swing_20d", _get("swing_low_20d"))
+
+    # Bollinger lower — mean-reversion floor
+    _add("BB_lower", _get("bb_lower"))
+
+    # Keltner lower — volatility-adjusted floor
+    _add("KC_lower", _get("kc_lower"))
+
+    # Volume shelf / POC — institutional accumulation zone
+    _add("vol_shelf", _get("vol_shelf"))
+
+    # Prior week low from weekly snapshot
+    if wsnap is not None and not wsnap.empty:
+        pw_low = wsnap.get("prior_week_low")
+        if pw_low and pd.notna(pw_low):
+            _add("prior_week_low", float(pw_low))
+
+    # Round number levels — psychological support ($5/$10/$25/$50)
+    for step in [50, 25, 10, 5]:
+        rnd = (close // step) * step
+        if 0 < rnd < close:
+            _add(f"round_{step}", rnd)
+            break  # only add the nearest round number per tier
+
+    # ── Select best support: closest that is still ≥1.0×ATR away ────────────
+    # Stops inside 1×ATR are pure noise — they get hit by normal daily volatility.
+    # We want structure-based stops that are meaningful, not just the nearest EMA.
+    min_dist = 1.0 * atr  # minimum distance from price to be outside noise zone
+
+    if not candidates:
+        structural_stop = round(close - 2.0 * atr, 2)
+        note = "2×ATR fallback (no support levels found)"
+        best_level = structural_stop
+    else:
+        candidates.sort(key=lambda x: x[1], reverse=True)  # closest first
+
+        # Find the closest support that is ≥ min_dist below close
+        best_label, best_level = None, None
+        for lbl, lvl in candidates:
+            if (close - lvl) >= min_dist:
+                best_label, best_level = lbl, lvl
+                break
+
+        if best_level is None:
+            # All supports are inside noise zone — use 2×ATR
+            best_label = "2×ATR_fallback"
+            best_level = close - 2.0 * atr
+
+        # Buffer below support: 0.2×ATR clears the support level cleanly
+        buffer = min(max(atr * 0.20, best_level * 0.003), best_level * 0.01)
+        structural_stop = round(best_level - buffer, 2)
+        note = f"stop below {best_label} @ {best_level:.2f} (buf={buffer:.2f}, dist={close-best_level:.2f}={((close-best_level)/atr):.1f}×ATR)"
+
+    # Hard floor: never closer than 1.5×ATR (stops inside this range get hit by noise)
+    noise_floor = round(close - 1.5 * atr, 2)
+    if structural_stop > noise_floor:
+        structural_stop = noise_floor
+        note += " [clamped to 1.5×ATR noise floor]"
+
+    # ── R/R target at 2.5:1 ──────────────────────────────────────────────────
+    risk = max(close - structural_stop, atr * 0.5)
+    structural_target = round(close + 2.5 * risk, 2)
+
+    # EMA confluence: EMA21 and EMA50 within 2% = double support
+    ema21 = _get("ema21") or 0
+    ema50 = _get("ema50") or 0
+    ema_confluence = (ema21 > 0 and ema50 > 0
+                      and abs(ema21 - ema50) / ema50 < 0.02)
+
+    return {
+        "structural_stop":   structural_stop,
+        "structural_target": structural_target,
+        "structural_rr":     round((structural_target - close) / max(risk, 0.01), 1),
+        "ema_confluence":    ema_confluence,
+        "note":              note,
+        "all_levels":        candidates,   # full stack for debugging
+    }
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # THE COMPREHENSIVE SCORER
 # ─────────────────────────────────────────────────────────────────────────────
 
-def score_ticker_comprehensive(snap, df_ind, spy_above_ema50) -> dict | None:
+def score_ticker_comprehensive(snap, df_ind, spy_above_ema50, wsnap=None) -> dict | None:
     """
     4-layer scoring using ALL technical indicators.
     Returns None if stock fails hard filters or scores < QUALIFY_SCORE.
+
+    Parameters
+    ----------
+    snap            : daily indicator snapshot (pd.Series from get_snapshot)
+    df_ind          : full daily indicator DataFrame (needed for candle patterns, support)
+    spy_above_ema50 : bool — broad market regime
+    wsnap           : weekly indicator snapshot (pd.Series from get_weekly_snapshot) — optional
     """
     # ─── Extract all indicators ───
     close       = _f(snap, "close", 0)
@@ -194,6 +349,12 @@ def score_ticker_comprehensive(snap, df_ind, spy_above_ema50) -> dict | None:
     consol      = _f(snap, "consolidation_score", 0.5)
     roc5        = _f(snap, "roc5", 0)
     roc21       = _f(snap, "roc21", 0)
+    # Stage 1 additions: RS line trend + sector RS
+    rs_line_new_high    = int(_f(snap, "rs_line_new_high", 0))
+    rs_line_63d_high    = int(_f(snap, "rs_line_63d_high", 0))
+    rs_line_above_ema21 = int(_f(snap, "rs_line_above_ema21", 0))
+    rs_vs_sector_63d    = _f(snap, "rs_vs_sector_63d", 0)
+    sector_leader       = int(_f(snap, "sector_leader", 0))
 
     # ── HARD FILTERS — automatic disqualification ──────────────────────────
     if close < 15:             return None   # micro-caps: too risky
@@ -214,6 +375,53 @@ def score_ticker_comprehensive(snap, df_ind, spy_above_ema50) -> dict | None:
 
     score     = 0.0
     breakdown = {}
+    qualify_threshold = QUALIFY_SCORE  # local copy — never mutate global
+
+    # ═══════════════════════════════════════════════════════════════════════
+    # LAYER 0: WEEKLY CONTEXT + STAGE CONTEXT (additive only — no hard rejects)
+    # Stage/institutional info adds BONUS points or DEDUCTIONS.
+    # The original A/B/C/D scoring (which gave 75% WR) is the primary signal.
+    # These are senior analyst context signals layered ON TOP.
+    # ═══════════════════════════════════════════════════════════════════════
+    stage_result = None
+    inst_result  = None
+    weekly_context_bonus = 0.0
+    weekly_above_ema40 = False
+    weekly_ema10_slope = 0.0
+    weekly_macd_bull   = False
+    weekly_rsi14       = 50.0
+    weekly_rs_rising   = False
+
+    if wsnap is not None and not (isinstance(wsnap, pd.Series) and wsnap.empty):
+        stage_result = classify_stage(snap, wsnap)
+        breakdown["stage"] = stage_result.stage
+
+        weekly_above_ema40 = bool(wsnap.get("weekly_above_ema40", False))
+        weekly_ema10_slope = float(wsnap.get("weekly_ema10_slope", 0) or 0)
+        weekly_macd_bull   = bool(wsnap.get("weekly_macd_bullish", False))
+        weekly_rsi14       = float(wsnap.get("weekly_rsi14", 50) or 50)
+        weekly_rs_rising   = bool(wsnap.get("weekly_rs_line_rising", False))
+
+        # Weekly context bonus (positive signals)
+        if weekly_above_ema40 and weekly_ema10_slope > 0:
+            weekly_context_bonus += 5
+        elif weekly_above_ema40:
+            weekly_context_bonus += 2
+        if weekly_macd_bull:
+            weekly_context_bonus += 3
+        if 35 < weekly_rsi14 < 65:
+            weekly_context_bonus += 2   # room to run on weekly timeframe
+        if weekly_rs_rising:
+            weekly_context_bonus += 3
+
+        # Counter-trend: raise qualify bar (don't hard reject)
+        if not weekly_above_ema40 and spy_above_ema50:
+            qualify_threshold = 58
+            breakdown["counter_trend"] = True
+
+    if len(df_ind) >= 20:
+        inst_result = classify_institutional(df_ind, lookback=20)
+        breakdown["institutional"] = inst_result.pattern
 
     # ═══════════════════════════════════════════════════════════════════════
     # LAYER A: STOCK HEALTH (0-25 pts)
@@ -384,38 +592,98 @@ def score_ticker_comprehensive(snap, df_ind, spy_above_ema50) -> dict | None:
 
     # ═══════════════════════════════════════════════════════════════════════
     # LAYER D: VOLUME STORY (0-20 pts)
-    # Are institutions accumulating? Is smart money flowing in?
+    # Primary: raw CMF/OBV (same as original 75% WR system)
+    # Secondary: institutional pattern from classifier adds context
     # ═══════════════════════════════════════════════════════════════════════
     pts_d = 0.0
 
-    # OBV: overall volume trend (5 pts)
-    if obv_ema and obv_s > 0.05:  pts_d += 5   # OBV above EMA AND rising slope
-    elif obv_ema:                  pts_d += 3   # OBV above EMA
-    elif obv_s > 0:                pts_d += 1   # slope positive but below EMA
+    # OBV: overall volume trend (5 pts) — original scoring
+    if obv_ema and obv_s > 0.05:  pts_d += 5
+    elif obv_ema:                  pts_d += 3
+    elif obv_s > 0:                pts_d += 1
 
-    # CMF: Chaikin Money Flow (6 pts)
-    if cmf > 0.15:   pts_d += 6   # strong institutional inflow
-    elif cmf > 0.08: pts_d += 5
-    elif cmf > 0.0:  pts_d += 3
-    elif cmf > -0.08: pts_d += 1  # slight outflow — neutral
+    # CMF: Chaikin Money Flow (6 pts) — original scoring
+    if cmf > 0.15:    pts_d += 6
+    elif cmf > 0.08:  pts_d += 5
+    elif cmf > 0.0:   pts_d += 3
+    elif cmf > -0.08: pts_d += 1
 
-    # MFI: Money Flow Index (4 pts)
-    if mfi > 55:     pts_d += 2
-    if mfi < 40:     pts_d += 2   # oversold in MFI = good entry for bull
+    # MFI: Money Flow Index (4 pts) — original scoring
+    if mfi > 55:  pts_d += 2
+    if mfi < 40:  pts_d += 2
 
-    # Volume on signal candle (5 pts)
-    if vol_r > 1.8:  pts_d += 5   # strong surge = buyers stepping in
+    # Volume on signal candle (5 pts) — original scoring
+    if vol_r > 1.8:   pts_d += 5
     elif vol_r > 1.3: pts_d += 3
     elif vol_r > 0.9: pts_d += 1
 
+    # Institutional pattern: small adjustment on top of above (not replacing it)
+    if inst_result is not None:
+        if inst_result.pattern == "ACCUMULATING":  pts_d += 3   # strong confirmation
+        elif inst_result.pattern == "DISTRIBUTING": pts_d -= 8  # deduction, not hard reject
+
+    pts_d = max(pts_d, 0)
     breakdown["D_volume"] = round(pts_d, 1)
     score += pts_d
 
     # ═══════════════════════════════════════════════════════════════════════
-    # BONUS POINTS (up to +20)
-    # Extra conviction from squeeze, consolidation, sector, stochastic
+    # BONUS POINTS (up to +25)
+    # Weekly context, RS line leadership, squeeze, consolidation, sector
     # ═══════════════════════════════════════════════════════════════════════
     bonus = 0.0
+
+    # Weekly structural context (pre-computed above)
+    bonus += weekly_context_bonus
+
+    # RS line leadership (earliest institutional signal)
+    if rs_line_new_high:           bonus += 8   # RS at 52-week high = institutions accumulating BEFORE price
+    elif rs_line_63d_high:         bonus += 5   # RS line at 63-day high = recent momentum
+    if rs_line_above_ema21:        bonus += 3   # RS line in uptrend
+
+    # Sector leadership: stock beats sector, sector beats SPY
+    if sector_leader:              bonus += 5   # true leader: beats sector + SPY
+    elif rs_vs_sector_63d > 0.05: bonus += 3   # beats sector moderately
+    elif rs_vs_sector_63d > 0.0:  bonus += 1
+
+    # ── Stage bonus: senior analyst logic ──────────────────────────────────
+    # Stage 2 Early is the BEST setup ONLY when ALL three are true:
+    #   1. RS line is at new high (institutions accumulating BEFORE price breakout)
+    #   2. Weekly volume expanded on the breakout week (real buying, not drift)
+    #   3. Stock formed a proper base first (≥6 weeks of tight consolidation)
+    # Without all three, an early breakout is a FALSE BREAKOUT RISK and is
+    # actually WORSE than a confirmed mature trend.
+    #
+    # Stage 2 Mature: confirmed trend — institutions have established positions.
+    # It has lower upside ceiling but much higher reliability. Reward the RS quality.
+    # ───────────────────────────────────────────────────────────────────────────
+    weekly_vol_expansion = bool(wsnap.get("weekly_vol_expansion", False)) if wsnap is not None and not (isinstance(wsnap, pd.Series) and wsnap.empty) else False
+    weeks_in_base = int(wsnap.get("weeks_in_base", 0) or 0) if wsnap is not None and not (isinstance(wsnap, pd.Series) and wsnap.empty) else 0
+
+    if stage_result is not None:
+        if stage_result.stage == "STAGE2_EARLY":
+            # Count confirmation signals — need all three for full bonus
+            early_confirms = sum([
+                bool(rs_line_new_high),       # RS line leading price = institutional pre-accumulation
+                bool(weekly_vol_expansion),   # volume surge on breakout week = real institutional buying
+                weeks_in_base >= 6,           # proper base = coiled energy, not random drift up
+            ])
+            if early_confirms == 3:
+                bonus += 12   # textbook VCP breakout — highest conviction setup
+            elif early_confirms == 2:
+                bonus += 5    # good but one signal missing — still actionable
+            elif early_confirms == 1:
+                bonus += 0    # weak confirmation — don't reward; treat same as mature
+            else:
+                bonus -= 6    # unconfirmed breakout = false start risk, penalise
+
+        elif stage_result.stage == "STAGE2_MATURE":
+            # Mature trend reward: the RS line quality determines how much runway remains
+            if rs_line_new_high:
+                bonus += 8    # mature trend but RS still making new highs = still leading, buy the dip
+            elif rs_line_above_ema21:
+                bonus += 5    # RS line healthy in mature trend — reliable
+            else:
+                bonus += 2    # RS fading in mature trend = later stage, less upside, still ok
 
     # Bollinger squeeze releasing = coiled energy
     if in_sq:                       bonus += 5   # squeeze still on = energy building
@@ -444,7 +712,7 @@ def score_ticker_comprehensive(snap, df_ind, spy_above_ema50) -> dict | None:
     # Multiple candle patterns firing = higher conviction
     if len(candle_patterns) >= 2:  bonus += 4
 
-    bonus = min(bonus, 20)
+    bonus = min(bonus, 25)
     breakdown["bonus"] = round(bonus, 1)
     score += bonus
 
@@ -477,18 +745,19 @@ def score_ticker_comprehensive(snap, df_ind, spy_above_ema50) -> dict | None:
 
     final_score = round(min(max(score, 0), 100), 1)
 
-    if final_score < QUALIFY_SCORE:
+    if final_score < qualify_threshold:
         return None
 
-    # Calculate risk/reward for display
-    atr_dollar = atr_pct * close
-    stop_dist  = max(2.0 * atr_dollar, abs(pct21) * close * 0.5)  # 2×ATR or half the pullback depth
-    stop_price = round(close - stop_dist, 2)
-    target     = round(close + 2.5 * stop_dist, 2)   # 2.5:1 reward/risk
+    # Full support-stack stop — pass weekly snapshot so weekly low is included
+    support    = _detect_support(df_ind, wsnap=wsnap)
+    stop_price = support["structural_stop"]
+    target     = support["structural_target"]
 
     return {
         "score":         final_score,
         "setup":         setup_type,
+        "stage":         stage_result.stage if stage_result else "UNKNOWN",
+        "institutional": inst_result.pattern if inst_result else "UNKNOWN",
         "layer_A":       breakdown["A_health"],
         "layer_B":       breakdown["B_pullback"],
         "layer_C":       breakdown["C_signal"],
@@ -501,6 +770,9 @@ def score_ticker_comprehensive(snap, df_ind, spy_above_ema50) -> dict | None:
         "rsi7_drop":     round(rsi7_drop, 1),
         "rs63_pct":      round(rs63 * 100, 1),
         "rs21_pct":      round(rs21 * 100, 1),
+        "rs_vs_sector":  round(rs_vs_sector_63d * 100, 1),
+        "rs_line_new_high": bool(rs_line_new_high),
+        "sector_leader": bool(sector_leader),
         "pct21":         round(pct21 * 100, 1),
         "pct50":         round(pct50 * 100, 1),
         "atr_pct":       round(atr_pct * 100, 2),
@@ -511,7 +783,10 @@ def score_ticker_comprehensive(snap, df_ind, spy_above_ema50) -> dict | None:
         "vol_dry":       vol_dryup,
         "stop":          stop_price,
         "target":        target,
-        "rr":            2.5,
+        "rr":            round((target - close) / max(close - stop_price, 0.01), 1),
+        "support_note":  support["note"],
+        "support_levels": support.get("all_levels", []),
+        "ema_confluence": support["ema_confluence"],
         "pct52h":        round(pct52h * 100, 1),
         "in_squeeze":    bool(in_sq),
     }
@@ -549,10 +824,21 @@ def get_weekly_return(ticker, entry_date, exit_date):
 # ─────────────────────────────────────────────────────────────────────────────
 
 def run_backtest():
+    import json
     tickers = sorted(
         f.replace(".csv","") for f in os.listdir(DATA_DIR)
         if f.endswith(".csv") and not f.startswith("_")
     )
+    # Exclude sector ETFs from stock universe
+    sector_etfs = {"XLK","XLF","XLV","XLE","XLI","XLU","XLP","XLY","XLB","XLRE","XLC"}
+    tickers = [t for t in tickers if t not in sector_etfs]
+
+    # Load sector map once
+    sector_map_path = os.path.join(os.path.dirname(__file__), "..", "data", "predictor", "sector_map.json")
+    sector_map = {}
+    if os.path.exists(sector_map_path):
+        with open(sector_map_path) as f:
+            sector_map = json.load(f)
 
     all_trades  = []
     grand_pnl   = 0.0
@@ -572,6 +858,13 @@ def run_backtest():
         spy_df = load_daily("SPY", end=as_of)
         spy_above_ema50 = True
         regime_label = "BULL"
+
+        # Pre-load sector ETF data for this week
+        sector_dfs = {}
+        for etf in sector_etfs:
+            sdf = load_daily(etf, end=as_of)
+            if not sdf.empty:
+                sector_dfs[etf] = sdf
 
         if spy_df is not None and len(spy_df) >= 50:
             spy_ind  = compute_daily_indicators(spy_df)
@@ -594,10 +887,22 @@ def run_backtest():
             try:
                 df  = load_daily(ticker, end=as_of)
                 if df is None or len(df) < 200: continue
+
                 ind  = compute_daily_indicators(df, spy=spy_df)
+
+                # Add sector RS if available
+                sector_etf = sector_map.get(ticker)
+                if sector_etf and sector_etf in sector_dfs:
+                    ind = compute_sector_rs(ind, sector_dfs[sector_etf])
+
+                # Compute weekly indicators
+                weekly_df = compute_weekly_indicators(df, spy=spy_df)
+                wsnap = get_weekly_snapshot(weekly_df, as_of) if not weekly_df.empty else pd.Series(dtype=float)
+
                 snap = get_snapshot(ind, pd.Timestamp(as_of))
                 if snap is None or snap.empty: continue
-                result = score_ticker_comprehensive(snap, ind, spy_above_ema50)
+
+                result = score_ticker_comprehensive(snap, ind, spy_above_ema50, wsnap=wsnap)
                 if result is None: continue
                 result["ticker"] = ticker
                 candidates.append(result)
@@ -610,9 +915,9 @@ def run_backtest():
 
         print(f"\n{len(candidates)} qualified (out of {len(tickers)-1} tickers, {errors} errors) | Top {TOP_N}:\n")
 
-        hdr = f"{'TICK':<6} {'Scr':>4} {'A':>4} {'B':>4} {'C':>4} {'D':>4} {'Bon':>4} {'Setup':<22} {'RSI14':>5} {'RSI7':>5} {'RS63%':>6} {'ATR%':>5} {'%EMA21':>7} {'StchK':>5} {'CMF':>6} {'ADX':>4}"
+        hdr = f"{'TICK':<6} {'Scr':>4} {'A':>4} {'B':>4} {'C':>4} {'D':>4} {'Bon':>4} {'Stage':<14} {'Inst':<12} {'Setup':<22} {'RSI7':>5} {'RS63%':>6} {'RS_sec%':>8}"
         print(hdr)
-        print("-"*115)
+        print("-"*120)
 
         week_pnl  = 0.0
         week_wins = 0
@@ -622,19 +927,20 @@ def run_backtest():
             actual = get_weekly_return(ticker, entry_date, exit_date)
 
             candle_str = ",".join(pick["candles"][:2]) if pick["candles"] else "none"
+            rs_line_str = "RS_NEW_HIGH" if pick.get("rs_line_new_high") else ""
+            sector_str = "SECTOR_LEAD" if pick.get("sector_leader") else ""
             print(f"{ticker:<6} {pick['score']:>4.0f} {pick['layer_A']:>4.0f} {pick['layer_B']:>4.0f} "
                   f"{pick['layer_C']:>4.0f} {pick['layer_D']:>4.0f} {pick['bonus']:>4.0f} "
-                  f"{pick['setup']:<22} {pick['rsi14']:>5.0f} {pick['rsi7']:>5.0f} "
-                  f"{pick['rs63_pct']:>6.1f} {pick['atr_pct']:>5.1f} "
-                  f"{pick['pct21']:>7.1f} {pick['stoch_k']:>5.0f} {pick['cmf']:>6.3f} "
-                  f"{pick['adx']:>4.0f}")
-            print(f"       candles={candle_str:<30} vol_dry={pick['vol_dry']} squeeze={pick['in_squeeze']}"
-                  f"  stop=${pick['stop']:.2f}  target=${pick['target']:.2f}")
+                  f"{pick['stage']:<14} {pick['institutional']:<12} {pick['setup']:<22} "
+                  f"{pick['rsi7']:>5.0f} {pick['rs63_pct']:>6.1f} {pick['rs_vs_sector']:>8.1f}")
+            print(f"       candles={candle_str:<20} {rs_line_str:<12} {sector_str:<12} "
+                  f"stop=${pick['stop']:.2f}  target=${pick['target']:.2f}  R/R={pick['rr']}")
+            print(f"       {pick['support_note']}")
 
             if actual:
                 pnl    = actual["pnl_pct"]
-                sym    = "✓" if actual["win"] else ("✗" if actual["loss"] else "—")
-                print(f"       RESULT: entry=${actual['entry_price']} → exit=${actual['exit_price']}  "
+                sym    = "WIN" if actual["win"] else ("LOSS" if actual["loss"] else "flat")
+                print(f"       RESULT: entry=${actual['entry_price']} -> exit=${actual['exit_price']}  "
                       f"PnL={pnl:+.2f}%{sym}  (week high=${actual['week_high']}  low=${actual['week_low']})")
                 week_pnl  += pnl
                 grand_pnl += pnl
@@ -645,17 +951,21 @@ def run_backtest():
                 all_trades.append({
                     "week": label, "ticker": ticker,
                     "score": pick["score"], "setup": pick["setup"],
+                    "stage": pick["stage"], "institutional": pick["institutional"],
                     "pnl_pct": pnl, "win": actual["win"], "loss": actual["loss"],
-                    "week_high": actual["week_high"], "entry": actual["entry_price"],
+                    "week_high": actual["week_high"],
+                    "entry": actual["entry_price"],
+                    "exit": actual["exit_price"],
+                    "stop": pick["stop"],
                 })
             print()
 
         avg = week_pnl / len(top5) if top5 else 0
-        print(f"  ─── Week {label}: {week_wins}/{len(top5)} wins | Avg PnL = {avg:+.2f}% ───")
+        print(f"  --- Week {label}: {week_wins}/{len(top5)} wins | Avg PnL = {avg:+.2f}% ---")
 
     # ── SUMMARY ──
     print(f"\n{'='*75}")
-    print("COMPREHENSIVE BACKTEST SUMMARY — JANUARY 2026")
+    print("COMPREHENSIVE BACKTEST SUMMARY — JAN-MAR 2026")
     print(f"{'='*75}")
     if grand_picks:
         print(f"Total picks: {grand_picks} | Wins: {grand_wins} ({grand_wins/grand_picks*100:.0f}%)")
@@ -674,12 +984,25 @@ def run_backtest():
             sw = sum(1 for t in st if t["win"])
             print(f"  {setup:<30} {sw}/{cnt} wins")
 
+        print(f"\nStage breakdown:")
+        for stage, cnt in Counter(t["stage"] for t in all_trades).most_common():
+            st = [t for t in all_trades if t["stage"]==stage]
+            sw = sum(1 for t in st if t["win"])
+            print(f"  {stage:<20} {sw}/{cnt} wins")
+
         print(f"\nBest trades:")
         for t in sorted(all_trades, key=lambda x: x["pnl_pct"], reverse=True)[:5]:
-            print(f"  {t['week']:6} {t['ticker']:6} {t['pnl_pct']:+.1f}%  [{t['setup']}]")
+            print(f"  {t['week']:6} {t['ticker']:6} {t['pnl_pct']:+.1f}%  [{t['setup']}] [{t['stage']}]")
         print(f"\nWorst trades:")
         for t in sorted(all_trades, key=lambda x: x["pnl_pct"])[:5]:
-            print(f"  {t['week']:6} {t['ticker']:6} {t['pnl_pct']:+.1f}%  [{t['setup']}]")
+            print(f"  {t['week']:6} {t['ticker']:6} {t['pnl_pct']:+.1f}%  [{t['setup']}] [{t['stage']}]")
+
+        # Save structured trades for dollar P&L analysis
+        import json as _json
+        trades_path = os.path.join(os.path.dirname(__file__), "..", "data", "predictor", "backtest_trades.json")
+        with open(trades_path, "w") as f:
+            _json.dump(all_trades, f, indent=2)
+        print(f"\nTrades saved to {trades_path}")
 
 
 if __name__ == "__main__":

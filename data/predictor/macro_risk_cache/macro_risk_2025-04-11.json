@@ -1,0 +1,14 @@
+{
+  "as_of": "2025-04-11",
+  "risk_level": "HIGH",
+  "max_picks": 2,
+  "reasoning": "90-day tariff pause announced April 9 triggered +9.5% single-day rally -- one of the largest ever. But China excluded at 145% tariffs. VIX still elevated. Extreme volatility persists despite the bounce.",
+  "source": "web_search",
+  "signals": {
+    "tariff": 18,
+    "recession": 7,
+    "volatility": 9,
+    "fed": 2,
+    "geopolitical": 6
+  }
+}

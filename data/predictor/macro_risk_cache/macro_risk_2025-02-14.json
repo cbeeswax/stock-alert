@@ -1,0 +1,14 @@
+{
+  "as_of": "2025-02-14",
+  "risk_level": "MEDIUM",
+  "max_picks": 3,
+  "reasoning": "Canada/Mexico 30-day tariff pause ongoing but clock ticking. S&P -1.4% for February, NASDAQ -4%. Consumer confidence falling but no acute crash event. Ongoing but not immediate policy risk.",
+  "source": "web_search",
+  "signals": {
+    "tariff": 8,
+    "recession": 4,
+    "volatility": 4,
+    "fed": 2,
+    "geopolitical": 2
+  }
+}

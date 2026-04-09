@@ -1,0 +1,14 @@
+{
+  "as_of": "2025-09-26",
+  "risk_level": "MEDIUM",
+  "max_picks": 3,
+  "reasoning": "Government shutdown threat acute: fiscal year ends Sept 30, no appropriations agreement in sight. Markets plateauing as investors grow cautious about shutdown risk and potential economic data blackout for Fed.",
+  "source": "web_search",
+  "signals": {
+    "tariff": 1,
+    "recession": 3,
+    "volatility": 4,
+    "fed": 4,
+    "geopolitical": 1
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "as_of": "2025-07-25",
+  "risk_level": "MEDIUM",
+  "max_picks": 3,
+  "reasoning": "Late July: unexpected new tariff rate announcements -- uncertainty spiked. Concerns about consumer price impacts and weak July jobs data. Market gains slowed. Elevated caution warranted heading into next week.",
+  "source": "web_search",
+  "signals": {
+    "tariff": 7,
+    "recession": 4,
+    "volatility": 5,
+    "fed": 2,
+    "geopolitical": 2
+  }
+}

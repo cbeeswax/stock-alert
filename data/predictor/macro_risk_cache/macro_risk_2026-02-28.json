@@ -1,0 +1,39 @@
+{
+  "as_of_date": "2026-02-28",
+  "level": "EXTREME",
+  "reasoning": "Severe macro disruption detected: geopolitical conflict (45 signals, 18% of coverage), capital preservation required..",
+  "sectors_at_risk": [
+    "XLK",
+    "XLY",
+    "XLRE",
+    "XLC",
+    "XLI",
+    "XLE"
+  ],
+  "safe_sectors": [
+    "XLU",
+    "XLP",
+    "XLV"
+  ],
+  "top_headlines": [
+    "Iranian State Media Reports Iran's IRGC Says 'most Intense' Offensive Operation On Israel And U.s. Bases To Begin In Moments -",
+    "Iran's Press TV Confirms Ayatollah Ali Khamenei Has Been Killed In US-Israeli Strikes On Iran",
+    "Iranian State Media Reports Iran's Supreme Leader Khamenei Was Killed At His Office; Iran's Supreme Leader Khamenei Was Killed In Early Hours Of Saturday",
+    "President Trump Posts On Truth Social \"Khamenei, one of the most evil people in History, is dead. This is not only Justice for the people of Iran, but for all Great Americans...\" \".. The heavy and pinpoint bombing, however, will continue, uninterrupted throughout the week or, as long as necessary to achieve our objective of PEACE THROUGHOUT THE MIDDLE EAST AND, INDEED, THE WORLD!...\"",
+    "The Fallout Of U.S.-Iran Round Two",
+    "The U.S.-Iran War: Phase One",
+    "U.S. And Israel Attack Iran: I Warned You To Buy Oil ETFs",
+    "Iran Escalation Shock Triggers Risk-Off Move To USD And Gold, Oil, Defense And Aerospace Win"
+  ],
+  "signal_counts": {
+    "TARIFF": 19,
+    "FED": 22,
+    "GEOPOLITICAL": 45,
+    "OIL_SHOCK": 2,
+    "RECESSION": 2,
+    "CREDIT_STRESS": 6,
+    "MARKET_CRASH": 1,
+    "VOLATILITY": 2,
+    "EARNINGS": 3
+  }
+}

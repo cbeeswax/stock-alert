@@ -1,0 +1,14 @@
+{
+  "as_of": "2025-04-17",
+  "risk_level": "HIGH",
+  "max_picks": 2,
+  "reasoning": "Post-Liberation Day stabilization: week of April 15-19 was +2%. Tech exemptions announced. But China still at 145% tariffs, ongoing US-China trade war, policy uncertainty extreme. Choppy trading with elevated tail risk.",
+  "source": "web_search",
+  "signals": {
+    "tariff": 16,
+    "recession": 6,
+    "volatility": 7,
+    "fed": 2,
+    "geopolitical": 5
+  }
+}

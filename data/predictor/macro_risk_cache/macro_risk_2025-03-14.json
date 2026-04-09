@@ -1,0 +1,14 @@
+{
+  "as_of": "2025-03-14",
+  "risk_level": "HIGH",
+  "max_picks": 2,
+  "reasoning": "Market in correction, down 7-8% from ATH. Tariff war escalating across all fronts: Canada, Mexico, China, EU threats. Consumer confidence at multi-year lows. Bond yields falling on safe-haven demand. S&P negative YTD.",
+  "source": "web_search",
+  "signals": {
+    "tariff": 15,
+    "recession": 8,
+    "volatility": 8,
+    "fed": 2,
+    "geopolitical": 4
+  }
+}

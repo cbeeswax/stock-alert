@@ -1,0 +1,14 @@
+{
+  "as_of": "2025-05-23",
+  "risk_level": "LOW",
+  "max_picks": 5,
+  "reasoning": "Memorial Day week. S&P up ~6.3% for May on tariff deal relief. Markets calm, VIX declining, tariff truce running smoothly. Holiday-shortened week. Full position sizing appropriate.",
+  "source": "web_search",
+  "signals": {
+    "tariff": 2,
+    "recession": 1,
+    "volatility": 2,
+    "fed": 1,
+    "geopolitical": 1
+  }
+}

@@ -1,0 +1,39 @@
+{
+  "as_of_date": "2026-02-21",
+  "level": "EXTREME",
+  "reasoning": "Severe macro disruption detected: geopolitical conflict (32 signals, 13% of coverage), tariff shock + market panic, capital preservation required..",
+  "sectors_at_risk": [
+    "XLK",
+    "XLY",
+    "XLRE",
+    "XLC",
+    "XLI",
+    "XLE"
+  ],
+  "safe_sectors": [
+    "XLU",
+    "XLP",
+    "XLV"
+  ],
+  "top_headlines": [
+    "President Trump, In Truth Social Post, Said \"Effective Immediately, Raising The 10% Worldwide Tariff On Countries, Many Of Which Have Been \"Ripping\" The U.S. Off For Decades, Without Retribution (Until I Came Along!), To The Fully Allowed, And Legally Tested, 15% Level\"",
+    "The Supreme Court May Have Just Prevented A Recession",
+    "This Week's Market Wrap: AI-Led Volatility, Inflation, And Late-Cycle Risk Signals",
+    "How Kevin Warsh Could Put The Toothpaste Back Into The Tube At The U.S. Fed",
+    "Markets Weekly Outlook - The Gavel Falls On Global Tariffs As Inflationary Fears Return To The Fold",
+    "United States Secretary Of The Treasury Bessent On Supreme Court Tariff Ruling Says Court Has Taken Away Trump's Leverage;  We Will Get Back To Same Tariff Level For Countries, It Will Be Less Direct; I Think That Every Country Will Honor The Trade Deals",
+    "GDP Prints At Feeble 1.4% On Shutdown As Trump Counters On SCOTUS Tariff Decision",
+    "Fed's Musalem Says Companies Are Feeling Cost Pressures, People Challenged By Inflation; Policy Is In A Good Place; Focused On PCE Inflation, Rather Than CPI; Don't See Productivity Growth In Macro Data Yet; Asked About NY Fed Study On Tariffs That White House Adviser Criticized, Says It's Important Fed Banks Do Research Based On Facts And Objectivity; We Have The Best Economy Because We Have The Best Research, Which Informs Policy Decision"
+  ],
+  "signal_counts": {
+    "TARIFF": 49,
+    "FED": 26,
+    "GEOPOLITICAL": 32,
+    "OIL_SHOCK": 2,
+    "RECESSION": 2,
+    "CREDIT_STRESS": 3,
+    "MARKET_CRASH": 4,
+    "VOLATILITY": 2,
+    "EARNINGS": 1
+  }
+}

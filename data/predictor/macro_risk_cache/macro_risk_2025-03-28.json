@@ -1,0 +1,14 @@
+{
+  "as_of": "2025-03-28",
+  "risk_level": "EXTREME",
+  "max_picks": 0,
+  "reasoning": "Liberation Day (April 2) officially announced: sweeping global reciprocal tariffs imminent. Consumer confidence at 12-year low. S&P posted worst quarter since 2022. Any rational investor would sit out -- complete policy uncertainty with a catastrophic event days away.",
+  "source": "web_search",
+  "signals": {
+    "tariff": 20,
+    "recession": 9,
+    "volatility": 9,
+    "fed": 2,
+    "geopolitical": 6
+  }
+}

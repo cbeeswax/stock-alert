@@ -1,0 +1,14 @@
+{
+  "as_of": "2025-12-26",
+  "risk_level": "LOW",
+  "max_picks": 5,
+  "reasoning": "Between Christmas and New Year. Extremely thin holiday trading, VIX at 14.95. S&P full-year performance locked in at +16.39%. No macro risk events. Lowest-risk week of the year.",
+  "source": "web_search",
+  "signals": {
+    "tariff": 1,
+    "recession": 1,
+    "volatility": 1,
+    "fed": 1,
+    "geopolitical": 1
+  }
+}

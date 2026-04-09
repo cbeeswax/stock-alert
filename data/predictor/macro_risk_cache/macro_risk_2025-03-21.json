@@ -1,0 +1,14 @@
+{
+  "as_of": "2025-03-21",
+  "risk_level": "HIGH",
+  "max_picks": 2,
+  "reasoning": "Tariff escalation continues. Trump threatening 25% auto tariffs. Consumer confidence lowest in years. S&P 10%+ off highs. Stagflation fears rising as inflation stays hot while growth slows.",
+  "source": "web_search",
+  "signals": {
+    "tariff": 16,
+    "recession": 9,
+    "volatility": 8,
+    "fed": 2,
+    "geopolitical": 4
+  }
+}

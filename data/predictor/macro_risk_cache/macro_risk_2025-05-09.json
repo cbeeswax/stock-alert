@@ -1,0 +1,14 @@
+{
+  "as_of": "2025-05-09",
+  "risk_level": "MEDIUM",
+  "max_picks": 3,
+  "reasoning": "US-China trade deal imminent (announced May 12 Monday). As of Friday May 9, final negotiations underway but deal not yet signed. 145% tariffs still technically in effect. Elevated positive expectation but outcome uncertain heading into next week.",
+  "source": "web_search",
+  "signals": {
+    "tariff": 9,
+    "recession": 3,
+    "volatility": 3,
+    "fed": 2,
+    "geopolitical": 3
+  }
+}

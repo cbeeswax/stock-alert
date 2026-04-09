@@ -1,0 +1,14 @@
+{
+  "as_of": "2025-06-06",
+  "risk_level": "LOW",
+  "max_picks": 5,
+  "reasoning": "June started strong with markets on track for +5% month. Tech leading (AI stocks surging), VIX declining, tariff truce holding. No acute macro risk. Normal bull market conditions.",
+  "source": "web_search",
+  "signals": {
+    "tariff": 2,
+    "recession": 1,
+    "volatility": 2,
+    "fed": 1,
+    "geopolitical": 1
+  }
+}

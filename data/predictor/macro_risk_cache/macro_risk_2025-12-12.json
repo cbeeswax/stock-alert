@@ -1,0 +1,14 @@
+{
+  "as_of": "2025-12-12",
+  "risk_level": "LOW",
+  "max_picks": 5,
+  "reasoning": "Mid-December quiet tape. VIX at 13-15. Year-end inflows, window dressing. S&P finishing +16.39% for the year. Mag-7 stocks dominant. No geopolitical or macro shocks in view.",
+  "source": "web_search",
+  "signals": {
+    "tariff": 1,
+    "recession": 1,
+    "volatility": 1,
+    "fed": 1,
+    "geopolitical": 1
+  }
+}

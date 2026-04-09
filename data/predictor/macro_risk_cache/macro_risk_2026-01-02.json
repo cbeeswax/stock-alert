@@ -1,0 +1,30 @@
+{
+  "as_of_date": "2026-01-02",
+  "level": "LOW",
+  "reasoning": "No significant macro risk signals detected. Normal trading environment.",
+  "sectors_at_risk": [],
+  "safe_sectors": [
+    "XLU",
+    "XLP",
+    "XLV",
+    "XLB"
+  ],
+  "top_headlines": [
+    "Year-End Liquidity Turmoil On Fed's Balance Sheet. Plus $38 Billion In T-Bills Replace $15 Billion In MBS, Add $23 Billion In RMPs",
+    "Islamic Republic News Agency Reported, The Leader's Representative On The Defense Council Has Stressed That Any Interventionist Hand That Approaches Iranian Security By Making Excuses Will Be Cut Off Before It Arrives With A Regrettable Response.",
+    "President Trump In a Truth Social Post Earlier, Said If Iran Shots And Violently Kills Peaceful Protesters, Which Is Their Custom, The United States Of America Will Come To Their Rescue. We Are Locked And Loaded And Ready To Go",
+    "US State Department Says China's Military Activities Near Taiwan Are Unnecessary And Urges Beijing To Exercise Restraint",
+    "Why Didn't Trump's Tariffs Crash The Economy In 2025?",
+    "U.S. Special Envoy Witkoff Says Had A Productive Call With National Security Advisors Of UK., France, Germany To Discuss Peace Process; Focused On How To Move Discussions On Ending Russia-Ukraine War Forward, Including Strengthening Security Guarantees And Developing Deconfliction Mechanisms",
+    "Federal Reserve Watch: Adding Securities Again",
+    "China Commerce Ministry Rules On Imported Beef Probe, To Impose Up To 55% Additional Tariffs From 2026 On Beef Imports From Brazil, Argentina, US, New Zealand And Others When Quotas Are Exceeded"
+  ],
+  "signal_counts": {
+    "TARIFF": 3,
+    "FED": 3,
+    "GEOPOLITICAL": 11,
+    "CREDIT_STRESS": 2,
+    "MARKET_CRASH": 1,
+    "EARNINGS": 3
+  }
+}
