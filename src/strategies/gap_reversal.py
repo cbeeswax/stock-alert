@@ -49,6 +49,8 @@ class GapReversalPosition(BaseStrategy):
     ) -> Optional[Dict[str, Any]]:
         from src.config.settings import (
             GAP_REVERSAL_MIN_GAP_PCT,
+            GAP_REVERSAL_MIN_GAP_ATR_MULT,
+            GAP_REVERSAL_MIN_VOL_MULT,
             GAP_REVERSAL_RSI_OVERSOLD,
             GAP_REVERSAL_RSI_OVERBOUGHT,
             GAP_REVERSAL_EMA_PERIOD,
@@ -122,6 +124,40 @@ class GapReversalPosition(BaseStrategy):
 
             if not (is_long or is_short):
                 return None
+
+            # ── Fix 1: Gap size must be ≥ 1×ATR20 (not just 0.5% flat) ─────────
+            # A 0.5% gap on a volatile stock is daily noise — fills immediately.
+            # Require the gap to be meaningful relative to the stock's volatility.
+            atr20 = atr_latest(df, 20)
+            gap_size = abs(last_open - float(df["Close"].iloc[-2])) if len(df) >= 2 else 0
+            if gap_size < atr20 * GAP_REVERSAL_MIN_GAP_ATR_MULT:
+                return None
+
+            # ── Fix 2: Gap day volume must be ≥ 1.5× 20-day average ─────────────
+            # Low-volume gaps = no institutional conviction = gap fills quickly.
+            if len(volume) >= 20:
+                avg_vol_20 = float(volume.iloc[-21:-1].mean())  # avg excluding gap day
+                gap_day_vol = float(volume.iloc[-1])
+                if avg_vol_20 > 0 and gap_day_vol < avg_vol_20 * GAP_REVERSAL_MIN_VOL_MULT:
+                    return None
+
+            # ── Fix 3: Macro risk filter for LONG setups ─────────────────────────
+            # In HIGH/EXTREME macro risk weeks, gap-up reversals fail —
+            # macro headwind overwhelms the technical setup (e.g. LUV/DAL in tariff weeks).
+            if is_long:
+                try:
+                    import json, os
+                    from pathlib import Path
+                    if as_of_date is not None:
+                        date_str = pd.Timestamp(as_of_date).strftime("%Y-%m-%d")
+                        cache_path = Path("data/predictor/macro_risk_cache") / f"macro_risk_{date_str}.json"
+                        if cache_path.exists():
+                            macro = json.loads(cache_path.read_text())
+                            macro_level = macro.get("level", "LOW")
+                            if macro_level in ("HIGH", "EXTREME"):
+                                return None  # Skip longs in high/extreme risk weeks
+                except Exception:
+                    pass  # If cache unavailable, allow trade
 
             # Prior move filter: verify the stock actually declined (long) or rallied (short)
             # before the gap — prevents false setups on breakouts or earnings surprises.
