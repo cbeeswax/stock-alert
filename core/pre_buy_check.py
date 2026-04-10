@@ -338,9 +338,14 @@ def pre_buy_check(combined_signals, rr_ratio=None, benchmark="SPY", as_of_date=N
         # Calculate Van Tharp Expectancy
         expectancy = (win_rate * avg_win_r) - ((1 - win_rate) * abs(avg_loss_r))
 
-        # Validate stop and target are valid numbers (must be positive prices, not NaN)
-        if pd.isna(stop) or pd.isna(target) or stop <= 0 or target <= 0 or entry <= 0:
-            print(f"   ❌ {ticker} [{strategy}]: filtered — invalid stop/target (entry={entry}, stop={stop}, target={target})")
+        # Validate stop and target are valid numbers.
+        # Position strategies (those with MaxDays) use trailing exits — no fixed target required.
+        is_position_strategy = s.get("MaxDays") is not None
+        if pd.isna(stop) or stop <= 0 or entry <= 0:
+            print(f"   ❌ {ticker} [{strategy}]: filtered — invalid stop/entry (entry={entry}, stop={stop})")
+            continue
+        if not is_position_strategy and (pd.isna(target) or target <= 0):
+            print(f"   ❌ {ticker} [{strategy}]: filtered — invalid target (entry={entry}, stop={stop}, target={target})")
             continue
 
         # For SHORT: stop must be above entry (if price rises, we lose)

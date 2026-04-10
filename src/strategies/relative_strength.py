@@ -175,7 +175,7 @@ class RelativeStrengthRanker(BaseStrategy):
                 "Entry": round(last_close, 2),
                 "StopLoss": round(stop, 2),
                 "StopPrice": round(stop, 2),
-                "Target": None,
+                "Target": None,  # No fixed target — exit managed by MA100 trail
                 "ATR20": round(atr20, 2),
                 "RS_6mo": round(rs_6mo * 100, 2),
                 "Score": round(score, 2),
