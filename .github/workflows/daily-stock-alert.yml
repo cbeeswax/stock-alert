@@ -44,7 +44,6 @@ jobs:
       - name: Run stock alert scan
         run: |
           python main.py \
-            --skip-strategies GapReversal_Position \
             --label "Evening Scan"
 
       # 🚨 Send failure alert email if any step above failed
