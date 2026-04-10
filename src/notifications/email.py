@@ -217,7 +217,7 @@ def send_email_alert(
                         "Entry Date": str(pos.get('entry_date', 'N/A'))[:10],
                         "Strategy": pos.get('strategy', 'Unknown'),
                         "Stop $": f"${pos.get('stop_loss', 0):.2f}" if pos.get('stop_loss', 0) > 0 else "N/A",
-                        "Target $": f"${pos.get('target', 0):.2f}" if pos.get('target', 0) > 0 else "N/A",
+                        "Target $": f"${pos.get('target', 0):.2f}" if pos.get('target') and pos.get('target', 0) > 0 else "TRAIL MA100",
                     })
 
                 pos_df = pd.DataFrame(pos_data)
@@ -283,7 +283,10 @@ def send_email_alert(
                     body_html += f"<td>${position_size:,.0f}</td>"
                     body_html += f"<td>${entry:.2f}</td>"
                     body_html += f"<td>${stop:.2f}</td>"
-                    body_html += f"<td>${target:.2f}</td>"
+                    if target and target > 0:
+                        body_html += f"<td>${target:.2f}</td>"
+                    else:
+                        body_html += "<td><em>TRAIL MA100</em></td>"
                     body_html += f"<td>${risk_per_share:.2f}</td>"
                     body_html += f"<td>{max_days}d</td>"
                     body_html += "</tr>"
