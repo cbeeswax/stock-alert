@@ -1,0 +1,59 @@
+name: Update S&P 500 Constituents
+
+on:
+  schedule:
+    - cron: "0 20 * * 0"  # Every Sunday at 8 PM UTC
+  workflow_dispatch:       # Allow manual trigger
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  update-sp500:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCS_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCS_SERVICE_ACCOUNT }}
+
+      - name: Update S&P 500 constituents list
+        run: |
+          python scripts/update_sp500.py
+
+      # 🚨 Send failure alert email if any step above failed
+      - name: Send failure alert
+        if: failure()
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          secure: true
+          username: ${{ secrets.EMAIL_SENDER }}
+          password: ${{ secrets.EMAIL_PASSWORD }}
+          subject: "🚨 S&P 500 Constituents Update FAILED – ${{ github.run_id }}"
+          to: ${{ secrets.EMAIL_FAILURE_RECEIVER }}
+          from: ${{ secrets.EMAIL_SENDER }}
+          body: |
+            The weekly S&P 500 constituents update failed.
+
+            Workflow: ${{ github.workflow }}
+            Run ID:   ${{ github.run_id }}
+            Branch:   ${{ github.ref_name }}
+            Commit:   ${{ github.sha }}
+
+            View logs: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
