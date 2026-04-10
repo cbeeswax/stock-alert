@@ -165,7 +165,9 @@ RS_RANKER_MAX_DAYS = 150
 # Long: gap up + smoothed RSI(10 on EMA21) < 10 + weekly trend UP
 # Short: gap down + smoothed RSI(10 on EMA21) > 90 + weekly trend DOWN
 # Stop: gap fill (prior close). Exit: trailing EMA21.
-GAP_REVERSAL_MIN_GAP_PCT = 0.005       # Minimum 0.5% gap to filter noise
+GAP_REVERSAL_MIN_GAP_PCT = 0.005       # Minimum 0.5% gap (baseline check)
+GAP_REVERSAL_MIN_GAP_ATR_MULT = 1.0    # Gap must also be ≥ 1×ATR20 (noise filter)
+GAP_REVERSAL_MIN_VOL_MULT = 1.5        # Gap day volume must be ≥ 1.5× 20-day avg
 GAP_REVERSAL_RSI_OVERSOLD = 10         # smoothed RSI threshold for long
 GAP_REVERSAL_RSI_OVERBOUGHT = 90       # smoothed RSI threshold for short
 GAP_REVERSAL_EMA_PERIOD = 21           # EMA period used for price smoothing

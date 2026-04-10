@@ -1,9 +1,7 @@
-name: Gap Reversal Morning Scan
+name: Gap Reversal Scan (Manual)
 
 on:
-  schedule:
-    - cron: "35 13 * * 1-5"  # Every weekday at 13:35 UTC = 9:35 AM EDT (Mar-Nov)
-  workflow_dispatch:          # Allow manual trigger
+  workflow_dispatch:  # Manual trigger only — gap reversal now runs in the EOD scan (daily-stock-alert.yml)
 
 permissions:
   id-token: write
@@ -41,12 +39,11 @@ jobs:
         run: |
           python scripts/refresh_data.py --period 1mo
 
-      - name: Run Gap Reversal morning scan
+      - name: Run Gap Reversal scan (manual / debug)
         run: |
           python main.py \
             --strategies GapReversal_Position \
-            --skip-monitor \
-            --label "Gap Reversal Morning Scan"
+            --label "Gap Reversal Manual Scan"
 
       # 🚨 Send failure alert email if any step above failed
       - name: Send failure alert
@@ -58,7 +55,7 @@ jobs:
           secure: true
           username: ${{ secrets.EMAIL_SENDER }}
           password: ${{ secrets.EMAIL_PASSWORD }}
-          subject: "🚨 Gap Reversal Morning Scan FAILED – ${{ github.run_id }}"
+          subject: "🚨 Gap Reversal Manual Scan FAILED – ${{ github.run_id }}"
           to: ${{ secrets.EMAIL_FAILURE_RECEIVER }}
           from: ${{ secrets.EMAIL_SENDER }}
           body: |
