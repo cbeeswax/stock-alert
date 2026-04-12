@@ -1718,4 +1718,27 @@ def run_scan_as_of(as_of_date, tickers, rs_bought_tracker=None):
         except Exception as e:
             pass
 
+    # ── Pattern Scanner (Danzanger 6-pattern system) ──────────────────────────
+    # Runs after all other strategies. df is already sliced to as_of_date above,
+    # so each ticker's detect() call has no look-ahead into future bars.
+    if POSITION_MAX_PER_STRATEGY.get("Pattern_Scanner", 0) > 0:
+        try:
+            from src.strategies.pattern_scanner import PatternScanner
+            _ps = PatternScanner()
+            for ticker in tickers:
+                try:
+                    df_ps = get_historical_data(ticker)
+                    if df_ps.empty:
+                        continue
+                    df_ps = df_ps[df_ps.index <= as_of_date]
+                    if len(df_ps) < 100:
+                        continue
+                    sig = _ps.scan(ticker, df_ps, as_of_date)
+                    if sig:
+                        signals.append(sig)
+                except Exception:
+                    continue
+        except Exception:
+            pass
+
     return signals

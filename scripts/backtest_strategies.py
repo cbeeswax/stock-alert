@@ -53,6 +53,7 @@ STRATEGY_ALIASES = {
     "ema":     "EMA_Crossover_Position",
     "mr":      "MeanReversion_Position",
     "trend":   "TrendContinuation_Position",
+    "pattern": "Pattern_Scanner",
 }
 
 # Backtest max positions per strategy (overrides 0 for isolated runs)
@@ -60,6 +61,7 @@ STRATEGY_ALIASES = {
 BACKTEST_MAX_POSITIONS = {
     "GapReversal_Position": 5,
     "RelativeStrength_Ranker_Position": 10,
+    "Pattern_Scanner": 5,
     # High52_Position: disabled — needs further tuning
     # MeanReversion_Position: disabled — needs further tuning
     # TrendContinuation_Position: disabled — needs further tuning

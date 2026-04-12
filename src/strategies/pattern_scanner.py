@@ -114,17 +114,18 @@ class PatternScanner(BaseStrategy):
 
         # Format as standard signal dict (matches existing pre_buy_check expectations)
         return {
-            "Ticker":   ticker,
-            "Strategy": f"Pattern_{best.pattern}",
-            "Close":    float(df_f.iloc[-1]["close"]),
-            "Entry":    best.entry_price,
-            "StopLoss": best.stop_loss,
-            "Target":   best.target,
-            "Score":    best.quality_score,
-            "Volume":   float(df_f.iloc[-1]["volume"]),
-            "Date":     str(today.date()),
-            "Priority": max(1, int(100 - best.quality_score)),
-            "MaxDays":  MAX_HOLDING_DAYS,
+            "Ticker":      ticker,
+            "Strategy":    "Pattern_Scanner",
+            "PatternName": best.pattern,           # e.g. "CupAndHandle" — for reporting
+            "Close":       float(df_f.iloc[-1]["close"]),
+            "Entry":       best.entry_price,
+            "StopLoss":    best.stop_loss,
+            "Target":      best.target,
+            "Score":       best.quality_score,
+            "Volume":      float(df_f.iloc[-1]["volume"]),
+            "Date":        str(today.date()),
+            "Priority":    max(1, int(100 - best.quality_score)),
+            "MaxDays":     MAX_HOLDING_DAYS,
             "PatternMeta": best.pattern_result.meta_json,
         }
 
