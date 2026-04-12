@@ -811,12 +811,20 @@ class WalkForwardBacktester:
                         print(f"   ❌ {day.date()} | All SHORT signals filtered by filter_trades_by_position")
 
                     if not validated.empty:
-                        # Take trades respecting limits
+                        # Signals already sorted by Priority↑ then Score↓ from scanner
+                        # Cap new entries to best 3 per day
+                        MAX_ENTRIES_PER_DAY = 3
+                        entries_today = 0
+
                         for _, trade in validated.iterrows():
                             strategy = trade["Strategy"]
 
                             # Check global position limit
                             if len(self.position_tracker.positions) >= POSITION_MAX_TOTAL:
+                                break
+
+                            # Cap new entries per day to top 3 highest-scoring signals
+                            if entries_today >= MAX_ENTRIES_PER_DAY:
                                 break
 
                             strategy_count = self.strategy_positions.get(strategy, 0)
@@ -835,6 +843,7 @@ class WalkForwardBacktester:
                             success = self._enter_position(day, trade.to_dict())
 
                             if success:
+                                entries_today += 1
                                 # Show trade entry
                                 print(f"   ✅ {day.date()} | ENTER {trade['Ticker']} @ ${trade['Entry']:.2f} | {strategy[:20]}")
 
