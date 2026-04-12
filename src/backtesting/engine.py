@@ -1129,7 +1129,8 @@ class WalkForwardBacktester:
                             strategy = trade["Strategy"]
 
                             # Check if new entries allowed in current regime
-                            if not allow_new_entries:
+                            # Pattern_Scanner bypasses regime filter — patterns work in any market
+                            if not allow_new_entries and strategy != "Pattern_Scanner":
                                 skipped_count += 1
                                 continue  # Skip all new entries in RISK_OFF
 
