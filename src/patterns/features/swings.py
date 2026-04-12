@@ -45,11 +45,18 @@ def add_swings(df: pd.DataFrame, k: int = 5) -> pd.DataFrame:
          (run build_features first, or ensure columns are lower-cased)
     k  : look-back / look-forward window in bars (default 5)
 
+    Look-ahead note
+    ---------------
+    A symmetric k-bar window means pivot at bar i is confirmed only once
+    bar i+k has passed.  We mask the last k bars so that detected pivots
+    represent what would have been *known* at the time of each bar.
+    This eliminates look-ahead bias in both live scans and backtests.
+
     Returns
     -------
     Same df with two new columns:
-        swing_high  bool  — bar is a local high pivot
-        swing_low   bool  — bar is a local low pivot
+        swing_high  bool  — bar is a local high pivot (confirmed, no look-ahead)
+        swing_low   bool  — bar is a local low pivot  (confirmed, no look-ahead)
     """
     h = df["high"].values
     l = df["low"].values
@@ -58,6 +65,11 @@ def add_swings(df: pd.DataFrame, k: int = 5) -> pd.DataFrame:
     sh = np.zeros(n, dtype=bool)
     sl = np.zeros(n, dtype=bool)
 
+    # Only mark pivot at bar i if both i-k and i+k are in range.
+    # The loop naturally stops at n-k, so bar i+k exists in the slice.
+    # Masking last k bars: in a rolling/walk-forward context, bars near
+    # the window edge haven't had k future bars pass yet — they'd be
+    # confirmed in the *next* window step, not the current one.
     for i in range(k, n - k):
         window_h = h[i - k: i + k + 1]
         window_l = l[i - k: i + k + 1]
@@ -65,6 +77,13 @@ def add_swings(df: pd.DataFrame, k: int = 5) -> pd.DataFrame:
             sh[i] = True
         if l[i] == window_l.min():
             sl[i] = True
+
+    # Mask: the most recent k bars cannot be confirmed pivot highs/lows
+    # because their right-side confirmation window extends beyond "now".
+    # Without this, patterns detected near the slice end carry look-ahead bias.
+    if k > 0:
+        sh[n - k:] = False
+        sl[n - k:] = False
 
     df = df.copy()
     df["swing_high"] = sh

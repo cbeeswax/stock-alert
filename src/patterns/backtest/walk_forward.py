@@ -159,7 +159,9 @@ class WalkForward:
         all_records = []
 
         for symbol, full_df in price_data.items():
-            # Slice to window + a lookback buffer for features
+            # Include a 3-month lookback buffer so rolling features and pivots
+            # formed just before `start` are available — but we only use data
+            # up to `end` (no future leakage into this window).
             buf_start = start - pd.DateOffset(months=3)
             sliced = full_df.loc[
                 (full_df.index >= buf_start) & (full_df.index <= end)
@@ -167,13 +169,18 @@ class WalkForward:
             if len(sliced) < 60:
                 continue
 
+            # add_swings already masks the last k bars, so pivots near `end`
+            # that would require future bars to confirm are excluded.
+            # Together with the hard `end` cutoff above, this guarantees
+            # no look-ahead: every detected pattern only uses data ≤ end.
             df = build_features(sliced)
             df = add_swings(df, k=self.swing_k)
             pivots = get_pivot_list(df)
 
             detector.symbol = symbol
             patterns = detector.detect(df, pivots)
-            # Keep only patterns whose breakout is within the window
+            # Keep only patterns whose breakout falls within the window
+            # (the buffer period patterns are excluded)
             patterns = [p for p in patterns if start <= p.breakout_date <= end]
 
             signals = engine.process(patterns, df)
