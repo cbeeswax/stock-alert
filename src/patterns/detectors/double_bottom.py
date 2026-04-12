@@ -79,7 +79,7 @@ class DoubleBottom(BasePattern):
 
             # ── Breakout bar (close above neckline) ───────────────────────
             bo_idx = idx2 + 1
-            while bo_idx < n:
+            while bo_idx < min(idx2 + 30, n):
                 bo_close = closes[bo_idx]
 
                 # Invalidation: new lower low

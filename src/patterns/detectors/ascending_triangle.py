@@ -80,7 +80,7 @@ class AscendingTriangle(BasePattern):
 
             # ── Breakout bar ──────────────────────────────────────────────
             bo_idx = pat_end_idx + 1
-            while bo_idx < n:
+            while bo_idx < min(pat_end_idx + 30, n):
                 bo_close = closes[bo_idx]
                 if bo_close >= resistance * cfg.BREAKOUT_PIVOT_CLEARANCE:
                     vol_ok  = self._vol_confirmed(df, bo_idx, cfg.BREAKOUT_VOL_MULT)

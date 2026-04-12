@@ -8,6 +8,7 @@ POLE_MIN_GAIN_PCT   = 1.0    # ≥ 100% gain from pole base to pole top
 POLE_MAX_BARS       = 40     # pole forms in ≤ 40 trading days (~8 weeks)
 
 # Flag
+FLAG_MIN_BARS       = 3      # flag needs at least 3 bars to form
 FLAG_MAX_BARS       = 25     # flag consolidation ≤ 25 bars (~5 weeks)
 FLAG_MAX_DEPTH_PCT  = 0.25   # flag pulls back ≤ 25% from pole top
 FLAG_MIN_DEPTH_PCT  = 0.05   # must pull back at least 5%

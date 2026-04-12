@@ -208,23 +208,29 @@ class Simulator:
         reason: str,
         holding_days: int,
     ) -> TradeRecord:
-        shares = rec.shares_full
-        entry  = rec.entry_price
+        # Determine how many shares were actually remaining at final exit
+        if rec.partial_done:
+            partial_shares   = int(rec.shares_full * self.partial_size)
+            remaining_shares = rec.shares_full - partial_shares
+        else:
+            partial_shares   = 0
+            remaining_shares = rec.shares_full
 
-        # PnL: full position exit (partial already factored out of shares)
-        gross_pnl = (exit_price - entry) * shares
-        # Add partial leg if it happened
-        if rec.partial_price is not None:
-            partial_shares = int(shares / (1 - self.partial_size)) - shares
+        entry = rec.entry_price
+
+        # Main (remaining) position P&L
+        gross_pnl = (exit_price - entry) * remaining_shares
+        gross_pnl -= self.commission * remaining_shares * 2
+
+        # Partial leg P&L (already executed earlier)
+        if rec.partial_price is not None and partial_shares > 0:
             gross_pnl += (rec.partial_price - entry) * partial_shares
             gross_pnl -= self.commission * partial_shares * 2
-
-        gross_pnl -= self.commission * shares * 2
 
         rec.exit_date    = pd.Timestamp(exit_date)
         rec.exit_price   = round(exit_price, 2)
         rec.exit_reason  = reason
-        rec.shares_exited = shares
+        rec.shares_exited = remaining_shares
         rec.holding_days  = holding_days
         rec.pnl          = round(gross_pnl, 2)
         rec.pnl_pct      = round((exit_price - entry) / (entry + 1e-9) * 100, 2)

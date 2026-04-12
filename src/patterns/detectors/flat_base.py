@@ -85,10 +85,11 @@ class FlatBase(BasePattern):
                 window_high = h[base_start:base_end + 1].max()
                 window_low  = l[base_start:base_end + 1].min()
 
-                # Early exit: if depth already exceeded, going further back won't help
+                # Depth check: if this window exceeds threshold, try a narrower one
+                # (inner loop goes widest→narrowest, so break would wrongly skip valid narrow windows)
                 depth = (window_high - window_low) / (window_high + 1e-9)
                 if depth > cfg.FLAT_MAX_DEPTH_PCT:
-                    break  # extending window only widens range
+                    continue
 
                 # Tightness check using precomputed 5-bar ranges
                 base_len = base_end - base_start + 1
