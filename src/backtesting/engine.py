@@ -1120,6 +1120,8 @@ class WalkForwardBacktester:
                                 print(f"   🔴 {day.date()} | RISK_OFF regime: No new entries allowed")
                         
                         # Take trades respecting limits
+                        # Signals already sorted by Priority↑ then Score↓ from scanner
+                        MAX_ENTRIES_PER_DAY = 3
                         entered_count = 0
                         skipped_count = 0
                         
@@ -1136,17 +1138,11 @@ class WalkForwardBacktester:
                                 skipped_count += 1
                                 break
 
-                            # Check per-strategy limit
-                            strategy_count = self.strategy_positions.get(strategy, 0)
-                            # Handle both dict and int for compatibility
-                            if isinstance(POSITION_MAX_PER_STRATEGY, dict):
-                                max_for_strategy = POSITION_MAX_PER_STRATEGY.get(strategy, 5)
-                            else:
-                                max_for_strategy = POSITION_MAX_PER_STRATEGY
+                            # Cap new entries per day to top 3 highest-scoring signals
+                            if entered_count >= MAX_ENTRIES_PER_DAY:
+                                break
 
-                            if strategy_count >= max_for_strategy:
-                                skipped_count += 1
-                                continue
+                            strategy_count = self.strategy_positions.get(strategy, 0)
 
                             # Check cooldown for strategies that need it
                             if strategy == "MegaCap_WeeklySlide_Short":
