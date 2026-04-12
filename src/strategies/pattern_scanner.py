@@ -16,7 +16,7 @@ the same logic as other position strategies.
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 import pandas as pd
 
@@ -27,8 +27,215 @@ from src.patterns.signals.engine import SignalEngine
 from src.patterns.config.shared import SWING_K, MAX_HOLDING_DAYS, TRAIL_ATR_MULT
 
 
+# A pattern is "forming" if the structure completed within this many bars
+FORMING_LOOKBACK_BARS = 20   # ~4 trading weeks
+
+# Price is "coiling near pivot" if it is within this % below the pivot level
+FORMING_PROXIMITY_PCT = 0.05  # 5% below pivot
+
+
 # Lazy-import all 6 detectors (avoids circular import at module level)
 def _all_detectors():
+    from src.patterns.detectors.cup_and_handle      import CupAndHandle
+    from src.patterns.detectors.high_tight_flag     import HighTightFlag
+    from src.patterns.detectors.flat_base           import FlatBase
+    from src.patterns.detectors.ascending_triangle  import AscendingTriangle
+    from src.patterns.detectors.double_bottom       import DoubleBottom
+    from src.patterns.detectors.trendline_breakout  import TrendlineBreakout
+    return [
+        CupAndHandle,
+        HighTightFlag,
+        FlatBase,
+        AscendingTriangle,
+        DoubleBottom,
+        TrendlineBreakout,
+    ]
+
+
+class PatternScanner(BaseStrategy):
+    """
+    Live scanner for all 6 classic chart patterns.
+
+    Returns at most one signal per ticker per day — the highest-scoring
+    pattern that fires on the current bar.
+    """
+
+    name        = "Pattern_Scanner"
+    description = "Cup&Handle / HTF / Flat Base / Ascending Triangle / Double Bottom / Trendline BO"
+
+    def __init__(
+        self,
+        equity: float = 100_000,
+        min_quality: float = 60.0,
+        swing_k: int = SWING_K,
+    ):
+        super().__init__()
+        self.equity      = equity
+        self.min_quality = min_quality
+        self.swing_k     = swing_k
+        self._engine     = SignalEngine(equity=equity, min_quality=min_quality)
+        self._detectors  = [D() for D in _all_detectors()]
+
+    def scan_forming(
+        self,
+        ticker: str,
+        df: pd.DataFrame,
+        as_of_date: pd.Timestamp = None,
+    ) -> bool:
+        """
+        Return True if this ticker has an active pattern setup worthy of daily monitoring.
+
+        A ticker qualifies if ANY detector finds either:
+          1. A recent confirmed breakout — within FORMING_LOOKBACK_BARS bars of today.
+             (Pattern just fired; may still offer a valid entry on a pullback or follow-through.)
+          2. A completed structure where price is coiling just below the pivot —
+             within FORMING_PROXIMITY_PCT below pivot_price.
+             (Pattern is ready; breakout could happen any day this week.)
+
+        Called once per week (Monday) to rebuild the watchlist.
+        The daily scan() then checks only watchlist tickers for today's breakout.
+        """
+        if len(df) < 60:
+            return False
+
+        try:
+            df_f    = build_features(df)
+            df_f    = add_swings(df_f, k=self.swing_k)
+            pivots  = get_pivot_list(df_f)
+        except Exception:
+            return False
+
+        n             = len(df_f)
+        current_close = float(df_f.iloc[-1]["close"])
+        cutoff_date   = df_f.index[max(0, n - FORMING_LOOKBACK_BARS)]
+
+        for det in self._detectors:
+            det.symbol = ticker
+            try:
+                patterns = det.detect(df_f, pivots)
+            except Exception:
+                continue
+
+            for p in patterns:
+                # Case 1: Broke out recently — still active / momentum ongoing
+                if p.breakout_date >= cutoff_date:
+                    return True
+
+                # Case 2: Structure completed recently, price is coiling near pivot
+                # (breakout detected by the scanner at some earlier bar, but price may have
+                # reset and is now approaching the pivot again — worth watching)
+                if p.setup_end >= cutoff_date:
+                    gap_to_pivot = (p.pivot_price - current_close) / (p.pivot_price + 1e-9)
+                    if 0 <= gap_to_pivot <= FORMING_PROXIMITY_PCT:
+                        return True
+
+        return False
+
+    def scan(
+        self,
+        ticker: str,
+        df: pd.DataFrame,
+        as_of_date: pd.Timestamp = None,
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Scan one ticker. Returns the best signal dict or None.
+        Only returns a signal if a breakout fires on today's bar (as_of_date).
+        """
+        if len(df) < 60:
+            return None
+
+        try:
+            df_f   = build_features(df)
+            df_f   = add_swings(df_f, k=self.swing_k)
+            pivots = get_pivot_list(df_f)
+        except Exception:
+            return None
+
+        today_idx = len(df_f) - 1
+        today     = df_f.index[today_idx]
+
+        best = None
+        for det in self._detectors:
+            det.symbol = ticker
+            try:
+                patterns = det.detect(df_f, pivots)
+            except Exception:
+                continue
+
+            # Only patterns whose breakout is today (current bar)
+            todays = [p for p in patterns if p.breakout_date == today]
+            if not todays:
+                continue
+
+            signals = self._engine.process(todays, df_f)
+            for sig in signals:
+                if best is None or sig.quality_score > best.quality_score:
+                    best = sig
+
+        if best is None:
+            return None
+
+        # Format as standard signal dict (matches existing pre_buy_check expectations)
+        return {
+            "Ticker":      ticker,
+            "Strategy":    "Pattern_Scanner",
+            "PatternName": best.pattern,           # e.g. "CupAndHandle" — for reporting
+            "Close":       float(df_f.iloc[-1]["close"]),
+            "Entry":       best.entry_price,
+            "StopLoss":    best.stop_loss,
+            "Target":      best.target,
+            "Score":       best.quality_score,
+            "Volume":      float(df_f.iloc[-1]["volume"]),
+            "Date":        str(today.date()),
+            "Priority":    max(1, int(100 - best.quality_score)),
+            "MaxDays":     MAX_HOLDING_DAYS,
+            "PatternMeta": best.pattern_result.meta_json,
+        }
+
+    def get_exit_conditions(
+        self,
+        position: Dict[str, Any],
+        df: pd.DataFrame,
+        current_date: pd.Timestamp,
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Exit conditions:
+        - Hard stop: close ≤ stop_loss
+        - ATR trail: stop ratchets up with 2×ATR below recent close
+        - Max holding days: 40
+        """
+        if df.empty:
+            return None
+
+        try:
+            df_f = build_features(df)
+        except Exception:
+            df_f = df
+
+        entry_date   = pd.Timestamp(position.get("entry_date", current_date))
+        entry_price  = float(position.get("entry_price", 0))
+        stop_loss    = float(position.get("stop_loss", 0))
+        holding_days = (current_date - entry_date).days
+
+        current_close = float(df_f.iloc[-1]["close"])
+        atr           = float(df_f.iloc[-1].get("atr_14", 0))
+
+        # Max holding days
+        if holding_days >= MAX_HOLDING_DAYS:
+            return {"reason": "MAX_DAYS", "exit_price": current_close}
+
+        # Hard stop
+        if current_close <= stop_loss:
+            return {"reason": "STOP_LOSS", "exit_price": min(current_close, stop_loss)}
+
+        # Tighten stop via ATR trail (ratchet only up)
+        if atr > 0:
+            atr_trail = current_close - TRAIL_ATR_MULT * atr
+            if atr_trail > stop_loss:
+                position["stop_loss"] = round(atr_trail, 2)
+
+        return None
+
     from src.patterns.detectors.cup_and_handle      import CupAndHandle
     from src.patterns.detectors.high_tight_flag     import HighTightFlag
     from src.patterns.detectors.flat_base           import FlatBase

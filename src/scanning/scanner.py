@@ -414,10 +414,72 @@ def _get_active_registry_strategies():
 # MAIN SCANNER FUNCTION
 # =============================================================================
 
-def run_scan_as_of(as_of_date, tickers, rs_bought_tracker=None):
+def get_pattern_watchlist(tickers: list, as_of_date: pd.Timestamp) -> list:
+    """
+    Return the list of tickers that have an active pattern setup this week.
+
+    Rebuilds the watchlist once per ISO week and saves it to
+    data/pattern_watchlist.json so it persists across daily production runs.
+    On the first call of a new week it scans all tickers (slow, ~5-10 min).
+    Every subsequent call that week reads from the cached file (fast).
+
+    Used by run_scan_as_of() and production scanners to implement two-phase
+    pattern scanning: full scan weekly, daily scan on watchlist only.
+    """
+    import json
+    from pathlib import Path
+
+    watchlist_file = Path("data/pattern_watchlist.json")
+    current_week   = as_of_date.isocalendar().week
+    current_year   = as_of_date.isocalendar().year
+
+    # Return cached watchlist if it was built this week
+    if watchlist_file.exists():
+        try:
+            cached = json.loads(watchlist_file.read_text())
+            if cached.get("week") == current_week and cached.get("year") == current_year:
+                return cached["tickers"]
+        except Exception:
+            pass  # Corrupt cache — rebuild below
+
+    # Build fresh watchlist by scanning all tickers for forming patterns
+    print(f"   📋 Rebuilding pattern watchlist for week {current_week} ({as_of_date.date()})...")
+    from src.strategies.pattern_scanner import PatternScanner
+    ps = PatternScanner()
+    watchlist = []
+
+    for ticker in tickers:
+        try:
+            df = get_historical_data(ticker)
+            if df.empty or len(df) < 100:
+                continue
+            df = df[df.index <= as_of_date]
+            if ps.scan_forming(ticker, df, as_of_date):
+                watchlist.append(ticker)
+        except Exception:
+            continue
+
+    # Persist to disk for subsequent daily calls this week
+    watchlist_file.parent.mkdir(parents=True, exist_ok=True)
+    watchlist_file.write_text(json.dumps({
+        "week":       current_week,
+        "year":       current_year,
+        "built_date": str(as_of_date.date()),
+        "tickers":    watchlist,
+    }, indent=2))
+
+    print(f"   📋 Pattern watchlist: {len(watchlist)} tickers (saved to {watchlist_file})")
+    return watchlist
+
+
+def run_scan_as_of(as_of_date, tickers, rs_bought_tracker=None, pattern_tickers=None):
     """
     Walk-forward scanner for long-term position strategies.
     Returns signals with priority ordering for deduplication.
+
+    pattern_tickers: optional pre-filtered list of tickers to scan for patterns.
+      When provided (two-phase mode), only those tickers run through PatternScanner.
+      When None, all tickers are scanned (original behaviour).
     """
     as_of_date = pd.to_datetime(as_of_date)
 
@@ -1719,13 +1781,16 @@ def run_scan_as_of(as_of_date, tickers, rs_bought_tracker=None):
             pass
 
     # ── Pattern Scanner (Danzanger 6-pattern system) ──────────────────────────
-    # Runs after all other strategies. df is already sliced to as_of_date above,
-    # so each ticker's detect() call has no look-ahead into future bars.
+    # Two-phase scanning for performance:
+    #   Phase 1 (weekly): caller rebuilds pattern_tickers watchlist via get_pattern_watchlist()
+    #   Phase 2 (daily):  only tickers in the watchlist are scanned here
+    # When pattern_tickers is None (e.g. first run), all tickers are scanned as fallback.
     if POSITION_MAX_PER_STRATEGY.get("Pattern_Scanner", 0) > 0:
+        tickers_for_pattern = pattern_tickers if pattern_tickers is not None else tickers
         try:
             from src.strategies.pattern_scanner import PatternScanner
             _ps = PatternScanner()
-            for ticker in tickers:
+            for ticker in tickers_for_pattern:
                 try:
                     df_ps = get_historical_data(ticker)
                     if df_ps.empty:

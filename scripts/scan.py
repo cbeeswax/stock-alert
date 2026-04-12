@@ -208,9 +208,16 @@ def run_scanner(
 
     tickers = pd.read_csv(sp500_file)["Symbol"].tolist()
 
-    # Run scanner
+    # Get pattern watchlist (rebuilt weekly, cached daily) for two-phase scanning
     today = pd.Timestamp.today()
-    signals = run_scan_as_of(today, tickers)
+    if POSITION_MAX_PER_STRATEGY.get("Pattern_Scanner", 0) > 0:
+        from src.scanning.scanner import get_pattern_watchlist
+        pattern_tickers = get_pattern_watchlist(tickers, today)
+    else:
+        pattern_tickers = None
+
+    # Run scanner
+    signals = run_scan_as_of(today, tickers, pattern_tickers=pattern_tickers)
 
     print(f"\n✅ Scanner found {len(signals)} raw signals")
 

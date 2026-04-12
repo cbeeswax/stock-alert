@@ -135,10 +135,17 @@ class WalkForwardBacktester:
         # Cooldown tracker for strategies that need symbol-level cooldowns
         # Structure: {strategy: {ticker: exit_date}}
         self.cooldown_tracker = {}
-        
+
         # Current market regime (RiskOn/Neutral/RiskOff)
         self.current_position_regime = PositionRegime.NEUTRAL  # Default to neutral
         self.regime_params = get_regime_params(PositionRegime.NEUTRAL)
+
+        # ── Two-phase pattern scanning ─────────────────────────────────────────
+        # Phase 1 (weekly, Monday): scan all 500 tickers → build watchlist
+        # Phase 2 (daily, Tue-Fri): scan only watchlist tickers for today's breakout
+        # This cuts pattern scan from ~500 tickers/day to ~50, a ~10x speedup.
+        self._pattern_watchlist: set = set()  # tickers with active pattern setups
+        self._watchlist_iso_week: int = -1    # ISO week when watchlist was last built
 
     def _delete_backtest_tracker_files(self, tracker_file):
         """Delete backtest tracker files at start for clean slate.
@@ -154,6 +161,33 @@ class WalkForwardBacktester:
         except Exception as e:
             print(f"⚠️  Could not delete tracker file {tracker_file}: {e}")
 
+    def _rebuild_pattern_watchlist(self, as_of_date: pd.Timestamp) -> None:
+        """
+        Phase 1 of two-phase pattern scanning: scan ALL tickers to find which
+        ones have an active pattern setup (forming or recently broken out).
+
+        Called once per week (first trading day of each ISO week).
+        The resulting watchlist is used by Phase 2 (daily) to limit pattern
+        scanning to only relevant tickers instead of the full 500.
+        """
+        from src.strategies.pattern_scanner import PatternScanner
+        ps = PatternScanner()
+        new_watchlist = set()
+
+        for ticker in self.tickers:
+            try:
+                df = get_historical_data(ticker)
+                if df.empty or len(df) < 100:
+                    continue
+                df = df[df.index <= as_of_date]
+                if ps.scan_forming(ticker, df, as_of_date):
+                    new_watchlist.add(ticker)
+            except Exception:
+                continue
+
+        self._pattern_watchlist  = new_watchlist
+        self._watchlist_iso_week = as_of_date.isocalendar().week
+        print(f"   📋 Pattern watchlist rebuilt ({as_of_date.date()}): {len(new_watchlist)} tickers")
     def _update_market_regime(self, as_of_date):
         """
         Update market regime based on QQQ price and moving averages.
@@ -1079,8 +1113,20 @@ class WalkForwardBacktester:
                         self.position_tracker.remove_position(ticker)
                         self.strategy_positions[strategy] = max(0, self.strategy_positions.get(strategy, 0) - 1)
 
+            # ── Two-phase pattern scanning ────────────────────────────────────
+            # Rebuild the pattern watchlist at the start of each ISO week.
+            # For all other days, reuse the existing watchlist so we only
+            # scan the ~50 tickers that have active setups, not all 500.
+            if POSITION_MAX_PER_STRATEGY.get("Pattern_Scanner", 0) > 0:
+                current_iso_week = day.isocalendar().week
+                if current_iso_week != self._watchlist_iso_week:
+                    self._rebuild_pattern_watchlist(day)
+
+            # Pass watchlist to scanner so Pattern_Scanner only checks relevant tickers
+            pattern_tickers = list(self._pattern_watchlist) if self._pattern_watchlist else None
+
             # Run scanner for new entries (pass persistent tracker for backtest)
-            signals = run_scan_as_of(day, self.tickers, rs_bought_tracker=self.rs_bought_tracker)
+            signals = run_scan_as_of(day, self.tickers, rs_bought_tracker=self.rs_bought_tracker, pattern_tickers=pattern_tickers)
 
             if signals:
                 # Log detailed signal information

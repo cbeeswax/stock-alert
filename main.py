@@ -235,9 +235,16 @@ if __name__ == "__main__":
     # Load S&P 500 tickers
     tickers = pd.read_csv("data/sp500_constituents.csv")["Symbol"].tolist()
 
-    # Run scanner as of today
+    # Get pattern watchlist (rebuilt weekly, cached daily) for two-phase scanning
     today = pd.Timestamp.today()
-    signals = run_scan_as_of(today, tickers, rs_bought_tracker=rs_bought_tracker)
+    if POSITION_MAX_PER_STRATEGY.get("Pattern_Scanner", 0) > 0:
+        from src.scanning.scanner import get_pattern_watchlist
+        pattern_tickers = get_pattern_watchlist(tickers, today)
+    else:
+        pattern_tickers = None
+
+    # Run scanner as of today
+    signals = run_scan_as_of(today, tickers, rs_bought_tracker=rs_bought_tracker, pattern_tickers=pattern_tickers)
 
     print(f"\n✅ Scanner found {len(signals)} raw signals")
 
