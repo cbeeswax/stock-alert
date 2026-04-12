@@ -102,6 +102,12 @@ def register_builtin_strategies() -> None:
     except ImportError:
         pass
 
+    try:
+        from .pattern_scanner import PatternScanner
+        StrategyRegistry.register("Pattern_Scanner", PatternScanner)
+    except ImportError:
+        pass
+
 
 # Auto-register strategies on import
 register_builtin_strategies()

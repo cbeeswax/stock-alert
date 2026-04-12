@@ -26,6 +26,7 @@ POSITION_MAX_TOTAL = 20            # Max 20 total positions
 POSITION_MAX_PER_STRATEGY = {
     "GapReversal_Position": 10,               # ACTIVE: 46.8% WR, 0.58R, +$457k net (backtested)
     "RelativeStrength_Ranker_Position": 10,   # ACTIVE: 48.8% WR, 2.16R, +$620k net (backtested)
+    "Pattern_Scanner": 0,                     # DISABLED: pending backtest validation
     "Industrials_Ranker_Position": 0,         # DISABLED: unvalidated
     "Healthcare_Ranker_Position": 0,          # DISABLED: unvalidated
     "Energy_Ranker_Position": 0,              # DISABLED: unvalidated
