@@ -135,8 +135,11 @@ def main():
         print(f"🔎 {det_name}…")
         t0 = time.time()
         pattern_records = []
+        symbols = list(enriched.keys())
+        total_symbols = len(symbols)
 
-        for symbol, df in enriched.items():
+        for sym_idx, symbol in enumerate(symbols, 1):
+            df = enriched[symbol]
             sliced = df.loc[(df.index >= start_dt) & (df.index <= end_dt)]
             if len(sliced) < 60:
                 continue
@@ -152,6 +155,13 @@ def main():
             signals = engine.process(patterns, sliced)
             records = sim.run(signals, {symbol: sliced})
             pattern_records.extend(records)
+
+            if sym_idx % 50 == 0 or sym_idx == total_symbols:
+                elapsed = time.time() - t0
+                print(
+                    f"   [{sym_idx:>4}/{total_symbols}] "
+                    f"{elapsed:>5.1f}s  {len(pattern_records)} signals so far"
+                )
 
         elapsed = time.time() - t0
         stats = compute_metrics(pattern_records)
