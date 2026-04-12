@@ -244,10 +244,18 @@ if __name__ == "__main__":
     # --------------------------------------------------
     # Step 4: Pre-buy Check (Format & Deduplicate)
     # --------------------------------------------------
-    # RISK_OFF = no new entries (matches backtester exactly)
+    # RISK_OFF = no new entries for most strategies.
+    # Pattern_Scanner bypasses regime — patterns work in any market condition.
     if not allow_new_entries:
-        print("\n🔴 RISK_OFF regime — skipping new entries, exits only.")
-        trade_ready = pd.DataFrame()
+        print("\n🔴 RISK_OFF regime — skipping new entries (except Pattern_Scanner).")
+        # Allow Pattern_Scanner signals through even in RISK_OFF
+        pattern_signals = [s for s in (signals or []) if s.get("Strategy") == "Pattern_Scanner"]
+        if pattern_signals:
+            trade_ready = pre_buy_check(pattern_signals, benchmark=REGIME_INDEX, as_of_date=None)
+            if not trade_ready.empty:
+                trade_ready = filter_trades_by_position(trade_ready, position_tracker, as_of_date=None)
+        else:
+            trade_ready = pd.DataFrame()
     elif signals:
         trade_ready = pre_buy_check(signals, benchmark=REGIME_INDEX, as_of_date=None)
 
@@ -260,14 +268,15 @@ if __name__ == "__main__":
             current_total = position_tracker.get_position_count()
             available_slots = max(0, POSITION_MAX_TOTAL - current_total)
 
-            # Further filter by per-strategy limits
+            # Further filter by per-strategy limits (Pattern_Scanner has no per-strategy limit)
             filtered_trades = []
             for _, trade in trade_ready.iterrows():
                 strategy = trade["Strategy"]
                 current_count = strategy_counts.get(strategy, 0)
                 max_for_strategy = POSITION_MAX_PER_STRATEGY.get(strategy, 5)
 
-                if current_count < max_for_strategy and len(filtered_trades) < available_slots:
+                passes_limit = (strategy == "Pattern_Scanner") or (current_count < max_for_strategy)
+                if passes_limit and len(filtered_trades) < available_slots:
                     filtered_trades.append(trade)
                     strategy_counts[strategy] = current_count + 1
 

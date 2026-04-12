@@ -230,14 +230,15 @@ def run_scanner(
             current_total = position_tracker.get_position_count()
             available_slots = max(0, POSITION_MAX_TOTAL - current_total)
 
-            # Filter by per-strategy limits
+            # Filter by per-strategy limits (Pattern_Scanner has no per-strategy limit)
             filtered_trades = []
             for _, trade in trade_ready.iterrows():
                 strategy = trade["Strategy"]
                 current_count = strategy_counts.get(strategy, 0)
                 max_for_strategy = POSITION_MAX_PER_STRATEGY.get(strategy, 5)
 
-                if current_count < max_for_strategy and len(filtered_trades) < available_slots:
+                passes_limit = (strategy == "Pattern_Scanner") or (current_count < max_for_strategy)
+                if passes_limit and len(filtered_trades) < available_slots:
                     filtered_trades.append(trade)
                     strategy_counts[strategy] = current_count + 1
 
@@ -443,10 +444,21 @@ Examples:
     print("🏛️ STEP 3: RUN POSITION SCANNER")
     print("=" * 80)
 
-    # RISK_OFF = no new entries (matches backtester exactly)
+    # RISK_OFF = no new entries for most strategies.
+    # Pattern_Scanner bypasses regime — patterns work in any market condition.
     if not allow_new_entries:
-        print("\n🔴 RISK_OFF regime — skipping new entries, exits only.")
-        trade_ready = pd.DataFrame()
+        print("\n🔴 RISK_OFF regime — skipping new entries (except Pattern_Scanner).")
+        # Allow Pattern_Scanner signals through even in RISK_OFF
+        sp500_file = project_root / "data" / "sp500_constituents.csv"
+        _tickers = pd.read_csv(sp500_file)["Symbol"].tolist() if sp500_file.exists() else []
+        all_signals = run_scan_as_of(pd.Timestamp.today(), _tickers)
+        pattern_signals = [s for s in all_signals if s.get("Strategy") == "Pattern_Scanner"]
+        if pattern_signals:
+            trade_ready = pre_buy_check(pattern_signals, benchmark=REGIME_INDEX, as_of_date=None)
+            if not trade_ready.empty:
+                trade_ready = filter_trades_by_position(trade_ready, position_tracker, as_of_date=None)
+        else:
+            trade_ready = pd.DataFrame()
     else:
         trade_ready = run_scanner(position_tracker, allow_new_entries, strategy_counts)
     
