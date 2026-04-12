@@ -751,10 +751,7 @@ class WalkForwardBacktester:
         print(f"📅 Scan frequency: {self.scan_frequency}")
         print(f"💰 Initial capital: ${self.initial_capital:,}")
         print(f"⚠️  Risk per trade: {POSITION_RISK_PER_TRADE_PCT}%")
-        if isinstance(POSITION_MAX_PER_STRATEGY, dict):
-            print(f"📊 Max positions: {POSITION_MAX_TOTAL} total, per-strategy limits (3-8)")
-        else:
-            print(f"📊 Max positions: {POSITION_MAX_TOTAL} total, {POSITION_MAX_PER_STRATEGY} per strategy")
+        print(f"📊 Max positions: {POSITION_MAX_TOTAL} total (no per-strategy limit)")
 
         all_trades = []
         scan_dates = pd.date_range(self.start_date, end_date, freq=self.scan_frequency)
@@ -822,16 +819,7 @@ class WalkForwardBacktester:
                             if len(self.position_tracker.positions) >= POSITION_MAX_TOTAL:
                                 break
 
-                            # Check per-strategy limit
                             strategy_count = self.strategy_positions.get(strategy, 0)
-                            # Handle both dict and int for compatibility
-                            if isinstance(POSITION_MAX_PER_STRATEGY, dict):
-                                max_for_strategy = POSITION_MAX_PER_STRATEGY.get(strategy, 5)
-                            else:
-                                max_for_strategy = POSITION_MAX_PER_STRATEGY
-
-                            if strategy_count >= max_for_strategy:
-                                continue
 
                             # Check cooldown for strategies that need it
                             if strategy == "MegaCap_WeeklySlide_Short":
@@ -1062,11 +1050,7 @@ if __name__ == "__main__":
 
     print(f"⚙️  CONFIG:")
     print(f"   Risk per trade: {POSITION_RISK_PER_TRADE_PCT}%")
-    if isinstance(POSITION_MAX_PER_STRATEGY, dict):
-        print(f"   Max positions: {POSITION_MAX_TOTAL} total")
-        print(f"   Per-strategy limits: RS_Ranker/High52=8, BigBase=6, EMA_Cross=4, Others=3")
-    else:
-        print(f"   Max positions: {POSITION_MAX_TOTAL} total, {POSITION_MAX_PER_STRATEGY} per strategy")
+    print(f"   Max positions: {POSITION_MAX_TOTAL} total (no per-strategy limit)")
     print(f"   Scan frequency: {args.scan_frequency}")
     print(f"   Pyramiding: {'Enabled' if POSITION_PYRAMID_ENABLED else 'Disabled'}\n")
 
