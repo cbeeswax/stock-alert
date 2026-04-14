@@ -108,6 +108,19 @@ python scripts/download_data.py --indices QQQ,SPY,DIA
 python scripts/download_data.py --tickers AAPL --start-date 2020-01-01
 ```
 
+#### Analyze Why a Stock Rallied or Fell
+```bash
+# Event file with ticker/start_date/end_date/move_type columns
+python scripts/analyze_stock_moves.py --input data/stock_move_events.csv
+
+# Save outputs to a custom folder
+python scripts/analyze_stock_moves.py --input data/stock_move_events.csv --output-dir reports/stock_moves
+```
+
+The analyzer saves:
+- `*_summary.csv`: one row per event window with start/end/delta technicals
+- `*_daily.csv`: daily OHLCV plus technical indicators across each event window
+
 ## Project Structure
 
 ```
