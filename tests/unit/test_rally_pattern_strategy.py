@@ -133,6 +133,25 @@ def _exit_row(date: str, ticker: str, close: float = 95.0) -> dict:
     return row
 
 
+def _raw_ohlcv_rows(ticker: str, start: str, periods: int, close_start: float, step: float) -> list[dict]:
+    dates = pd.date_range(start, periods=periods, freq="B")
+    rows = []
+    for index, date in enumerate(dates):
+        close = close_start + (index * step)
+        rows.append(
+            {
+                "ticker": ticker,
+                "Date": date,
+                "open": close - 0.5,
+                "high": close + 1.0,
+                "low": close - 1.0,
+                "close": close,
+                "volume": 1_000_000 + (index * 10_000),
+            }
+        )
+    return rows
+
+
 def test_score_row_matches_bucket_spec():
     strategy = RallyPatternStrategy()
 
@@ -158,9 +177,56 @@ def test_score_dataframe_uses_neutral_defaults_for_missing_fields():
 
     assert scored.loc[0, "pct_from_20d_high"] == -1.0
     assert scored.loc[0, "williams_r_14"] == -100.0
-    assert scored.loc[0, "score"] == 0.0
+    assert scored.loc[0, "flow_points"] == 4.0
+    assert scored.loc[0, "score"] == 4.0
     assert scored.loc[0, "label"] == "D"
     assert scored.loc[0, "pattern_stage"] == "non_signal"
+
+
+def test_build_feature_dataframe_computes_required_technicals_from_raw_prices():
+    strategy = RallyPatternStrategy()
+    raw_df = pd.DataFrame(
+        _raw_ohlcv_rows("AAA", "2024-01-02", 60, 100.0, 1.0)
+        + _raw_ohlcv_rows("SPY", "2024-01-02", 60, 400.0, 0.5)
+        + _raw_ohlcv_rows("QQQ", "2024-01-02", 60, 300.0, 0.4)
+    )
+
+    features = strategy.build_feature_dataframe(raw_df)
+    aaa_last = features[features["ticker"] == "AAA"].sort_values("Date").iloc[-1]
+    aaa_only = raw_df[raw_df["ticker"] == "AAA"].sort_values("Date").reset_index(drop=True)
+    last_close = aaa_only["close"].iloc[-1]
+    sma_10 = aaa_only["close"].rolling(10, min_periods=1).mean().iloc[-1]
+    ema_20 = aaa_only["close"].ewm(span=20, adjust=False).mean().iloc[-1]
+    avg_vol_20 = aaa_only["volume"].rolling(20, min_periods=1).mean().iloc[-1]
+    roll_high_20 = aaa_only["high"].rolling(20, min_periods=1).max().iloc[-1]
+
+    assert abs(aaa_last["close_vs_sma_10"] - ((last_close - sma_10) / sma_10)) < 1e-9
+    assert abs(aaa_last["close_vs_ema_20"] - ((last_close - ema_20) / ema_20)) < 1e-9
+    assert abs(aaa_last["volume_ratio_20"] - (aaa_only["volume"].iloc[-1] / avg_vol_20)) < 1e-9
+    assert abs(aaa_last["pct_from_20d_high"] - ((last_close - roll_high_20) / roll_high_20)) < 1e-9
+    assert "price_to_spy" in features.columns
+    assert "price_to_qqq" in features.columns
+    assert "rs_spy_20" in features.columns
+    assert "rs_qqq_50" in features.columns
+
+
+def test_score_dataframe_auto_builds_features_from_raw_prices():
+    strategy = RallyPatternStrategy()
+    raw_df = pd.DataFrame(
+        _raw_ohlcv_rows("AAA", "2024-01-02", 60, 100.0, 1.0)
+        + _raw_ohlcv_rows("SPY", "2024-01-02", 60, 400.0, 0.5)
+        + _raw_ohlcv_rows("QQQ", "2024-01-02", 60, 300.0, 0.4)
+    )
+
+    scored = strategy.score_dataframe(raw_df)
+    aaa_scored = scored[scored["ticker"] == "AAA"].sort_values("Date").iloc[-1]
+
+    assert "trend_points" in scored.columns
+    assert "score" in scored.columns
+    assert "close_vs_sma_20" in scored.columns
+    assert "macd_hist" in scored.columns
+    assert "rs_spy_20" in scored.columns
+    assert aaa_scored["score"] >= 0
 
 
 def test_generate_entries_and_exits_follow_exact_rules():
@@ -221,3 +287,22 @@ def test_backtest_enforces_cooldown_but_allows_score_75_override():
     assert not daily_holdings.empty
     assert not equity_curve.empty
     assert equity_curve["num_positions"].max() == 1
+
+
+def test_backtest_trade_start_date_blocks_warmup_entries():
+    strategy = RallyPatternStrategy()
+    dates = pd.date_range("2022-01-03", periods=8, freq="B")
+    rows = [_strong_row(str(date.date()), "AAA", 100.0 + i) for i, date in enumerate(dates)]
+
+    results = strategy.backtest(
+        pd.DataFrame(rows),
+        max_positions=1,
+        initial_capital=100_000.0,
+        start_date="2022-01-03",
+        trade_start_date="2022-02-01",
+    )
+
+    assert results["trades"].empty
+    assert results["daily_holdings"].empty
+    assert not results["equity_curve"].empty
+    assert results["equity_curve"]["num_positions"].eq(0).all()

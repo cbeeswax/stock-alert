@@ -12,6 +12,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+import numpy as np
 import pandas as pd
 
 
@@ -29,7 +30,7 @@ class _BacktestPosition:
 
 
 class RallyPatternStrategy:
-    """Cross-sectional rally-ranking strategy operating on precomputed features."""
+    """Cross-sectional rally-ranking strategy operating on precomputed or raw features."""
 
     COLUMN_DEFAULTS: dict[str, float] = {
         "close": 0.0,
@@ -75,6 +76,8 @@ class RallyPatternStrategy:
         "rs_qqq_20": 0.0,
         "rs_qqq_50": 0.0,
     }
+    FEATURE_COLUMNS: tuple[str, ...] = tuple(COLUMN_DEFAULTS.keys())
+    RAW_PRICE_COLUMNS: tuple[str, ...] = ("open", "high", "low", "close", "volume")
 
     def __init__(
         self,
@@ -90,6 +93,40 @@ class RallyPatternStrategy:
         self.use_time_stop = use_time_stop
         self.reentry_cooldown_days = reentry_cooldown_days
         self.time_stop_days = time_stop_days
+
+    def build_feature_dataframe(
+        self,
+        df: pd.DataFrame,
+        *,
+        spy_df: pd.DataFrame | None = None,
+        qqq_df: pd.DataFrame | None = None,
+    ) -> pd.DataFrame:
+        """
+        Build the full feature set from raw OHLCV input.
+
+        Input can be a multi-ticker frame. If `spy_df` / `qqq_df` are not passed,
+        SPY/QQQ rows will be taken from the same input when available.
+        """
+        working = self._standardize_dataframe(df)
+        self._require_columns(working, ("Date", "ticker", *self.RAW_PRICE_COLUMNS))
+        working = self._coerce_numeric_columns(working, self.RAW_PRICE_COLUMNS)
+
+        spy_series = self._resolve_benchmark_close(working, "SPY", spy_df)
+        qqq_series = self._resolve_benchmark_close(working, "QQQ", qqq_df)
+
+        feature_frames: list[pd.DataFrame] = []
+        for _, ticker_df in working.groupby("ticker", sort=False):
+            feature_frames.append(
+                self._build_single_ticker_features(
+                    ticker_df.copy(),
+                    spy_close=spy_series,
+                    qqq_close=qqq_series,
+                )
+            )
+
+        if not feature_frames:
+            return working.copy()
+        return pd.concat(feature_frames, ignore_index=True)
 
     def score_row(self, row: pd.Series) -> dict[str, Any]:
         """Score a single ticker-date row using the exact bucket rules."""
@@ -239,7 +276,14 @@ class RallyPatternStrategy:
 
     def score_dataframe(self, df: pd.DataFrame) -> pd.DataFrame:
         """Return a scored DataFrame with debug bucket columns."""
-        working = self._prepare_dataframe(df)
+        working = self._standardize_dataframe(df)
+        if not self._has_feature_columns(working):
+            if self._has_raw_price_columns(working):
+                working = self.build_feature_dataframe(working)
+            else:
+                working = self._fill_feature_defaults(working)
+        else:
+            working = self._fill_feature_defaults(working)
         scored = working.apply(self.score_row, axis=1, result_type="expand")
         return pd.concat([working, scored], axis=1)
 
@@ -298,6 +342,9 @@ class RallyPatternStrategy:
         df: pd.DataFrame,
         max_positions: int = 5,
         initial_capital: float = 100_000.0,
+        start_date: str | pd.Timestamp | None = None,
+        end_date: str | pd.Timestamp | None = None,
+        trade_start_date: str | pd.Timestamp | None = None,
     ) -> dict[str, pd.DataFrame]:
         """
         Run a no-lookahead daily backtest.
@@ -306,9 +353,14 @@ class RallyPatternStrategy:
         executed at that close, and new positions participate from the next bar.
         """
         scored = self._ensure_scored(df).copy()
+        if start_date is not None:
+            scored = scored[scored["Date"] >= pd.Timestamp(start_date)].copy()
+        if end_date is not None:
+            scored = scored[scored["Date"] <= pd.Timestamp(end_date)].copy()
         scored["entry_signal"] = self.generate_entries(scored)
         scored["exit_signal"] = self.generate_exits(scored)
         scored = scored.sort_values(["Date", "ticker"]).reset_index(drop=True)
+        trade_start_ts = pd.Timestamp(trade_start_date) if trade_start_date is not None else None
 
         positions: dict[str, _BacktestPosition] = {}
         last_exit_date_index: dict[str, int] = {}
@@ -369,6 +421,9 @@ class RallyPatternStrategy:
 
             ranked_candidates = self.rank_candidates(day_df)
             available_slots = max_positions - len(positions)
+            if trade_start_ts is not None and current_date < trade_start_ts:
+                ranked_candidates = ranked_candidates.iloc[0:0]
+
             if available_slots > 0 and not ranked_candidates.empty:
                 total_equity = cash + sum(
                     positions[ticker].shares * float(day_rows[ticker]["close"])
@@ -465,6 +520,14 @@ class RallyPatternStrategy:
         }
 
     def _prepare_dataframe(self, df: pd.DataFrame) -> pd.DataFrame:
+        return self._fill_feature_defaults(self._standardize_dataframe(df))
+
+    def _ensure_scored(self, df: pd.DataFrame) -> pd.DataFrame:
+        if {"score", "trend_points", "penalty", "pattern_stage", "label"}.issubset(df.columns):
+            return self._prepare_dataframe(df)
+        return self.score_dataframe(df)
+
+    def _standardize_dataframe(self, df: pd.DataFrame) -> pd.DataFrame:
         if df.empty:
             return df.copy()
 
@@ -490,18 +553,237 @@ class RallyPatternStrategy:
         working["Date"] = pd.to_datetime(working["Date"], errors="coerce")
         working = working[working["Date"].notna()].copy()
         working["ticker"] = working["ticker"].astype(str).str.upper()
+        return working.sort_values(["ticker", "Date"]).reset_index(drop=True)
 
+    def _fill_feature_defaults(self, df: pd.DataFrame) -> pd.DataFrame:
+        working = df.copy()
         for column, default_value in self.COLUMN_DEFAULTS.items():
             if column not in working.columns:
                 working[column] = default_value
             working[column] = pd.to_numeric(working[column], errors="coerce").fillna(default_value)
-
         return working.sort_values(["ticker", "Date"]).reset_index(drop=True)
 
-    def _ensure_scored(self, df: pd.DataFrame) -> pd.DataFrame:
-        if {"score", "trend_points", "penalty", "pattern_stage", "label"}.issubset(df.columns):
-            return self._prepare_dataframe(df)
-        return self.score_dataframe(df)
+    def _has_feature_columns(self, df: pd.DataFrame) -> bool:
+        return all(column in df.columns for column in self.FEATURE_COLUMNS)
+
+    def _has_raw_price_columns(self, df: pd.DataFrame) -> bool:
+        return all(column in df.columns for column in self.RAW_PRICE_COLUMNS)
+
+    def _require_columns(self, df: pd.DataFrame, columns: tuple[str, ...]) -> None:
+        missing = [column for column in columns if column not in df.columns]
+        if missing:
+            raise ValueError(f"Missing required columns: {missing}")
+
+    def _coerce_numeric_columns(self, df: pd.DataFrame, columns: tuple[str, ...]) -> pd.DataFrame:
+        working = df.copy()
+        for column in columns:
+            working[column] = pd.to_numeric(working[column], errors="coerce")
+        return working
+
+    def _resolve_benchmark_close(
+        self,
+        working: pd.DataFrame,
+        benchmark_ticker: str,
+        benchmark_df: pd.DataFrame | None,
+    ) -> pd.Series | None:
+        if benchmark_df is not None:
+            benchmark = self._standardize_dataframe(benchmark_df)
+            self._require_columns(benchmark, ("Date", "ticker", "close"))
+            benchmark = self._coerce_numeric_columns(benchmark, ("close",))
+            benchmark = benchmark[benchmark["ticker"] == benchmark_ticker]
+            if benchmark.empty:
+                return None
+            return benchmark.set_index("Date")["close"].sort_index()
+
+        embedded = working[working["ticker"] == benchmark_ticker]
+        if embedded.empty or "close" not in embedded.columns:
+            return None
+        embedded = self._coerce_numeric_columns(embedded, ("close",))
+        return embedded.set_index("Date")["close"].sort_index()
+
+    def _build_single_ticker_features(
+        self,
+        ticker_df: pd.DataFrame,
+        *,
+        spy_close: pd.Series | None,
+        qqq_close: pd.Series | None,
+    ) -> pd.DataFrame:
+        ticker_df = ticker_df.sort_values("Date").reset_index(drop=True)
+        ticker_df = self._coerce_numeric_columns(ticker_df, self.RAW_PRICE_COLUMNS)
+
+        close = ticker_df["close"]
+        open_ = ticker_df["open"]
+        high = ticker_df["high"]
+        low = ticker_df["low"]
+        volume = ticker_df["volume"]
+        typical_price = (high + low + close) / 3.0
+
+        ticker_df["avg_vol_20"] = volume.rolling(20, min_periods=1).mean()
+        ticker_df["avg_vol_50"] = volume.rolling(50, min_periods=1).mean()
+
+        for period in (10, 20, 50):
+            sma_series = close.rolling(period, min_periods=1).mean()
+            ema_series = close.ewm(span=period, adjust=False).mean()
+            ticker_df[f"sma_{period}"] = sma_series
+            ticker_df[f"ema_{period}"] = ema_series
+            ticker_df[f"close_vs_sma_{period}"] = self._safe_divide(close - sma_series, sma_series, 0.0)
+            ticker_df[f"close_vs_ema_{period}"] = self._safe_divide(close - ema_series, ema_series, 0.0)
+
+        ticker_df["trend_stack_bullish"] = (
+            (close > ticker_df["ema_10"])
+            & (ticker_df["ema_10"] > ticker_df["ema_20"])
+            & (ticker_df["ema_20"] > ticker_df["ema_50"])
+        ).astype(int)
+        ticker_df["trend_stack_bearish"] = (
+            (close < ticker_df["ema_10"])
+            & (ticker_df["ema_10"] < ticker_df["ema_20"])
+            & (ticker_df["ema_20"] < ticker_df["ema_50"])
+        ).astype(int)
+
+        ticker_df["roll_high_20"] = high.rolling(20, min_periods=1).max()
+        ticker_df["roll_low_20"] = low.rolling(20, min_periods=1).min()
+        ticker_df["pct_from_20d_high"] = self._safe_divide(
+            close - ticker_df["roll_high_20"],
+            ticker_df["roll_high_20"],
+            0.0,
+        )
+        ticker_df["pct_from_20d_low"] = self._safe_divide(
+            close - ticker_df["roll_low_20"],
+            ticker_df["roll_low_20"],
+            0.0,
+        )
+
+        ticker_df["donchian_high_20"] = high.rolling(20, min_periods=1).max()
+        ticker_df["donchian_low_20"] = low.rolling(20, min_periods=1).min()
+        ticker_df["donchian_pos_20"] = self._safe_divide(
+            close - ticker_df["donchian_low_20"],
+            ticker_df["donchian_high_20"] - ticker_df["donchian_low_20"],
+            0.5,
+        )
+
+        ticker_df["bb_mid_20"] = close.rolling(20, min_periods=1).mean()
+        bb_std_20 = close.rolling(20, min_periods=1).std()
+        ticker_df["bb_upper_20"] = ticker_df["bb_mid_20"] + (2.0 * bb_std_20)
+        ticker_df["bb_lower_20"] = ticker_df["bb_mid_20"] - (2.0 * bb_std_20)
+        ticker_df["bb_pct_b_20"] = self._safe_divide(
+            close - ticker_df["bb_lower_20"],
+            ticker_df["bb_upper_20"] - ticker_df["bb_lower_20"],
+            0.5,
+        )
+
+        ticker_df["rsi_14"] = self._rsi(close, 14)
+        ticker_df["rsi_21"] = self._rsi(close, 21)
+        ticker_df["smoothed_rsi_ema21_rsi10"] = self._rsi(
+            close.ewm(span=21, adjust=False).mean(),
+            10,
+        )
+
+        ema12 = close.ewm(span=12, adjust=False).mean()
+        ema26 = close.ewm(span=26, adjust=False).mean()
+        ticker_df["macd_line"] = ema12 - ema26
+        ticker_df["macd_signal"] = ticker_df["macd_line"].ewm(span=9, adjust=False).mean()
+        ticker_df["macd_hist"] = ticker_df["macd_line"] - ticker_df["macd_signal"]
+
+        rolling_low_14 = low.rolling(14, min_periods=1).min()
+        rolling_high_14 = high.rolling(14, min_periods=1).max()
+        stochastic_range = rolling_high_14 - rolling_low_14
+        ticker_df["stoch_k_14"] = 100.0 * self._safe_divide(close - rolling_low_14, stochastic_range, 0.0)
+        ticker_df["stoch_d_3"] = ticker_df["stoch_k_14"].rolling(3, min_periods=1).mean()
+        ticker_df["williams_r_14"] = -100.0 * self._safe_divide(rolling_high_14 - close, stochastic_range, 0.0)
+
+        typical_sma_20 = typical_price.rolling(20, min_periods=1).mean()
+        mean_deviation = typical_price.rolling(20, min_periods=1).apply(
+            lambda values: np.mean(np.abs(values - values.mean())),
+            raw=True,
+        )
+        ticker_df["cci_20"] = self._safe_divide(
+            typical_price - typical_sma_20,
+            0.015 * mean_deviation,
+            0.0,
+        )
+
+        prev_close = close.shift(1)
+        ticker_df["tr"] = pd.concat(
+            [
+                high - low,
+                (high - prev_close).abs(),
+                (low - prev_close).abs(),
+            ],
+            axis=1,
+        ).max(axis=1)
+        ticker_df["atr_14"] = ticker_df["tr"].rolling(14, min_periods=1).mean()
+        ticker_df["atr_pct_14"] = self._safe_divide(ticker_df["atr_14"], close, 0.0)
+
+        plus_di, minus_di, adx = self._directional_indicators(high, low, close, 14)
+        ticker_df["plus_di_14"] = plus_di
+        ticker_df["minus_di_14"] = minus_di
+        ticker_df["adx_14"] = adx
+
+        ticker_df["pct_chg"] = close.pct_change().fillna(0.0)
+        ticker_df["close_pos"] = self._safe_divide(close - low, high - low, 0.0)
+        ticker_df["body"] = (close - open_).abs()
+        ticker_df["realized_vol_20"] = close.pct_change().rolling(20, min_periods=1).std(ddof=0) * np.sqrt(252)
+
+        ticker_df["volume_ratio_20"] = self._safe_divide(volume, ticker_df["avg_vol_20"], 0.0)
+        ticker_df["volume_ratio_50"] = self._safe_divide(volume, ticker_df["avg_vol_50"], 0.0)
+        volume_std_20 = volume.rolling(20, min_periods=1).std(ddof=0)
+        ticker_df["volume_zscore_20"] = self._safe_divide(
+            volume - ticker_df["avg_vol_20"],
+            volume_std_20,
+            0.0,
+        )
+
+        money_flow_multiplier = self._safe_divide(
+            ((close - low) - (high - close)),
+            (high - low),
+            0.0,
+        )
+        money_flow_volume = money_flow_multiplier * volume
+        ticker_df["cmf_20"] = self._safe_divide(
+            money_flow_volume.rolling(20, min_periods=1).sum(),
+            volume.rolling(20, min_periods=1).sum(),
+            0.0,
+        )
+
+        raw_money_flow = typical_price * volume
+        positive_flow = raw_money_flow.where(typical_price > typical_price.shift(1), 0.0)
+        negative_flow = raw_money_flow.where(typical_price < typical_price.shift(1), 0.0)
+        ticker_df["mfi_14"] = 100.0 - (
+            100.0
+            / (
+                1.0
+                + self._safe_divide(
+                    positive_flow.rolling(14, min_periods=1).sum(),
+                    negative_flow.rolling(14, min_periods=1).sum(),
+                    0.0,
+                )
+            )
+        )
+
+        self._add_relative_strength_features(ticker_df, "spy", spy_close)
+        self._add_relative_strength_features(ticker_df, "qqq", qqq_close)
+
+        ticker_df = self._fill_feature_defaults(ticker_df)
+        return ticker_df.sort_values(["ticker", "Date"]).reset_index(drop=True)
+
+    def _add_relative_strength_features(
+        self,
+        ticker_df: pd.DataFrame,
+        benchmark_name: str,
+        benchmark_close: pd.Series | None,
+    ) -> None:
+        if benchmark_close is None:
+            ticker_df[f"price_to_{benchmark_name}"] = 0.0
+            ticker_df[f"rs_{benchmark_name}_20"] = 0.0
+            ticker_df[f"rs_{benchmark_name}_50"] = 0.0
+            return
+
+        aligned = benchmark_close.reindex(ticker_df["Date"]).ffill()
+        aligned = pd.Series(aligned.values, index=ticker_df.index, dtype=float)
+        price_to_benchmark = self._safe_divide(ticker_df["close"], aligned, 0.0)
+        ticker_df[f"price_to_{benchmark_name}"] = price_to_benchmark
+        ticker_df[f"rs_{benchmark_name}_20"] = price_to_benchmark.pct_change(20).fillna(0.0)
+        ticker_df[f"rs_{benchmark_name}_50"] = price_to_benchmark.pct_change(50).fillna(0.0)
 
     def _coerce_row(self, row: pd.Series) -> dict[str, float]:
         coerced: dict[str, float] = {}
@@ -542,3 +824,62 @@ class RallyPatternStrategy:
             .replace(" ", "_")
             .replace("-", "_")
         )
+
+    @staticmethod
+    def _safe_divide(
+        numerator: pd.Series | float,
+        denominator: pd.Series | float,
+        default: float,
+    ) -> pd.Series | float:
+        if isinstance(denominator, pd.Series):
+            denominator_clean = denominator.replace(0, np.nan)
+            result = numerator / denominator_clean
+            return result.replace([np.inf, -np.inf], np.nan).fillna(default)
+        if denominator == 0 or pd.isna(denominator):
+            return default
+        result = numerator / denominator
+        if pd.isna(result) or result in (np.inf, -np.inf):
+            return default
+        return result
+
+    @staticmethod
+    def _rsi(series: pd.Series, period: int) -> pd.Series:
+        delta = series.diff()
+        gain = delta.clip(lower=0)
+        loss = -delta.clip(upper=0)
+        avg_gain = gain.ewm(alpha=1 / period, adjust=False).mean()
+        avg_loss = loss.ewm(alpha=1 / period, adjust=False).mean()
+        rs = avg_gain / avg_loss.replace(0, np.nan)
+        return (100 - (100 / (1 + rs))).fillna(0.0)
+
+    @staticmethod
+    def _directional_indicators(
+        high: pd.Series,
+        low: pd.Series,
+        close: pd.Series,
+        period: int,
+    ) -> tuple[pd.Series, pd.Series, pd.Series]:
+        up_move = high.diff()
+        down_move = -low.diff()
+        plus_dm = pd.Series(
+            np.where((up_move > down_move) & (up_move > 0), up_move, 0.0),
+            index=high.index,
+        )
+        minus_dm = pd.Series(
+            np.where((down_move > up_move) & (down_move > 0), down_move, 0.0),
+            index=high.index,
+        )
+        true_range = pd.concat(
+            [
+                high - low,
+                (high - close.shift(1)).abs(),
+                (low - close.shift(1)).abs(),
+            ],
+            axis=1,
+        ).max(axis=1)
+        smoothed_tr = true_range.rolling(period, min_periods=1).mean()
+        plus_di = (100.0 * plus_dm.rolling(period, min_periods=1).mean() / smoothed_tr.replace(0, np.nan)).fillna(0.0)
+        minus_di = (100.0 * minus_dm.rolling(period, min_periods=1).mean() / smoothed_tr.replace(0, np.nan)).fillna(0.0)
+        dx = (100.0 * (plus_di - minus_di).abs() / (plus_di + minus_di).replace(0, np.nan)).fillna(0.0)
+        adx = dx.rolling(period, min_periods=1).mean().fillna(0.0)
+        return plus_di, minus_di, adx
