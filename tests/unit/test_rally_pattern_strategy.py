@@ -247,17 +247,20 @@ def test_generate_entries_and_exits_follow_exact_rules():
     strategy = RallyPatternStrategy()
     df = pd.DataFrame(
         [
-            _strong_row("2024-01-02", "AAA"),
+            _strong_row("2024-01-02", "AAA", 100.0),
+            _strong_row("2024-01-03", "AAA", 103.0),
             _exit_row("2024-01-02", "BBB"),
+            _exit_row("2024-01-03", "BBB"),
         ]
     )
+    df.loc[1, "volume_ratio_20"] = 1.30
 
     scored = strategy.score_dataframe(df)
     entries = strategy.generate_entries(scored)
     exits = strategy.generate_exits(scored)
 
-    assert entries.tolist() == [True, False]
-    assert exits.tolist() == [False, True]
+    assert entries.tolist() == [False, True, False, False]
+    assert exits.tolist() == [False, False, True, True]
 
 
 def test_generate_exits_requires_persistence_for_soft_and_relative_weakness():
@@ -279,16 +282,21 @@ def test_generate_exits_requires_persistence_for_soft_and_relative_weakness():
 
 def test_rank_candidates_uses_score_then_rs_then_volume():
     strategy = RallyPatternStrategy()
-    leader = _strong_row("2024-01-02", "AAA")
-    tie_breaker = _strong_row("2024-01-02", "BBB")
-    third = _strong_row("2024-01-02", "CCC")
+    leader_setup = _strong_row("2024-01-02", "AAA", 100.0)
+    tie_setup = _strong_row("2024-01-02", "BBB", 100.0)
+    third_setup = _strong_row("2024-01-02", "CCC", 100.0)
+    leader = _strong_row("2024-01-03", "AAA", 103.0)
+    tie_breaker = _strong_row("2024-01-03", "BBB", 103.0)
+    third = _strong_row("2024-01-03", "CCC", 103.0)
 
     leader["rs_spy_20"] = 0.08
     tie_breaker["rs_spy_20"] = 0.05
     third["rs_spy_20"] = 0.05
     third["volume_ratio_20"] = 1.30
 
-    ranked = strategy.rank_candidates(pd.DataFrame([tie_breaker, third, leader]))
+    ranked = strategy.rank_candidates(
+        pd.DataFrame([leader_setup, tie_setup, third_setup, tie_breaker, third, leader])
+    )
 
     assert ranked["ticker"].tolist() == ["AAA", "CCC", "BBB"]
     assert ranked["candidate_rank"].tolist() == [1, 2, 3]
@@ -296,16 +304,20 @@ def test_rank_candidates_uses_score_then_rs_then_volume():
 
 def test_backtest_enforces_cooldown_but_allows_score_75_override():
     strategy = RallyPatternStrategy()
-    dates = pd.date_range("2024-01-02", periods=6, freq="B")
+    dates = pd.date_range("2024-01-02", periods=8, freq="B")
 
     rows = [
         _strong_row(str(dates[0].date()), "AAA", 100.0),
-        _exit_row(str(dates[1].date()), "AAA", 95.0),
-        _moderate_entry_row(str(dates[2].date()), "AAA", 96.0),
-        _moderate_entry_row(str(dates[3].date()), "AAA", 97.0),
-        _strong_row(str(dates[4].date()), "AAA", 105.0),
-        _exit_row(str(dates[5].date()), "AAA", 102.0),
+        _strong_row(str(dates[1].date()), "AAA", 103.0),
+        _exit_row(str(dates[2].date()), "AAA", 95.0),
+        _moderate_entry_row(str(dates[3].date()), "AAA", 96.0),
+        _moderate_entry_row(str(dates[4].date()), "AAA", 97.0),
+        _strong_row(str(dates[5].date()), "AAA", 105.0),
+        _strong_row(str(dates[6].date()), "AAA", 108.0),
+        _exit_row(str(dates[7].date()), "AAA", 102.0),
     ]
+    rows[1]["volume_ratio_20"] = 1.30
+    rows[6]["volume_ratio_20"] = 1.30
 
     results = strategy.backtest(pd.DataFrame(rows), max_positions=1, initial_capital=100_000.0)
     trades = results["trades"]
@@ -313,8 +325,8 @@ def test_backtest_enforces_cooldown_but_allows_score_75_override():
     daily_holdings = results["daily_holdings"]
 
     assert len(trades) == 2
-    assert trades["entry_date"].dt.normalize().tolist() == [dates[0], dates[4]]
-    assert trades["exit_date"].dt.normalize().tolist() == [dates[1], dates[5]]
+    assert trades["entry_date"].dt.normalize().tolist() == [dates[1], dates[6]]
+    assert trades["exit_date"].dt.normalize().tolist() == [dates[2], dates[7]]
     assert not daily_holdings.empty
     assert not equity_curve.empty
     assert equity_curve["num_positions"].max() == 1
@@ -324,6 +336,8 @@ def test_backtest_trade_start_date_blocks_warmup_entries():
     strategy = RallyPatternStrategy()
     dates = pd.date_range("2022-01-03", periods=8, freq="B")
     rows = [_strong_row(str(date.date()), "AAA", 100.0 + i) for i, date in enumerate(dates)]
+    for index in range(1, len(rows)):
+        rows[index]["volume_ratio_20"] = 1.30
 
     results = strategy.backtest(
         pd.DataFrame(rows),
@@ -346,6 +360,7 @@ def test_backtest_uses_trailing_stop_reason():
         _strong_row("2024-01-03", "AAA", 108.0),
         _strong_row("2024-01-04", "AAA", 99.0),
     ]
+    rows[1]["volume_ratio_20"] = 1.30
     rows[2].update(
         {
             "close_vs_sma_50": 0.02,

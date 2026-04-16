@@ -88,12 +88,18 @@ class RallyPatternStrategy:
         use_time_stop: bool = False,
         reentry_cooldown_days: int = 3,
         time_stop_days: int = 15,
+        setup_score_threshold: float = 70.0,
+        trigger_window_days: int = 5,
+        trigger_volume_ratio: float = 1.15,
     ) -> None:
         self.strict_entry = strict_entry
         self.use_atr_stop = use_atr_stop
         self.use_time_stop = use_time_stop
         self.reentry_cooldown_days = reentry_cooldown_days
         self.time_stop_days = time_stop_days
+        self.setup_score_threshold = setup_score_threshold
+        self.trigger_window_days = trigger_window_days
+        self.trigger_volume_ratio = trigger_volume_ratio
 
     def build_feature_dataframe(
         self,
@@ -289,25 +295,9 @@ class RallyPatternStrategy:
         return pd.concat([working, scored], axis=1)
 
     def generate_entries(self, df: pd.DataFrame) -> pd.Series:
-        """Return the exact baseline entry signal for each row."""
-        scored = self._ensure_scored(df)
-        entry_signal = (
-            (scored["score"] >= 70)
-            & (scored["pattern_stage"] == "breakout_or_power_trend")
-            & (scored["volume_ratio_20"] >= 1.15)
-            & (scored["trend_stack_bullish"] == 1)
-            & ((scored["rs_spy_20"] > 0) | (scored["rs_qqq_20"] > 0))
-        )
-
-        if self.strict_entry:
-            entry_signal &= (
-                (scored["rsi_14"] >= 58)
-                & (scored["donchian_pos_20"] >= 0.80)
-                & (scored["close_vs_ema_20"] > 0)
-                & (scored["macd_hist"] > 0)
-            )
-
-        return entry_signal.rename("entry_signal")
+        """Return stateful setup-trigger entry signals."""
+        scored = self._augment_entry_support_columns(self._ensure_scored(df))
+        return scored["entry_signal"].rename("entry_signal")
 
     def generate_exits(self, df: pd.DataFrame) -> pd.Series:
         """Return confirmed trend-failure exits, excluding entry-aware trailing stops."""
@@ -322,8 +312,7 @@ class RallyPatternStrategy:
 
     def rank_candidates(self, df: pd.DataFrame) -> pd.DataFrame:
         """Rank baseline entry candidates for each date."""
-        scored = self._ensure_scored(df).copy()
-        scored["entry_signal"] = self.generate_entries(scored)
+        scored = self._augment_entry_support_columns(self._ensure_scored(df).copy())
         candidates = scored[scored["entry_signal"]].copy()
         if candidates.empty:
             return candidates
@@ -355,11 +344,12 @@ class RallyPatternStrategy:
             scored = scored[scored["Date"] >= pd.Timestamp(start_date)].copy()
         if end_date is not None:
             scored = scored[scored["Date"] <= pd.Timestamp(end_date)].copy()
-        scored["entry_signal"] = self.generate_entries(scored)
+        scored = self._augment_entry_support_columns(scored)
         scored = self._augment_exit_support_columns(scored)
         scored["exit_signal"] = self.generate_exits(scored)
         scored = scored.sort_values(["Date", "ticker"]).reset_index(drop=True)
         trade_start_ts = pd.Timestamp(trade_start_date) if trade_start_date is not None else None
+        ranked_all = self.rank_candidates(scored)
 
         positions: dict[str, _BacktestPosition] = {}
         last_exit_date_index: dict[str, int] = {}
@@ -419,7 +409,7 @@ class RallyPatternStrategy:
                 last_exit_date_index[ticker] = date_index
                 del positions[ticker]
 
-            ranked_candidates = self.rank_candidates(day_df)
+            ranked_candidates = ranked_all[ranked_all["Date"] == current_date].copy()
             available_slots = max_positions - len(positions)
             if trade_start_ts is not None and current_date < trade_start_ts:
                 ranked_candidates = ranked_candidates.iloc[0:0]
@@ -552,6 +542,88 @@ class RallyPatternStrategy:
             )
 
         return working
+
+    def _augment_entry_support_columns(self, df: pd.DataFrame) -> pd.DataFrame:
+        working = self._prepare_dataframe(df).copy()
+        base_setup_signal = self._base_setup_signal(working)
+
+        working["setup_signal"] = False
+        working["setup_active"] = False
+        working["setup_age"] = 0
+        working["setup_high"] = np.nan
+        working["entry_signal"] = False
+        working["setup_cancelled"] = False
+        working["setup_expired"] = False
+
+        for _, index_group in working.groupby("ticker", sort=False).groups.items():
+            active = False
+            setup_age = 0
+            setup_high = np.nan
+
+            for idx in index_group:
+                row = working.loc[idx]
+                entry_triggered = False
+                cancelled = False
+                expired = False
+
+                if active:
+                    setup_age += 1
+                    if float(row["close_vs_ema_20"]) < 0:
+                        active = False
+                        cancelled = True
+                    elif setup_age > self.trigger_window_days:
+                        active = False
+                        expired = True
+                    elif (
+                        setup_age >= 1
+                        and float(row["close"]) > float(setup_high)
+                        and float(row["volume_ratio_20"]) >= self.trigger_volume_ratio
+                        and float(row["close_vs_ema_20"]) >= 0
+                    ):
+                        working.at[idx, "entry_signal"] = True
+                        entry_triggered = True
+                        active = False
+
+                working.at[idx, "setup_cancelled"] = cancelled
+                working.at[idx, "setup_expired"] = expired
+
+                if base_setup_signal.loc[idx] and not entry_triggered:
+                    active = True
+                    setup_age = 0
+                    setup_high = (
+                        float(row["high"])
+                        if "high" in working.columns and pd.notna(row.get("high"))
+                        else float(row["close"])
+                    )
+                    working.at[idx, "setup_signal"] = True
+
+                if active:
+                    working.at[idx, "setup_active"] = True
+                    working.at[idx, "setup_age"] = setup_age
+                    working.at[idx, "setup_high"] = setup_high
+                else:
+                    working.at[idx, "setup_age"] = 0
+                    if not pd.isna(working.at[idx, "setup_high"]):
+                        working.at[idx, "setup_high"] = np.nan
+
+        return working
+
+    def _base_setup_signal(self, scored: pd.DataFrame) -> pd.Series:
+        setup_signal = (
+            (scored["score"] >= self.setup_score_threshold)
+            & (scored["trend_stack_bullish"] == 1)
+            & ((scored["rs_spy_20"] > 0) | (scored["rs_qqq_20"] > 0))
+        )
+
+        if self.strict_entry:
+            setup_signal &= (
+                (scored["rsi_14"] >= 58)
+                & (scored["donchian_pos_20"] >= 0.80)
+                & (scored["close_vs_ema_20"] > 0)
+                & (scored["macd_hist"] > 0)
+            )
+
+        return setup_signal
 
     def _standardize_dataframe(self, df: pd.DataFrame) -> pd.DataFrame:
         if df.empty:
