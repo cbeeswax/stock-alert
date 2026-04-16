@@ -133,6 +133,20 @@ def _exit_row(date: str, ticker: str, close: float = 95.0) -> dict:
     return row
 
 
+def _cooldown_row(date: str, ticker: str, close: float = 99.0) -> dict:
+    row = _strong_row(date, ticker, close)
+    row.update(
+        {
+            "close_vs_ema_20": -0.01,
+            "close_vs_sma_50": 0.01,
+            "rs_spy_20": -0.02,
+            "rs_qqq_20": -0.02,
+            "pct_chg": -0.005,
+        }
+    )
+    return row
+
+
 def _raw_ohlcv_rows(ticker: str, start: str, periods: int, close_start: float, step: float) -> list[dict]:
     dates = pd.date_range(start, periods=periods, freq="B")
     rows = []
@@ -246,6 +260,23 @@ def test_generate_entries_and_exits_follow_exact_rules():
     assert exits.tolist() == [False, True]
 
 
+def test_generate_exits_requires_persistence_for_soft_and_relative_weakness():
+    strategy = RallyPatternStrategy()
+    df = pd.DataFrame(
+        [
+            _strong_row("2024-01-02", "AAA"),
+            _cooldown_row("2024-01-03", "AAA"),
+            _cooldown_row("2024-01-04", "AAA"),
+        ]
+    )
+
+    scored = strategy.score_dataframe(df)
+    scored.loc[1:, "score"] = 30.0
+    exits = strategy.generate_exits(scored)
+
+    assert exits.tolist() == [False, False, True]
+
+
 def test_rank_candidates_uses_score_then_rs_then_volume():
     strategy = RallyPatternStrategy()
     leader = _strong_row("2024-01-02", "AAA")
@@ -306,3 +337,26 @@ def test_backtest_trade_start_date_blocks_warmup_entries():
     assert results["daily_holdings"].empty
     assert not results["equity_curve"].empty
     assert results["equity_curve"]["num_positions"].eq(0).all()
+
+
+def test_backtest_uses_trailing_stop_reason():
+    strategy = RallyPatternStrategy()
+    rows = [
+        _strong_row("2024-01-02", "AAA", 100.0),
+        _strong_row("2024-01-03", "AAA", 108.0),
+        _strong_row("2024-01-04", "AAA", 99.0),
+    ]
+    rows[2].update(
+        {
+            "close_vs_sma_50": 0.02,
+            "close_vs_ema_20": 0.01,
+            "rs_spy_20": 0.03,
+            "rs_qqq_20": 0.03,
+            "atr_14": 3.0,
+        }
+    )
+
+    results = strategy.backtest(pd.DataFrame(rows), max_positions=1, initial_capital=100_000.0)
+
+    assert len(results["trades"]) == 1
+    assert results["trades"].loc[0, "exit_reason"] == "atr_trailing_stop"

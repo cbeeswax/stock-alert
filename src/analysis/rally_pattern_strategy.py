@@ -24,6 +24,7 @@ class _BacktestPosition:
     shares: float
     entry_score: float
     best_score: float
+    highest_close: float
     has_new_high: bool
     score_improved: bool
     days_held: int
@@ -309,16 +310,13 @@ class RallyPatternStrategy:
         return entry_signal.rename("entry_signal")
 
     def generate_exits(self, df: pd.DataFrame) -> pd.Series:
-        """Return the exact baseline exit signal for each row."""
-        scored = self._ensure_scored(df)
+        """Return confirmed trend-failure exits, excluding entry-aware trailing stops."""
+        scored = self._augment_exit_support_columns(self._ensure_scored(df))
         exit_signal = (
-            (scored["score"] < 45)
-            | ((scored["close_vs_ema_20"] < 0) & (scored["macd_hist"] < 0))
-            | (
-                (scored["rs_spy_20"] < 0)
-                & (scored["rs_qqq_20"] < 0)
-                & (scored["pct_from_20d_high"] < -0.10)
-            )
+            scored["soft_score_fail_2d"]
+            | scored["close_below_ema20_2d"]
+            | scored["close_below_sma50"]
+            | scored["relative_weak_2d"]
         )
         return exit_signal.rename("exit_signal")
 
@@ -358,6 +356,7 @@ class RallyPatternStrategy:
         if end_date is not None:
             scored = scored[scored["Date"] <= pd.Timestamp(end_date)].copy()
         scored["entry_signal"] = self.generate_entries(scored)
+        scored = self._augment_exit_support_columns(scored)
         scored["exit_signal"] = self.generate_exits(scored)
         scored = scored.sort_values(["Date", "ticker"]).reset_index(drop=True)
         trade_start_ts = pd.Timestamp(trade_start_date) if trade_start_date is not None else None
@@ -386,6 +385,7 @@ class RallyPatternStrategy:
                     shares=position.shares,
                     entry_score=position.entry_score,
                     best_score=max(position.best_score, float(row["score"])),
+                    highest_close=max(position.highest_close, float(row["close"])),
                     has_new_high=position.has_new_high or float(row["pct_from_20d_high"]) >= 0,
                     score_improved=position.score_improved or float(row["score"]) > position.entry_score,
                     days_held=position.days_held + 1,
@@ -467,6 +467,7 @@ class RallyPatternStrategy:
                         shares=shares,
                         entry_score=float(row["score"]),
                         best_score=float(row["score"]),
+                        highest_close=price,
                         has_new_high=float(row["pct_from_20d_high"]) >= 0,
                         score_improved=False,
                         days_held=0,
@@ -526,6 +527,31 @@ class RallyPatternStrategy:
         if {"score", "trend_points", "penalty", "pattern_stage", "label"}.issubset(df.columns):
             return self._prepare_dataframe(df)
         return self.score_dataframe(df)
+
+    def _augment_exit_support_columns(self, df: pd.DataFrame) -> pd.DataFrame:
+        working = self._prepare_dataframe(df).copy()
+        low_source = "low" if "low" in working.columns else "close"
+
+        working["roll_low_10"] = (
+            working.groupby("ticker", sort=False)[low_source]
+            .transform(lambda series: series.rolling(10, min_periods=1).min())
+        )
+        working["soft_score_fail"] = working["score"] < 35
+        working["close_below_ema20"] = working["close_vs_ema_20"] < 0
+        working["close_below_sma50"] = working["close_vs_sma_50"] < 0
+        working["relative_weak"] = (working["rs_spy_20"] < 0) & (working["rs_qqq_20"] < 0)
+
+        for source, target in (
+            ("soft_score_fail", "soft_score_fail_2d"),
+            ("close_below_ema20", "close_below_ema20_2d"),
+            ("relative_weak", "relative_weak_2d"),
+        ):
+            working[target] = (
+                working.groupby("ticker", sort=False)[source]
+                .transform(lambda series: series.astype(int).rolling(2, min_periods=2).sum() >= 2)
+            )
+
+        return working
 
     def _standardize_dataframe(self, df: pd.DataFrame) -> pd.DataFrame:
         if df.empty:
@@ -793,13 +819,29 @@ class RallyPatternStrategy:
         return coerced
 
     def _exit_reason(self, row: pd.Series, position: _BacktestPosition) -> str | None:
-        if bool(row["exit_signal"]):
-            return "baseline_exit"
+        trailing_stop = position.highest_close - (2.5 * float(row["atr_14"]))
+        if float(row["close"]) <= trailing_stop:
+            return "atr_trailing_stop"
+
+        if float(row.get("roll_low_10", 0.0)) > 0 and float(row["close"]) <= float(row["roll_low_10"]):
+            return "break_10d_low"
+
+        if bool(row.get("close_below_sma50", False)):
+            return "structure_sma50_fail"
+
+        if bool(row.get("close_below_ema20_2d", False)):
+            return "structure_ema20_fail"
+
+        if bool(row.get("soft_score_fail_2d", False)):
+            return "soft_score_fail"
+
+        if bool(row.get("relative_weak_2d", False)):
+            return "relative_weakness"
 
         if self.use_atr_stop:
             atr_stop = position.entry_price - (2.0 * float(row["atr_14"]))
             if float(row["close"]) <= atr_stop:
-                return "atr_stop"
+                return "legacy_atr_stop"
 
         if self.use_time_stop:
             if (
