@@ -292,7 +292,8 @@ class RallyPatternStrategy:
         else:
             working = self._fill_feature_defaults(working)
         scored = working.apply(self.score_row, axis=1, result_type="expand")
-        return pd.concat([working, scored], axis=1)
+        combined = pd.concat([working, scored], axis=1)
+        return self._augment_entry_support_columns(combined)
 
     def generate_entries(self, df: pd.DataFrame) -> pd.Series:
         """Return stateful setup-trigger entry signals."""
@@ -511,7 +512,14 @@ class RallyPatternStrategy:
         }
 
     def _prepare_dataframe(self, df: pd.DataFrame) -> pd.DataFrame:
-        return self._fill_feature_defaults(self._standardize_dataframe(df))
+        working = self._fill_feature_defaults(self._standardize_dataframe(df))
+        high_col = "high" if "high" in working.columns else "close"
+        working["prior_3bar_high"] = (
+            working.groupby("ticker", sort=False)[high_col]
+            .transform(lambda series: series.shift(1).rolling(3, min_periods=1).max())
+            .fillna(0.0)
+        )
+        return working
 
     def _ensure_scored(self, df: pd.DataFrame) -> pd.DataFrame:
         if {"score", "trend_points", "penalty", "pattern_stage", "label"}.issubset(df.columns):
@@ -551,9 +559,12 @@ class RallyPatternStrategy:
         working["setup_active"] = False
         working["setup_age"] = 0
         working["setup_high"] = np.nan
+        working["trigger_pivot_high"] = np.nan
+        working["trigger_level"] = np.nan
         working["entry_signal"] = False
         working["setup_cancelled"] = False
         working["setup_expired"] = False
+        working["setup_state"] = "no_setup"
 
         for _, index_group in working.groupby("ticker", sort=False).groups.items():
             active = False
@@ -565,24 +576,33 @@ class RallyPatternStrategy:
                 entry_triggered = False
                 cancelled = False
                 expired = False
+                state = "no_setup"
+                pivot_high = float(row.get("prior_3bar_high", 0.0))
+                trigger_level = np.nan
 
                 if active:
                     setup_age += 1
+                    trigger_level = max(float(setup_high), pivot_high)
                     if float(row["close_vs_ema_20"]) < 0:
                         active = False
                         cancelled = True
+                        state = "setup_cancelled"
                     elif setup_age > self.trigger_window_days:
                         active = False
                         expired = True
+                        state = "setup_expired"
                     elif (
                         setup_age >= 1
-                        and float(row["close"]) > float(setup_high)
+                        and float(row["close"]) > trigger_level
                         and float(row["volume_ratio_20"]) >= self.trigger_volume_ratio
                         and float(row["close_vs_ema_20"]) >= 0
                     ):
                         working.at[idx, "entry_signal"] = True
                         entry_triggered = True
                         active = False
+                        state = "entered"
+                    else:
+                        state = "setup_ready"
 
                 working.at[idx, "setup_cancelled"] = cancelled
                 working.at[idx, "setup_expired"] = expired
@@ -596,15 +616,21 @@ class RallyPatternStrategy:
                         else float(row["close"])
                     )
                     working.at[idx, "setup_signal"] = True
+                    state = "setup_ready"
 
                 if active:
                     working.at[idx, "setup_active"] = True
                     working.at[idx, "setup_age"] = setup_age
                     working.at[idx, "setup_high"] = setup_high
+                    working.at[idx, "trigger_pivot_high"] = pivot_high
+                    working.at[idx, "trigger_level"] = max(float(setup_high), pivot_high)
                 else:
                     working.at[idx, "setup_age"] = 0
-                    if not pd.isna(working.at[idx, "setup_high"]):
-                        working.at[idx, "setup_high"] = np.nan
+                    working.at[idx, "setup_high"] = np.nan
+                    working.at[idx, "trigger_pivot_high"] = pivot_high
+                    working.at[idx, "trigger_level"] = trigger_level
+
+                working.at[idx, "setup_state"] = state
 
         return working
 

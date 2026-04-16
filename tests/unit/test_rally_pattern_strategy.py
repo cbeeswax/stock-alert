@@ -263,6 +263,36 @@ def test_generate_entries_and_exits_follow_exact_rules():
     assert exits.tolist() == [False, False, True, True]
 
 
+def test_generate_entries_tracks_setup_state_and_uses_prior_3bar_pivot():
+    strategy = RallyPatternStrategy()
+    rows = [
+        _strong_row("2024-01-02", "AAA", 100.0),
+        _strong_row("2024-01-03", "AAA", 101.0),
+        _strong_row("2024-01-04", "AAA", 102.0),
+        _strong_row("2024-01-05", "AAA", 102.4),
+    ]
+    rows[0]["high"] = 101.0
+    rows[1]["high"] = 104.0
+    rows[2]["high"] = 105.0
+    rows[3]["high"] = 103.0
+    rows[3]["close"] = 104.5
+    rows[3]["volume_ratio_20"] = 1.30
+
+    scored = strategy.score_dataframe(pd.DataFrame(rows))
+    entry_view = scored[["Date", "setup_state", "setup_signal", "entry_signal", "trigger_level"]]
+
+    assert entry_view["setup_state"].tolist() == ["setup_ready", "setup_ready", "setup_ready", "setup_ready"]
+    assert entry_view["entry_signal"].tolist() == [False, False, False, False]
+    assert float(entry_view.iloc[-1]["trigger_level"]) == 105.0
+
+    rows[3]["close"] = 105.5
+    scored = strategy.score_dataframe(pd.DataFrame(rows))
+    entry_view = scored[["Date", "setup_state", "entry_signal", "trigger_level"]]
+
+    assert entry_view["entry_signal"].tolist() == [False, False, False, True]
+    assert entry_view.iloc[-1]["setup_state"] == "entered"
+
+
 def test_generate_exits_requires_persistence_for_soft_and_relative_weakness():
     strategy = RallyPatternStrategy()
     df = pd.DataFrame(
@@ -325,7 +355,7 @@ def test_backtest_enforces_cooldown_but_allows_score_75_override():
     daily_holdings = results["daily_holdings"]
 
     assert len(trades) == 2
-    assert trades["entry_date"].dt.normalize().tolist() == [dates[1], dates[6]]
+    assert trades["entry_date"].dt.normalize().tolist() == [dates[1], dates[5]]
     assert trades["exit_date"].dt.normalize().tolist() == [dates[2], dates[7]]
     assert not daily_holdings.empty
     assert not equity_curve.empty
