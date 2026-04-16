@@ -33,6 +33,7 @@ class _BacktestPosition:
 class RallyPatternStrategy:
     """Cross-sectional rally-ranking strategy operating on precomputed or raw features."""
 
+    BENCHMARK_TICKERS: tuple[str, ...] = ("SPY", "QQQ")
     COLUMN_DEFAULTS: dict[str, float] = {
         "close": 0.0,
         "close_vs_sma_10": 0.0,
@@ -91,6 +92,12 @@ class RallyPatternStrategy:
         setup_score_threshold: float = 70.0,
         trigger_window_days: int = 5,
         trigger_volume_ratio: float = 1.15,
+        min_setup_days: int = 2,
+        max_setup_extension: float = 0.06,
+        max_trigger_extension: float = 0.08,
+        max_setup_rsi_14: float = 72.0,
+        max_trigger_rsi_14: float = 75.0,
+        max_setup_donchian_pos: float = 0.90,
     ) -> None:
         self.strict_entry = strict_entry
         self.use_atr_stop = use_atr_stop
@@ -100,6 +107,12 @@ class RallyPatternStrategy:
         self.setup_score_threshold = setup_score_threshold
         self.trigger_window_days = trigger_window_days
         self.trigger_volume_ratio = trigger_volume_ratio
+        self.min_setup_days = min_setup_days
+        self.max_setup_extension = max_setup_extension
+        self.max_trigger_extension = max_trigger_extension
+        self.max_setup_rsi_14 = max_setup_rsi_14
+        self.max_trigger_rsi_14 = max_trigger_rsi_14
+        self.max_setup_donchian_pos = max_setup_donchian_pos
 
     def build_feature_dataframe(
         self,
@@ -315,6 +328,7 @@ class RallyPatternStrategy:
         """Rank baseline entry candidates for each date."""
         scored = self._augment_entry_support_columns(self._ensure_scored(df).copy())
         candidates = scored[scored["entry_signal"]].copy()
+        candidates = candidates[~candidates["ticker"].isin(self.BENCHMARK_TICKERS)].copy()
         if candidates.empty:
             return candidates
 
@@ -554,6 +568,9 @@ class RallyPatternStrategy:
     def _augment_entry_support_columns(self, df: pd.DataFrame) -> pd.DataFrame:
         working = self._prepare_dataframe(df).copy()
         base_setup_signal = self._base_setup_signal(working)
+        previous_setup_signal = base_setup_signal.groupby(working["ticker"], sort=False).shift(1)
+        previous_setup_signal = previous_setup_signal.where(previous_setup_signal.notna(), False).astype(bool)
+        fresh_setup_signal = base_setup_signal & (~previous_setup_signal)
 
         working["setup_signal"] = False
         working["setup_active"] = False
@@ -592,10 +609,12 @@ class RallyPatternStrategy:
                         expired = True
                         state = "setup_expired"
                     elif (
-                        setup_age >= 1
+                        setup_age >= self.min_setup_days
                         and float(row["close"]) > trigger_level
                         and float(row["volume_ratio_20"]) >= self.trigger_volume_ratio
                         and float(row["close_vs_ema_20"]) >= 0
+                        and float(row["close_vs_ema_20"]) <= self.max_trigger_extension
+                        and float(row["rsi_14"]) <= self.max_trigger_rsi_14
                     ):
                         working.at[idx, "entry_signal"] = True
                         entry_triggered = True
@@ -607,7 +626,7 @@ class RallyPatternStrategy:
                 working.at[idx, "setup_cancelled"] = cancelled
                 working.at[idx, "setup_expired"] = expired
 
-                if base_setup_signal.loc[idx] and not entry_triggered:
+                if fresh_setup_signal.loc[idx] and not active and not entry_triggered:
                     active = True
                     setup_age = 0
                     setup_high = (
@@ -639,14 +658,20 @@ class RallyPatternStrategy:
             (scored["score"] >= self.setup_score_threshold)
             & (scored["trend_stack_bullish"] == 1)
             & ((scored["rs_spy_20"] > 0) | (scored["rs_qqq_20"] > 0))
+            & (scored["close_vs_ema_20"] > 0)
+            & (scored["close_vs_ema_20"] <= self.max_setup_extension)
+            & (scored["rsi_14"] >= 50)
+            & (scored["rsi_14"] <= self.max_setup_rsi_14)
+            & (scored["donchian_pos_20"] >= 0.55)
+            & (scored["donchian_pos_20"] <= self.max_setup_donchian_pos)
         )
 
         if self.strict_entry:
             setup_signal &= (
-                (scored["rsi_14"] >= 58)
-                & (scored["donchian_pos_20"] >= 0.80)
-                & (scored["close_vs_ema_20"] > 0)
-                & (scored["macd_hist"] > 0)
+                (scored["macd_hist"] > 0)
+                & (scored["cmf_20"] >= 0)
+                & (scored["volume_ratio_20"] >= 0.95)
+                & (scored["atr_pct_14"] <= 0.055)
             )
 
         return setup_signal

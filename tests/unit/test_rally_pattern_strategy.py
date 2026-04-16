@@ -248,19 +248,20 @@ def test_generate_entries_and_exits_follow_exact_rules():
     df = pd.DataFrame(
         [
             _strong_row("2024-01-02", "AAA", 100.0),
-            _strong_row("2024-01-03", "AAA", 103.0),
+            _strong_row("2024-01-03", "AAA", 101.0),
+            _strong_row("2024-01-04", "AAA", 103.0),
             _exit_row("2024-01-02", "BBB"),
             _exit_row("2024-01-03", "BBB"),
         ]
     )
-    df.loc[1, "volume_ratio_20"] = 1.30
+    df.loc[2, "volume_ratio_20"] = 1.30
 
     scored = strategy.score_dataframe(df)
     entries = strategy.generate_entries(scored)
     exits = strategy.generate_exits(scored)
 
-    assert entries.tolist() == [False, True, False, False]
-    assert exits.tolist() == [False, False, True, True]
+    assert entries.tolist() == [False, False, True, False, False]
+    assert exits.tolist() == [False, False, False, True, True]
 
 
 def test_generate_entries_tracks_setup_state_and_uses_prior_3bar_pivot():
@@ -293,6 +294,49 @@ def test_generate_entries_tracks_setup_state_and_uses_prior_3bar_pivot():
     assert entry_view.iloc[-1]["setup_state"] == "entered"
 
 
+def test_generate_entries_does_not_refresh_setup_without_signal_reset():
+    strategy = RallyPatternStrategy(trigger_window_days=3)
+    rows = [_strong_row(f"2024-01-0{day}", "AAA", 100.0) for day in range(2, 8)]
+
+    scored = strategy.score_dataframe(pd.DataFrame(rows))
+    setup_view = scored[["Date", "setup_signal", "setup_state", "setup_age", "entry_signal"]]
+
+    assert setup_view["setup_signal"].tolist() == [True, False, False, False, False, False]
+    assert setup_view["setup_state"].tolist() == [
+        "setup_ready",
+        "setup_ready",
+        "setup_ready",
+        "setup_ready",
+        "setup_expired",
+        "no_setup",
+    ]
+    assert setup_view["entry_signal"].tolist() == [False, False, False, False, False, False]
+
+
+def test_generate_entries_blocks_overextended_trigger_breakout():
+    strategy = RallyPatternStrategy()
+    rows = [
+        _strong_row("2024-01-02", "AAA", 100.0),
+        _strong_row("2024-01-03", "AAA", 101.0),
+        _strong_row("2024-01-04", "AAA", 102.0),
+        _strong_row("2024-01-05", "AAA", 108.0),
+    ]
+    rows[0]["high"] = 101.0
+    rows[1]["high"] = 102.0
+    rows[2]["high"] = 103.0
+    rows[3]["high"] = 109.0
+    rows[3]["close"] = 104.5
+    rows[3]["volume_ratio_20"] = 1.30
+    rows[3]["close_vs_ema_20"] = 0.09
+    rows[3]["rsi_14"] = 78.0
+
+    scored = strategy.score_dataframe(pd.DataFrame(rows))
+    entry_view = scored[["Date", "setup_state", "entry_signal", "trigger_level"]]
+
+    assert entry_view["entry_signal"].tolist() == [False, False, False, False]
+    assert entry_view.iloc[-1]["setup_state"] == "setup_ready"
+
+
 def test_generate_exits_requires_persistence_for_soft_and_relative_weakness():
     strategy = RallyPatternStrategy()
     df = pd.DataFrame(
@@ -313,11 +357,14 @@ def test_generate_exits_requires_persistence_for_soft_and_relative_weakness():
 def test_rank_candidates_uses_score_then_rs_then_volume():
     strategy = RallyPatternStrategy()
     leader_setup = _strong_row("2024-01-02", "AAA", 100.0)
+    leader_ready = _strong_row("2024-01-03", "AAA", 101.0)
     tie_setup = _strong_row("2024-01-02", "BBB", 100.0)
+    tie_ready = _strong_row("2024-01-03", "BBB", 101.0)
     third_setup = _strong_row("2024-01-02", "CCC", 100.0)
-    leader = _strong_row("2024-01-03", "AAA", 103.0)
-    tie_breaker = _strong_row("2024-01-03", "BBB", 103.0)
-    third = _strong_row("2024-01-03", "CCC", 103.0)
+    third_ready = _strong_row("2024-01-03", "CCC", 101.0)
+    leader = _strong_row("2024-01-04", "AAA", 103.0)
+    tie_breaker = _strong_row("2024-01-04", "BBB", 103.0)
+    third = _strong_row("2024-01-04", "CCC", 103.0)
 
     leader["rs_spy_20"] = 0.08
     tie_breaker["rs_spy_20"] = 0.05
@@ -325,7 +372,19 @@ def test_rank_candidates_uses_score_then_rs_then_volume():
     third["volume_ratio_20"] = 1.30
 
     ranked = strategy.rank_candidates(
-        pd.DataFrame([leader_setup, tie_setup, third_setup, tie_breaker, third, leader])
+        pd.DataFrame(
+            [
+                leader_setup,
+                leader_ready,
+                tie_setup,
+                tie_ready,
+                third_setup,
+                third_ready,
+                tie_breaker,
+                third,
+                leader,
+            ]
+        )
     )
 
     assert ranked["ticker"].tolist() == ["AAA", "CCC", "BBB"]
@@ -338,15 +397,15 @@ def test_backtest_enforces_cooldown_but_allows_score_75_override():
 
     rows = [
         _strong_row(str(dates[0].date()), "AAA", 100.0),
-        _strong_row(str(dates[1].date()), "AAA", 103.0),
-        _exit_row(str(dates[2].date()), "AAA", 95.0),
-        _moderate_entry_row(str(dates[3].date()), "AAA", 96.0),
-        _moderate_entry_row(str(dates[4].date()), "AAA", 97.0),
-        _strong_row(str(dates[5].date()), "AAA", 105.0),
-        _strong_row(str(dates[6].date()), "AAA", 108.0),
+        _strong_row(str(dates[1].date()), "AAA", 101.0),
+        _strong_row(str(dates[2].date()), "AAA", 103.0),
+        _exit_row(str(dates[3].date()), "AAA", 95.0),
+        _moderate_entry_row(str(dates[4].date()), "AAA", 96.0),
+        _moderate_entry_row(str(dates[5].date()), "AAA", 97.0),
+        _strong_row(str(dates[6].date()), "AAA", 105.0),
         _exit_row(str(dates[7].date()), "AAA", 102.0),
     ]
-    rows[1]["volume_ratio_20"] = 1.30
+    rows[2]["volume_ratio_20"] = 1.30
     rows[6]["volume_ratio_20"] = 1.30
 
     results = strategy.backtest(pd.DataFrame(rows), max_positions=1, initial_capital=100_000.0)
@@ -355,8 +414,8 @@ def test_backtest_enforces_cooldown_but_allows_score_75_override():
     daily_holdings = results["daily_holdings"]
 
     assert len(trades) == 2
-    assert trades["entry_date"].dt.normalize().tolist() == [dates[1], dates[5]]
-    assert trades["exit_date"].dt.normalize().tolist() == [dates[2], dates[7]]
+    assert trades["entry_date"].dt.normalize().tolist() == [dates[2], dates[6]]
+    assert trades["exit_date"].dt.normalize().tolist() == [dates[3], dates[7]]
     assert not daily_holdings.empty
     assert not equity_curve.empty
     assert equity_curve["num_positions"].max() == 1
@@ -387,11 +446,12 @@ def test_backtest_uses_trailing_stop_reason():
     strategy = RallyPatternStrategy()
     rows = [
         _strong_row("2024-01-02", "AAA", 100.0),
-        _strong_row("2024-01-03", "AAA", 108.0),
-        _strong_row("2024-01-04", "AAA", 99.0),
+        _strong_row("2024-01-03", "AAA", 101.0),
+        _strong_row("2024-01-04", "AAA", 108.0),
+        _strong_row("2024-01-05", "AAA", 99.0),
     ]
-    rows[1]["volume_ratio_20"] = 1.30
-    rows[2].update(
+    rows[2]["volume_ratio_20"] = 1.30
+    rows[3].update(
         {
             "close_vs_sma_50": 0.02,
             "close_vs_ema_20": 0.01,
@@ -405,3 +465,25 @@ def test_backtest_uses_trailing_stop_reason():
 
     assert len(results["trades"]) == 1
     assert results["trades"].loc[0, "exit_reason"] == "atr_trailing_stop"
+
+
+def test_rank_candidates_excludes_benchmark_tickers():
+    strategy = RallyPatternStrategy()
+    rows = [
+        _strong_row("2024-01-02", "AAA", 100.0),
+        _strong_row("2024-01-03", "AAA", 101.0),
+        _strong_row("2024-01-04", "AAA", 103.0),
+        _strong_row("2024-01-02", "SPY", 400.0),
+        _strong_row("2024-01-03", "SPY", 401.0),
+        _strong_row("2024-01-04", "SPY", 403.0),
+        _strong_row("2024-01-02", "QQQ", 300.0),
+        _strong_row("2024-01-03", "QQQ", 301.0),
+        _strong_row("2024-01-04", "QQQ", 303.0),
+    ]
+    rows[2]["volume_ratio_20"] = 1.30
+    rows[5]["volume_ratio_20"] = 1.30
+    rows[8]["volume_ratio_20"] = 1.30
+
+    ranked = strategy.rank_candidates(pd.DataFrame(rows))
+
+    assert ranked["ticker"].tolist() == ["AAA"]
