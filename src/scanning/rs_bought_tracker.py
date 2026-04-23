@@ -27,32 +27,72 @@ File format: data/rs_ranker_bought.json
 """
 
 import json
+import re
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 
 
-class RSBoughtTracker:
-    """Manages RelativeStrength_Ranker bought ticker list."""
+STRATEGY_FILE_KEY_OVERRIDES = {
+    "RelativeStrength_Ranker_Position": "rs_ranker",
+}
 
-    def __init__(self, file_path: str = "data/rs_ranker_bought.json", load_from_file: bool = True):
+
+def strategy_file_key(strategy_name: str) -> str:
+    """Return the file-name-safe key for a strategy."""
+    if strategy_name in STRATEGY_FILE_KEY_OVERRIDES:
+        return STRATEGY_FILE_KEY_OVERRIDES[strategy_name]
+
+    base = str(strategy_name).strip()
+    base = re.sub(r"_Position$", "", base)
+    base = base.replace("%B", "PercentB")
+    base = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", base)
+    base = re.sub(r"[^A-Za-z0-9]+", "_", base)
+    base = re.sub(r"_+", "_", base).strip("_")
+    return base.lower()
+
+
+def tracker_file_path_for_strategy(strategy_name: str, *, backtest: bool = False) -> str:
+    key = strategy_file_key(strategy_name)
+    prefix = "data\\backtest" if backtest else "data"
+    return f"{prefix}\\{key}_bought.json"
+
+
+def history_file_path_for_strategy(strategy_name: str, *, backtest: bool = False) -> str:
+    key = strategy_file_key(strategy_name)
+    prefix = "data\\backtest" if backtest else "data"
+    return f"{prefix}\\{key}_trade_history.json"
+
+
+class StrategyStateTracker:
+    """Manages per-strategy bought ticker list and closed trade history."""
+
+    def __init__(
+        self,
+        strategy_name: str,
+        file_path: str | None = None,
+        history_file_path: str | None = None,
+        load_from_file: bool = True,
+    ):
         """Initialize tracker.
         
         Args:
-            file_path: Path to JSON file
+            strategy_name: Strategy name (e.g. RelativeStrength_Ranker_Position)
+            file_path: Optional explicit path to bought-state JSON
+            history_file_path: Optional explicit path to trade history JSON
             load_from_file: If True, load existing data from file. If False, start fresh.
                            Use False for diagnostic/test runs to avoid loading stale data.
         """
-        self.file_path = Path(file_path)
+        self.strategy_name = strategy_name
+        resolved_file_path = file_path or tracker_file_path_for_strategy(strategy_name)
+        resolved_history_file_path = history_file_path or history_file_path_for_strategy(
+            strategy_name,
+            backtest="backtest" in str(resolved_file_path),
+        )
+        self.file_path = Path(resolved_file_path)
+        self.history_file_path = str(resolved_history_file_path)
         self.bought_tickers = {}
-        
-        # Determine history file path based on tracker location
-        # Backtest trackers go to data/backtest/, production trackers to data/
-        if "backtest" in str(file_path):
-            self.history_file_path = "data/backtest/rs_ranker_trade_history.json"
-        else:
-            self.history_file_path = "data/rs_ranker_trade_history.json"
-        
+
         if load_from_file:
             self._load()
 
@@ -75,7 +115,7 @@ class RSBoughtTracker:
                 with open(self.file_path, 'r') as f:
                     self.bought_tickers = json.load(f)
             except Exception as e:
-                print(f"⚠️  Error loading RS bought tracker: {e}")
+                print(f"⚠️  Error loading {self.strategy_name} tracker: {e}")
                 self.bought_tickers = {}
         else:
             self.bought_tickers = {}
@@ -91,9 +131,9 @@ class RSBoughtTracker:
                 from src.storage.gcs import upload_file
                 upload_file(self.file_path, gcs_path)
         except Exception as e:
-            print(f"⚠️  Error saving RS bought tracker: {e}")
+            print(f"⚠️  Error saving {self.strategy_name} tracker: {e}")
 
-    def add_bought(self, ticker: str, entry_date: str, entry_price: float, strategy: str = "RelativeStrength_Ranker_Position") -> None:
+    def add_bought(self, ticker: str, entry_date: str, entry_price: float, strategy: str | None = None) -> None:
         """
         Record a ticker as recommended for buy.
         Handles both new entries and re-entries after cooldown.
@@ -102,8 +142,9 @@ class RSBoughtTracker:
             ticker: Stock ticker symbol
             entry_date: Date recommended (YYYY-MM-DD)
             entry_price: Entry price
-            strategy: Strategy name (default: RS_Ranker)
+            strategy: Strategy name (defaults to tracker's configured strategy)
         """
+        strategy = strategy or self.strategy_name
         self.bought_tickers[ticker] = {
             "entry_date": entry_date,
             "entry_price": entry_price,
@@ -146,7 +187,10 @@ class RSBoughtTracker:
         exit_reason: str,
         profit_loss: Optional[float] = None,
         r_multiple: Optional[float] = None,
-        days_held: int = 0
+        days_held: int = 0,
+        strategy: str | None = None,
+        entry_date: str | None = None,
+        entry_price: float | None = None,
     ) -> None:
         """
         Record position closure and move to history.
@@ -159,30 +203,35 @@ class RSBoughtTracker:
             profit_loss: Profit/loss in dollars (optional)
             r_multiple: R-multiple (optional)
             days_held: Days held (optional)
+            strategy: Strategy name override when no active tracker row exists
+            entry_date: Entry date override when no active tracker row exists
+            entry_price: Entry price override when no active tracker row exists
         """
+        trade_data = self.bought_tickers.get(ticker, {})
+        resolved_strategy = trade_data.get("strategy", strategy or self.strategy_name)
+        resolved_entry_date = trade_data.get("entry_date", entry_date)
+        resolved_entry_price = trade_data.get("entry_price", entry_price)
+
+        if resolved_entry_date is None or resolved_entry_price is None:
+            return
+
+        from src.scanning.trade_history import TradeHistory
+
+        history = TradeHistory(file_path=self.history_file_path)
+        history.append_trade(
+            ticker=ticker,
+            strategy=resolved_strategy,
+            entry_date=resolved_entry_date,
+            entry_price=resolved_entry_price,
+            exit_date=exit_date,
+            exit_price=exit_price,
+            exit_reason=exit_reason,
+            pnl=profit_loss or 0,
+            r_multiple=r_multiple or 0,
+            days_held=days_held
+        )
+
         if ticker in self.bought_tickers:
-            trade_data = self.bought_tickers[ticker]
-            strategy = trade_data.get("strategy", "RelativeStrength_Ranker_Position")
-            entry_date = trade_data.get("entry_date")
-            entry_price = trade_data.get("entry_price")
-            
-            # Append to trade history (using separate file for backtest vs production)
-            from src.scanning.trade_history import TradeHistory
-            history = TradeHistory(file_path=self.history_file_path)
-            history.append_trade(
-                ticker=ticker,
-                strategy=strategy,
-                entry_date=entry_date,
-                entry_price=entry_price,
-                exit_date=exit_date,
-                exit_price=exit_price,
-                exit_reason=exit_reason,
-                pnl=profit_loss or 0,
-                r_multiple=r_multiple or 0,
-                days_held=days_held
-            )
-            
-            # Mark as closed in current positions (keep for reference)
             self.bought_tickers[ticker].update({
                 "status": "closed",
                 "exit_date": exit_date,
@@ -190,6 +239,19 @@ class RSBoughtTracker:
                 "exit_reason": exit_reason,
                 "profit_loss": profit_loss
             })
+            self._save()
+        else:
+            self.bought_tickers[ticker] = {
+                "entry_date": resolved_entry_date,
+                "entry_price": resolved_entry_price,
+                "strategy": resolved_strategy,
+                "status": "closed",
+                "pyramids": [],
+                "exit_date": exit_date,
+                "exit_price": exit_price,
+                "exit_reason": exit_reason,
+                "profit_loss": profit_loss,
+            }
             self._save()
 
     def is_bought(self, ticker: str) -> bool:
@@ -316,3 +378,18 @@ class RSBoughtTracker:
         """Clear all data (use with caution)."""
         self.bought_tickers = {}
         self._save()
+
+
+class RSBoughtTracker(StrategyStateTracker):
+    """Backward-compatible RS Ranker tracker."""
+
+    def __init__(self, file_path: str = "data\\rs_ranker_bought.json", load_from_file: bool = True):
+        super().__init__(
+            strategy_name="RelativeStrength_Ranker_Position",
+            file_path=file_path,
+            history_file_path=history_file_path_for_strategy(
+                "RelativeStrength_Ranker_Position",
+                backtest="backtest" in str(file_path),
+            ),
+            load_from_file=load_from_file,
+        )
