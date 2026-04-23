@@ -22,6 +22,7 @@ from src.ta.indicators.gaps import (
     gap_pct, is_gap_up, is_gap_down, gap_fill_level,
 )
 from src.ta.indicators.volatility import atr_latest
+from src.analysis.zone_structure import build_zone_snapshot, long_zone_broken, short_zone_broken
 
 
 class GapReversalPosition(BaseStrategy):
@@ -40,6 +41,9 @@ class GapReversalPosition(BaseStrategy):
 
     name = "GapReversal_Position"
     description = "Breakaway gap reversal on daily chart, smoothed RSI extreme, weekly trend filter"
+    LONG_MIN_ROOM_TO_RESISTANCE = 0.02
+    SHORT_MIN_ROOM_TO_SUPPORT = 0.02
+    ZONE_EXIT_TOLERANCE_PCT = 0.002
 
     def scan(
         self,
@@ -67,6 +71,7 @@ class GapReversalPosition(BaseStrategy):
             GAP_REVERSAL_SHORT_PRIOR_RALLY_PCT,
             GAP_REVERSAL_SHORT_REGIME_FILTER,
             GAP_REVERSAL_SHORT_REQUIRE_RISK_OFF,
+            GAP_REVERSAL_LONG_MACRO_FILTER,
             MIN_LIQUIDITY_USD,
             MIN_PRICE,
         )
@@ -144,7 +149,7 @@ class GapReversalPosition(BaseStrategy):
             # ── Fix 3: Macro risk filter for LONG setups ─────────────────────────
             # In HIGH/EXTREME macro risk weeks, gap-up reversals fail —
             # macro headwind overwhelms the technical setup (e.g. LUV/DAL in tariff weeks).
-            if is_long:
+            if is_long and GAP_REVERSAL_LONG_MACRO_FILTER:
                 try:
                     import json, os
                     from pathlib import Path
@@ -209,6 +214,12 @@ class GapReversalPosition(BaseStrategy):
                 except Exception:
                     pass  # If weekly data unavailable, allow trade
 
+            zone_snapshot = build_zone_snapshot(df)
+            if is_long and zone_snapshot is not None and not self._long_zone_entry_ok(zone_snapshot):
+                return None
+            if is_short and zone_snapshot is not None and not self._short_zone_entry_ok(zone_snapshot):
+                return None
+
             # Entry at today's open (gap open price)
             entry_price = last_open
             trade_direction = "LONG" if is_long else "SHORT"
@@ -234,6 +245,16 @@ class GapReversalPosition(BaseStrategy):
 
             # Gap size for info
             gap = float(gap_pct(df).iloc[-1])
+            zone_support = (
+                max(fill_level, float(zone_snapshot.prior_short_low))
+                if is_long and zone_snapshot is not None
+                else fill_level
+            )
+            zone_resistance = (
+                min(fill_level, float(zone_snapshot.prior_short_high))
+                if is_short and zone_snapshot is not None and fill_level > 0
+                else (float(zone_snapshot.prior_short_high) if is_short and zone_snapshot is not None else fill_level)
+            )
 
             return {
                 "Ticker": ticker,
@@ -246,6 +267,8 @@ class GapReversalPosition(BaseStrategy):
                 "StopLoss": round(stop_loss, 2),
                 "StopPrice": round(stop_loss, 2),
                 "GapFillLevel": round(fill_level, 2),
+                "ZoneSupport": round(zone_support, 2) if is_long else None,
+                "ZoneResistance": round(zone_resistance, 2) if is_short else None,
                 "Target": target_price,
                 "SmoothedRSI": round(current_srsi, 2),
                 "GapPct": round(gap * 100, 2),
@@ -294,6 +317,22 @@ class GapReversalPosition(BaseStrategy):
                 if direction == "SHORT" and last_high >= float(gap_fill):
                     return {"reason": "gap_fill_stop", "exit_price": float(gap_fill)}
 
+            metadata = position.get("metadata", {})
+            zone_support = position.get("ZoneSupport") or metadata.get("ZoneSupport")
+            zone_resistance = position.get("ZoneResistance") or metadata.get("ZoneResistance")
+            if direction == "LONG" and zone_support is not None and long_zone_broken(
+                last_close,
+                float(zone_support),
+                self.ZONE_EXIT_TOLERANCE_PCT,
+            ):
+                return {"reason": "zone_support_fail", "exit_price": last_close}
+            if direction == "SHORT" and zone_resistance is not None and short_zone_broken(
+                last_close,
+                float(zone_resistance),
+                self.ZONE_EXIT_TOLERANCE_PCT,
+            ):
+                return {"reason": "zone_resistance_fail", "exit_price": last_close}
+
             # 2. EMA21 trailing exit
             trail_ema = ema(close, GAP_REVERSAL_TRAIL_MA)
             last_ema = float(trail_ema.iloc[-1])
@@ -307,3 +346,27 @@ class GapReversalPosition(BaseStrategy):
             pass
 
         return None
+
+    def _long_zone_entry_ok(self, zone_snapshot) -> bool:
+        broader_overhead_supply = zone_snapshot.prior_long_high > (zone_snapshot.prior_short_high * 1.01)
+        return (
+            zone_snapshot.prior_long_high <= 0
+            or not broader_overhead_supply
+            or zone_snapshot.close >= zone_snapshot.prior_long_high
+            or (
+                zone_snapshot.room_to_long_ceiling_pct >= self.LONG_MIN_ROOM_TO_RESISTANCE
+                and not zone_snapshot.in_long_seller_zone
+            )
+        )
+
+    def _short_zone_entry_ok(self, zone_snapshot) -> bool:
+        broader_support_below = zone_snapshot.prior_long_low < (zone_snapshot.prior_short_low * 0.99)
+        return (
+            zone_snapshot.prior_long_low <= 0
+            or not broader_support_below
+            or zone_snapshot.close <= zone_snapshot.prior_long_low
+            or (
+                zone_snapshot.room_to_long_floor_pct >= self.SHORT_MIN_ROOM_TO_SUPPORT
+                and not zone_snapshot.in_long_demand_zone
+            )
+        )

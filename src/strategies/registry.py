@@ -102,6 +102,18 @@ def register_builtin_strategies() -> None:
     except ImportError:
         pass
 
+    try:
+        from .gap_continuation import GapContinuationPosition
+        StrategyRegistry.register("GapContinuation_Position", GapContinuationPosition)
+    except ImportError:
+        pass
+
+    try:
+        from .rally_pattern import RallyPatternPosition
+        StrategyRegistry.register("RallyPattern_Position", RallyPatternPosition)
+    except ImportError:
+        pass
+
 
 # Auto-register strategies on import
 register_builtin_strategies()

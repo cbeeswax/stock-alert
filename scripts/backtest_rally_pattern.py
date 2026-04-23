@@ -41,7 +41,18 @@ def parse_args() -> argparse.Namespace:
         help="Backtest end date YYYY-MM-DD",
     )
     parser.add_argument("--capital", type=float, default=100_000.0, help="Starting capital")
-    parser.add_argument("--max-positions", type=int, default=5, help="Maximum concurrent positions")
+    parser.add_argument(
+        "--max-stock-allocation",
+        type=float,
+        default=50_000.0,
+        help="Maximum fresh capital allocated to any one stock for entries and add-ons.",
+    )
+    parser.add_argument(
+        "--max-positions",
+        type=int,
+        default=0,
+        help="Maximum concurrent positions. Use 0 for no cap.",
+    )
     parser.add_argument("--tickers", help="Comma-separated ticker list. Default: S&P 500 constituents.")
     parser.add_argument(
         "--strict-entry",
@@ -50,6 +61,47 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--atr-stop", action="store_true", help="Enable optional 2x ATR stop.")
     parser.add_argument("--time-stop", action="store_true", help="Enable optional 15-day time stop.")
+    parser.add_argument(
+        "--allocation-mode",
+        choices=["baseline", "equal_weight_cap", "setup_tiered_cap", "hybrid_risk_capped"],
+        default="baseline",
+        help="Portfolio allocation mode for new entries.",
+    )
+    parser.add_argument(
+        "--risk-sized",
+        action="store_true",
+        help="Backward-compatible alias for --allocation-mode hybrid_risk_capped.",
+    )
+    parser.add_argument(
+        "--leader-reentry",
+        action="store_true",
+        help="Enable the super-leader reentry path.",
+    )
+    parser.add_argument(
+        "--late-stage-leader",
+        action="store_true",
+        help="Enable the late-stage leader continuation path.",
+    )
+    parser.add_argument(
+        "--aggressive-early-failure",
+        action="store_true",
+        help="Enable faster failed-followthrough exits for aggressive rally entries.",
+    )
+    parser.add_argument(
+        "--bb-micro-failure",
+        action="store_true",
+        help="Enable short-support break + failed reclaim + Bollinger weakness exits for aggressive rally entries.",
+    )
+    parser.add_argument(
+        "--medium-confirm-failure",
+        action="store_true",
+        help="Enable short-support break + failed reclaim + one extra weakness confirmation exits for aggressive rally entries.",
+    )
+    parser.add_argument(
+        "--aggressive-starter-sizing",
+        action="store_true",
+        help="Start power_breakout and expansion_leader with smaller size, then allow top-ups after confirmation.",
+    )
     parser.add_argument(
         "--output-dir",
         default=str(ROOT / "reports" / "rally_pattern"),
@@ -154,6 +206,15 @@ def main() -> int:
         strict_entry=args.strict_entry,
         use_atr_stop=args.atr_stop,
         use_time_stop=args.time_stop,
+        allocation_mode=("hybrid_risk_capped" if args.risk_sized else args.allocation_mode),
+        max_allocation_per_stock=args.max_stock_allocation,
+        enable_risk_position_sizing=args.risk_sized,
+        enable_leader_reentry=args.leader_reentry,
+        enable_late_stage_leaders=args.late_stage_leader,
+        enable_aggressive_early_failure=args.aggressive_early_failure,
+        enable_bb_micro_failure=args.bb_micro_failure,
+        enable_medium_confirm_failure=args.medium_confirm_failure,
+        enable_aggressive_starter_sizing=args.aggressive_starter_sizing,
     )
     results = strategy.backtest(
         raw_df,

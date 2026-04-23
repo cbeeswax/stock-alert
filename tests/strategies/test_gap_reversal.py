@@ -82,6 +82,9 @@ def _rallying_df(n=150, final_gap_down=True, gap_pct=0.015):
 def disable_weekly_filter(monkeypatch):
     """Disable weekly TF filter so tests don't need network access."""
     monkeypatch.setattr(cfg, "GAP_REVERSAL_WEEKLY_TF_FILTER", False)
+    monkeypatch.setattr(cfg, "GAP_REVERSAL_LONG_MACRO_FILTER", False)
+    monkeypatch.setattr(cfg, "GAP_REVERSAL_MIN_GAP_ATR_MULT", 0.0)
+    monkeypatch.setattr(cfg, "GAP_REVERSAL_MIN_VOL_MULT", 1.0)
 
 
 # ---------------------------------------------------------------------------
@@ -287,6 +290,16 @@ class TestExitConditions:
         assert exit_cond is not None
         assert "trailing_ema" in exit_cond["reason"]
 
+    def test_zone_support_fail_long(self):
+        strat = GapReversalPosition()
+        position = self._make_position("LONG", gap_fill=50.0)
+        position["ZoneSupport"] = 101.0
+        df = self._df_at_price(price=99.0, ema_above=False)
+
+        exit_cond = strat.get_exit_conditions(position, df)
+        assert exit_cond is not None
+        assert exit_cond["reason"] == "zone_support_fail"
+
     def test_no_exit_when_trade_is_healthy(self):
         """Long position above EMA21 and above gap fill → no exit."""
         strat = GapReversalPosition()
@@ -312,3 +325,13 @@ class TestExitConditions:
         exit_cond = strat.get_exit_conditions(position, df)
         assert exit_cond is not None
         assert "gap_fill" in exit_cond["reason"]
+
+    def test_zone_resistance_fail_short(self):
+        strat = GapReversalPosition()
+        position = self._make_position("SHORT", gap_fill=150.0)
+        position["ZoneResistance"] = 99.0
+        df = self._df_at_price(price=101.0, ema_above=False)
+
+        exit_cond = strat.get_exit_conditions(position, df)
+        assert exit_cond is not None
+        assert exit_cond["reason"] == "zone_resistance_fail"

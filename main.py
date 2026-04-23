@@ -2,8 +2,9 @@
 Live Position Trading Scanner
 ==============================
 Uses the same position trading strategies as the backtester.
-Scans for 3 active strategies:
+Scans for active long strategies including:
 - RelativeStrength_Ranker_Position
+- RallyPattern_Position
 - High52_Position
 - BigBase_Breakout_Position
 """
@@ -13,7 +14,7 @@ import pandas as pd
 from datetime import datetime
 from src.scanning.scanner import run_scan_as_of
 from src.scanning.validator import pre_buy_check
-from src.scanning.rs_bought_tracker import RSBoughtTracker
+from src.scanning.rs_bought_tracker import RSBoughtTracker, StrategyStateTracker
 from src.notifications.email import send_email_alert
 from src.position_management.tracker import PositionTracker, filter_trades_by_position
 from src.position_management.monitor import monitor_positions
@@ -32,6 +33,18 @@ position_tracker = PositionTracker(mode="live", file="data/open_positions.json")
 
 # RS Ranker bought tracker for live trading (persistent file)
 rs_bought_tracker = RSBoughtTracker(file_path="data/rs_ranker_bought.json")
+strategy_trackers: dict[str, StrategyStateTracker] = {
+    "RelativeStrength_Ranker_Position": rs_bought_tracker,
+}
+
+
+def get_strategy_tracker(strategy_name: str) -> StrategyStateTracker:
+    """Return the persistent per-strategy tracker used for live state/history."""
+    tracker = strategy_trackers.get(strategy_name)
+    if tracker is None:
+        tracker = StrategyStateTracker(strategy_name=strategy_name)
+        strategy_trackers[strategy_name] = tracker
+    return tracker
 
 
 def check_market_regime():
@@ -175,18 +188,39 @@ if __name__ == "__main__":
                     # GET POSITION FIRST (before removing)
                     pos = position_tracker.get_position(ticker)
                     strategy = pos.get('strategy') if pos else None
-                    
+                    direction = pos.get('direction', 'LONG') if pos else 'LONG'
+                    entry_price = float(pos.get('entry_price', 0)) if pos else 0.0
+                    shares = float(pos.get('shares', 0)) if pos else 0.0
+                    exit_price = float(exit_sig.get('current_price', 0))
+                    profit_per_share = (
+                        (exit_price - entry_price)
+                        if direction != 'SHORT'
+                        else (entry_price - exit_price)
+                    )
+                    profit_loss = profit_per_share * shares if shares > 0 else 0.0
+                    days_held = int(exit_sig.get('days_held', 0))
+                    strategy_tracker = get_strategy_tracker(strategy) if strategy else None
+                     
                     # REMOVE THE POSITION FROM TRACKER
                     position_tracker.remove_position(ticker)
-                    
-                    # UPDATE RS RANKER TRACKER IF IT WAS RS_RANKER STRATEGY
-                    if strategy == 'RelativeStrength_Ranker_Position':
-                        rs_bought_tracker.close_position(
+                     
+                    # UPDATE PER-STRATEGY TRACKER / HISTORY
+                    if strategy_tracker is not None:
+                        strategy_tracker.close_position(
                             ticker=ticker,
                             exit_date=pd.Timestamp.today().strftime('%Y-%m-%d'),
-                            exit_price=exit_sig['current_price'],
+                            exit_price=exit_price,
                             exit_reason=exit_sig['type'],
-                            profit_loss=0
+                            profit_loss=profit_loss,
+                            r_multiple=exit_sig.get('current_r'),
+                            days_held=days_held,
+                            strategy=strategy,
+                            entry_date=(
+                                pd.to_datetime(pos.get('entry_date')).strftime('%Y-%m-%d')
+                                if pos and pos.get('entry_date') is not None
+                                else None
+                            ),
+                            entry_price=entry_price if entry_price > 0 else None,
                         )
 
             # Partial profits
@@ -339,6 +373,21 @@ if __name__ == "__main__":
             strategy = trade['Strategy']
             stop_loss = trade['StopLoss']
             target = trade['Target']
+            extra_fields = {
+                'direction': trade.get('Direction', 'LONG'),
+                'max_days': trade.get('MaxDays'),
+                'entry_score': trade.get('EntryScore', trade.get('Score')),
+                'setup_type': trade.get('SetupType'),
+                'signal_type': trade.get('SignalType'),
+                'zone_support': trade.get('ZoneSupport'),
+                'gap_low': trade.get('GapLow'),
+                'gap_support': trade.get('GapSupport'),
+            }
+            extra_fields = {
+                key: value
+                for key, value in extra_fields.items()
+                if value is not None and not pd.isna(value)
+            }
             
             success = position_tracker.add_position(
                 ticker=ticker,
@@ -346,20 +395,19 @@ if __name__ == "__main__":
                 entry_price=entry_price,
                 strategy=strategy,
                 stop_loss=stop_loss,
-                target=target
+                target=target,
+                **extra_fields,
             )
             
             if success:
                 print(f"✅ {ticker} @ ${entry_price:.2f} ({strategy})")
-                
-                # Record RS_Ranker entry to tracker (for re-entry prevention)
-                if strategy == "RelativeStrength_Ranker_Position":
-                    rs_bought_tracker.add_bought(
-                        ticker=ticker,
-                        entry_date=pd.Timestamp.today().strftime('%Y-%m-%d'),
-                        entry_price=entry_price,
-                        strategy=strategy
-                    )
+
+                get_strategy_tracker(strategy).add_bought(
+                    ticker=ticker,
+                    entry_date=pd.Timestamp.today().strftime('%Y-%m-%d'),
+                    entry_price=entry_price,
+                    strategy=strategy
+                )
             else:
                 print(f"⚠️  {ticker} - already recorded or error")
         

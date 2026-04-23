@@ -25,7 +25,9 @@ POSITION_MAX_TOTAL = 20            # Max 20 total positions
 # Per-Strategy Position Limits
 POSITION_MAX_PER_STRATEGY = {
     "GapReversal_Position": 10,               # ACTIVE: 46.8% WR, 0.58R, +$457k net (backtested)
+    "GapContinuation_Position": 10,           # ACTIVE: bullish earnings / gap-and-go continuation
     "RelativeStrength_Ranker_Position": 10,   # ACTIVE: 48.8% WR, 2.16R, +$620k net (backtested)
+    "RallyPattern_Position": 10,              # ACTIVE: daily rally-pattern leader scan
     "Industrials_Ranker_Position": 0,         # DISABLED: unvalidated
     "Healthcare_Ranker_Position": 0,          # DISABLED: unvalidated
     "Energy_Ranker_Position": 0,              # DISABLED: unvalidated
@@ -73,11 +75,12 @@ POSITION_PYRAMID_PULLBACK_ATR = 1.0   # Within 1 ATR of EMA21
 STRATEGY_PRIORITY = {
     "BigBase_Breakout_Position": 1,
     "RelativeStrength_Ranker_Position": 2,
-    "TrendContinuation_Position": 3,
-    "EMA_Crossover_Position": 4,
-    "High52_Position": 5,
-    "MeanReversion_Position": 6,
-    "%B_MeanReversion_Position": 7,
+    "RallyPattern_Position": 3,
+    "TrendContinuation_Position": 4,
+    "EMA_Crossover_Position": 5,
+    "High52_Position": 6,
+    "MeanReversion_Position": 7,
+    "%B_MeanReversion_Position": 8,
 }
 
 # =============================================================================
@@ -161,7 +164,12 @@ RS_RANKER_TRAIL_MA = 100
 RS_RANKER_TRAIL_DAYS = 10
 RS_RANKER_MAX_DAYS = 150
 
-# 8. GAPREVERSAL_POSITION — Breakaway Gap Reversal Strategy
+# 8. RALLYPATTERN_POSITION — keep repo defaults empty so tuning can live only in
+# local/GCS config overrides. The live wrapper falls back to built-in strategy
+# defaults when this dict is empty.
+RALLY_PATTERN_CONFIG = {}
+
+# 9. GAPREVERSAL_POSITION — Breakaway Gap Reversal Strategy
 # Long: gap up + smoothed RSI(10 on EMA21) < 10 + weekly trend UP
 # Short: gap down + smoothed RSI(10 on EMA21) > 90 + weekly trend DOWN
 # Stop: gap fill (prior close). Exit: trailing EMA21.
@@ -190,6 +198,30 @@ GAP_REVERSAL_SHORT_PRIOR_RALLY_PCT = 0.20  # shorts need ≥20% prior rally — 
 GAP_REVERSAL_SHORT_REGIME_FILTER = True    # enable regime filter for shorts
 GAP_REVERSAL_SHORT_REQUIRE_RISK_OFF = False  # False = block only RISK_ON (allow NEUTRAL+RISK_OFF)
                                               # True  = block all except RISK_OFF (bear market only)
+GAP_REVERSAL_LONG_MACRO_FILTER = True      # skip long reversal gaps in high-risk macro weeks
+
+# 10. GAPCONTINUATION_POSITION — Bullish earnings gap continuation
+# Long: gap up + strong close/volume + trend intact + smoothed RSI in strength band
+# Stop: gap-day low. Exit: trailing EMA21.
+GAP_CONTINUATION_MIN_GAP_PCT = 0.02
+GAP_CONTINUATION_MIN_GAP_ATR_MULT = 1.0
+GAP_CONTINUATION_MIN_VOL_MULT = 1.5
+GAP_CONTINUATION_EMA_PERIOD = 21
+GAP_CONTINUATION_RSI_PERIOD = 10
+GAP_CONTINUATION_RSI_MIN = 55
+GAP_CONTINUATION_RSI_MAX = 80
+GAP_CONTINUATION_MIN_CLOSE_POS = 0.70
+GAP_CONTINUATION_TRAIL_MA = 21
+GAP_CONTINUATION_MAX_DAYS = 120
+GAP_CONTINUATION_TARGET_R_MULTIPLE = 2
+GAP_CONTINUATION_PRIORITY = 1
+GAP_CONTINUATION_MAX_GAP_AGE_DAYS = 5
+GAP_CONTINUATION_MIN_RS_20 = 0.0
+GAP_CONTINUATION_WEEKLY_TF_FILTER = True
+GAP_CONTINUATION_LONG_MACRO_FILTER = False
+GAP_CONTINUATION_MAX_SHELF_DAYS = 5
+GAP_CONTINUATION_MAX_SHELF_RANGE_PCT = 0.10
+GAP_CONTINUATION_MIN_SHELF_CLOSE_POS = 0.50
 
 # =============================================================================
 # INDEX REGIME FILTERS

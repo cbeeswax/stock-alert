@@ -28,6 +28,7 @@ __all__ = [
     "RS_RANKER_RS_THRESHOLD",
     "RS_RANKER_STOP_ATR_MULT",
     "RS_RANKER_MAX_DAYS",
+    "RALLY_PATTERN_CONFIG",
     # Regime
     "REGIME_INDEX",
     "REGIME_BULL_MA",

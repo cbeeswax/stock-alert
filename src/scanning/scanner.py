@@ -1643,6 +1643,47 @@ def run_scan_as_of(as_of_date, tickers, rs_bought_tracker=None):
             pass
 
     # =========================================================================
+    # GAP CONTINUATION POSITION
+    # =========================================================================
+    if POSITION_MAX_PER_STRATEGY.get("GapContinuation_Position", 0) > 0:
+        try:
+            from src.strategies.gap_continuation import GapContinuationPosition
+
+            gap_continuation_strategy = GapContinuationPosition()
+            for ticker in tickers:
+                try:
+                    df = get_historical_data(ticker)
+                    if df.empty:
+                        continue
+                    if not isinstance(df.index, pd.DatetimeIndex):
+                        try:
+                            df.index = pd.to_datetime(df.index, format='%Y-%m-%d', errors='coerce')
+                            df = df[df.index.notna()]
+                        except Exception:
+                            continue
+                    df = df[df.index <= as_of_date]
+                    if len(df) < 65:
+                        continue
+                    signal = gap_continuation_strategy.scan(ticker, df, as_of_date)
+                    if signal is not None:
+                        signals.append(signal)
+                except Exception:
+                    continue
+        except Exception:
+            pass
+
+    # =========================================================================
+    # REGISTRY-DRIVEN STRATEGIES
+    # =========================================================================
+    for _, strategy in _get_active_registry_strategies():
+        try:
+            strategy_signals = strategy.run(tickers, as_of_date=as_of_date)
+            if strategy_signals:
+                signals.extend(strategy_signals)
+        except Exception:
+            continue
+
+    # =========================================================================
     # Phase 2-3: SECTOR-BASED STRATEGIES
     # =========================================================================
     

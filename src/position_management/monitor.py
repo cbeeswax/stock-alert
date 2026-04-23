@@ -144,6 +144,9 @@ def monitor_positions(position_tracker):
             elif strategy == "GapReversal_Position":
                 partial_r_trigger = 999  # no partial exits for gap reversal
                 max_days = GAP_REVERSAL_MAX_DAYS
+            elif strategy == "RallyPattern_Position":
+                partial_r_trigger = 999  # rally strategy currently runs full-position exits
+                max_days = int(pos.get('max_days', 120))
             else:
                 partial_r_trigger = 2.5
                 max_days = 150
@@ -283,9 +286,33 @@ def monitor_positions(position_tracker):
                             'days_held': days_held,
                             'urgency': 'HIGH',
                             'entry_price': entry_price,
+                                'current_price': current_close
+                            })
+                        trail_triggered = True
+
+            elif strategy == "RallyPattern_Position":
+                try:
+                    from src.strategies.rally_pattern import RallyPatternPosition
+
+                    rally_strategy = RallyPatternPosition()
+                    position_with_ticker = dict(pos)
+                    position_with_ticker["ticker"] = ticker
+                    exit_cond = rally_strategy.get_exit_conditions(position_with_ticker, df, today)
+                    if exit_cond is not None:
+                        exits.append({
+                            'ticker': ticker,
+                            'type': str(exit_cond["reason"]).upper(),
+                            'reason': f'Rally pattern exit: {exit_cond["reason"]}',
+                            'action': f'EXIT ALL at ${current_close:.2f}',
+                            'current_r': current_r,
+                            'days_held': days_held,
+                            'urgency': 'HIGH',
+                            'entry_price': entry_price,
                             'current_price': current_close
                         })
                         trail_triggered = True
+                except Exception:
+                    pass
 
             # Update trail counter
             if not trail_triggered:

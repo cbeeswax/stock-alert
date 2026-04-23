@@ -14,6 +14,7 @@ tests = [
     ("src.scanning.scanner", "run_scan_as_of", "from src.scanning.scanner import run_scan_as_of"),
     ("src.notifications.email", "send_email_alert", "from src.notifications.email import send_email_alert"),
     ("src.strategies.relative_strength", "check_relative_strength", "from src.strategies.relative_strength import check_relative_strength"),
+    ("src.strategies.rally_pattern", "RallyPatternPosition", "from src.strategies.rally_pattern import RallyPatternPosition"),
     ("main", "main module", "import main"),
     ("src.scanning.validator", "pre_buy_check (via src)", "from src.scanning.validator import pre_buy_check"),
 ]
