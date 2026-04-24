@@ -7,6 +7,7 @@ a clean per-strategy, long/short, and yearly P&L breakdown.
 Usage:
     python scripts/backtest_strategies.py                      # all active strategies
     python scripts/backtest_strategies.py --strategy gap       # GapReversal only
+    python scripts/backtest_strategies.py --strategy gapcont   # GapContinuation only
     python scripts/backtest_strategies.py --strategy rs        # RS Ranker only
     python scripts/backtest_strategies.py --strategy all       # explicitly all
     python scripts/backtest_strategies.py --start 2020-01-01
@@ -15,6 +16,7 @@ Usage:
 
 Strategy aliases:
     gap       → GapReversal_Position
+    gapcont   → GapContinuation_Position
     rs        → RelativeStrength_Ranker_Position
     high52    → High52_Position
     bigbase   → BigBase_Breakout_Position
@@ -47,6 +49,7 @@ import src.config.settings as cfg
 # ─── Strategy aliases & max positions for backtest ────────────────────────────
 STRATEGY_ALIASES = {
     "gap":     "GapReversal_Position",
+    "gapcont": "GapContinuation_Position",
     "rs":      "RelativeStrength_Ranker_Position",
     "high52":  "High52_Position",
     "bigbase": "BigBase_Breakout_Position",
@@ -59,6 +62,7 @@ STRATEGY_ALIASES = {
 # Only strategies listed here are enabled when running --strategy all
 BACKTEST_MAX_POSITIONS = {
     "GapReversal_Position": 5,
+    "GapContinuation_Position": 5,
     "RelativeStrength_Ranker_Position": 10,
     # High52_Position: disabled — needs further tuning
     # MeanReversion_Position: disabled — needs further tuning

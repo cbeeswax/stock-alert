@@ -259,7 +259,9 @@ def send_email_alert(
                     # Calculate position sizing
                     risk_amount = equity * risk_pct  # $2,000 default
                     if entry > 0 and stop > 0:
-                        risk_per_share = max(abs(entry - stop), entry * 0.01)
+                        risk_per_share = row.get("RiskPerShare")
+                        if pd.isna(risk_per_share) or risk_per_share is None or risk_per_share <= 0:
+                            risk_per_share = max(abs(entry - stop), entry * 0.01)
                         shares = int(risk_amount / risk_per_share) if risk_per_share > 0 else 0
                         shares = min(shares, int(equity * 0.25 / entry))  # 25% cap
                     else:

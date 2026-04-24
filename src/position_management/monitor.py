@@ -31,6 +31,7 @@ from src.config.settings import (
     GAP_REVERSAL_MAX_DAYS,
     GAP_REVERSAL_TRAIL_MA,
     GAP_REVERSAL_TARGET_R_MULTIPLE,
+    GAP_CONTINUATION_MAX_DAYS,
     POSITION_PARTIAL_SIZE,
     POSITION_PYRAMID_R_TRIGGER,
     POSITION_PYRAMID_MAX_ADDS,
@@ -144,6 +145,9 @@ def monitor_positions(position_tracker):
             elif strategy == "GapReversal_Position":
                 partial_r_trigger = 999  # no partial exits for gap reversal
                 max_days = GAP_REVERSAL_MAX_DAYS
+            elif strategy == "GapContinuation_Position":
+                partial_r_trigger = 999  # continuation runs full-position exits
+                max_days = GAP_CONTINUATION_MAX_DAYS
             elif strategy == "RallyPattern_Position":
                 partial_r_trigger = 999  # rally strategy currently runs full-position exits
                 max_days = int(pos.get('max_days', 120))
@@ -313,6 +317,29 @@ def monitor_positions(position_tracker):
                         trail_triggered = True
                 except Exception:
                     pass
+            elif strategy == "GapContinuation_Position":
+                try:
+                    from src.strategies.gap_continuation import GapContinuationPosition
+
+                    continuation_strategy = GapContinuationPosition()
+                    position_with_ticker = dict(pos)
+                    position_with_ticker["ticker"] = ticker
+                    exit_cond = continuation_strategy.get_exit_conditions(position_with_ticker, df, today)
+                    if exit_cond is not None:
+                        exits.append({
+                            'ticker': ticker,
+                            'type': str(exit_cond["reason"]).upper(),
+                            'reason': f'Gap continuation exit: {exit_cond["reason"]}',
+                            'action': f'EXIT ALL at ${float(exit_cond.get("exit_price", current_close)):.2f}',
+                            'current_r': current_r,
+                            'days_held': days_held,
+                            'urgency': 'HIGH',
+                            'entry_price': entry_price,
+                            'current_price': current_close
+                        })
+                        trail_triggered = True
+                except Exception:
+                    pass
 
             # Update trail counter
             if not trail_triggered:
@@ -329,7 +356,7 @@ def monitor_positions(position_tracker):
             pyramid_count = len(pyramid_adds) if isinstance(pyramid_adds, list) else pyramid_adds
             has_pyramids = pyramid_count > 0
 
-            time_stop_due = (strategy == "GapReversal_Position" and days_held >= max_days) or \
+            time_stop_due = (strategy in {"GapReversal_Position", "GapContinuation_Position"} and days_held >= max_days) or \
                             (not has_pyramids and days_held >= max_days)
 
             if time_stop_due:

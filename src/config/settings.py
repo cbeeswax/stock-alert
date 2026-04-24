@@ -201,8 +201,8 @@ GAP_REVERSAL_SHORT_REQUIRE_RISK_OFF = False  # False = block only RISK_ON (allow
 GAP_REVERSAL_LONG_MACRO_FILTER = True      # skip long reversal gaps in high-risk macro weeks
 
 # 10. GAPCONTINUATION_POSITION — Bullish earnings gap continuation
-# Long: gap up + strong close/volume + trend intact + smoothed RSI in strength band
-# Stop: gap-day low. Exit: trailing EMA21.
+# Long: qualified gap setup + post-gap hold + confirmed breakout + practical room/risk
+# Stop: structural support with a minimum practical breathing distance. Exit: support fail / trailing EMA21.
 GAP_CONTINUATION_MIN_GAP_PCT = 0.02
 GAP_CONTINUATION_MIN_GAP_ATR_MULT = 1.0
 GAP_CONTINUATION_MIN_VOL_MULT = 1.5

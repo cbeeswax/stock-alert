@@ -1,30 +1,33 @@
 """
 GapContinuation_Position Strategy
 =================================
-Bullish gap-and-go / earnings gap continuation strategy on daily charts.
+Bullish earnings-gap continuation strategy on daily charts.
 
 Long setup:
-    - meaningful gap up with high relative volume
-    - close holds near high of day
-    - smoothed RSI stays in a strength band (not oversold reversal)
-    - price remains above EMA21 / SMA50 with optional weekly trend alignment
+    - meaningful bullish gap up with high relative volume
+    - gap day acts as setup only, not an actionable same-day entry
+    - post-gap bars must hold above gap support and stay relatively tight
+    - entry requires a confirmed breakout above the shelf / gap-day highs
 
 Stop loss:
-    - gap day low (institutional gap support)
+    - practical stop below structural support with minimum breathing room
 
 Exit:
-    - gap day support fails
+    - gap support fails
+    - zone support fails
     - trailing EMA21
 """
 
 from __future__ import annotations
 
+import tempfile
 from pathlib import Path
 from typing import Optional, Dict, Any
 import json
 
 import pandas as pd
 
+from src.storage.gcs import download_file
 from src.strategies.base import BaseStrategy
 from src.ta.indicators.gaps import gap_pct, is_gap_up
 from src.ta.indicators.momentum import smoothed_rsi
@@ -38,7 +41,12 @@ class GapContinuationPosition(BaseStrategy):
 
     name = "GapContinuation_Position"
     description = "Bullish gap continuation with trend, volume, and close-strength filters"
-    GAP_DAY_MIN_ROOM_TO_RESISTANCE = 0.02
+    EXTERNAL_SETTINGS_PATH = Path("config\\settings.json")
+    REQUIRED_EXTERNAL_KEYS = {
+        "GAP_CONTINUATION_MIN_BREAKOUT_CLOSE_POS",
+        "GAP_CONTINUATION_MAX_GAP_DAY_UPPER_WICK_PCT",
+        "GAP_CONTINUATION_MIN_EFFECTIVE_RISK_PCT",
+    }
     POST_SHELF_MIN_ROOM_TO_RESISTANCE = 0.03
     ZONE_EXIT_TOLERANCE_PCT = 0.002
 
@@ -69,6 +77,16 @@ class GapContinuationPosition(BaseStrategy):
             GAP_CONTINUATION_MIN_SHELF_CLOSE_POS,
             MIN_LIQUIDITY_USD,
             MIN_PRICE,
+        )
+        external_settings = self._load_external_settings()
+        gap_continuation_min_breakout_close_pos = float(
+            external_settings["GAP_CONTINUATION_MIN_BREAKOUT_CLOSE_POS"]
+        )
+        gap_continuation_max_gap_day_upper_wick_pct = float(
+            external_settings["GAP_CONTINUATION_MAX_GAP_DAY_UPPER_WICK_PCT"]
+        )
+        gap_continuation_min_effective_risk_pct = float(
+            external_settings["GAP_CONTINUATION_MIN_EFFECTIVE_RISK_PCT"]
         )
 
         try:
@@ -144,65 +162,73 @@ class GapContinuationPosition(BaseStrategy):
                 return None
             zone_snapshot = build_zone_snapshot(df)
 
-            signal_type = "gap_day"
-            gap_idx = len(df) - 1
-            if not self._qualified_gap_up_bar(
+            gap_idx = self._find_recent_gap_up_bar(
                 df,
-                gap_idx,
+                max_shelf_days=min(GAP_CONTINUATION_MAX_SHELF_DAYS, GAP_CONTINUATION_MAX_GAP_AGE_DAYS),
                 min_gap_pct=GAP_CONTINUATION_MIN_GAP_PCT,
                 min_gap_atr_mult=GAP_CONTINUATION_MIN_GAP_ATR_MULT,
                 min_vol_mult=GAP_CONTINUATION_MIN_VOL_MULT,
-            ):
-                gap_idx = self._find_recent_gap_up_bar(
-                    df,
-                    max_shelf_days=GAP_CONTINUATION_MAX_SHELF_DAYS,
-                    min_gap_pct=GAP_CONTINUATION_MIN_GAP_PCT,
-                    min_gap_atr_mult=GAP_CONTINUATION_MIN_GAP_ATR_MULT,
-                    min_vol_mult=GAP_CONTINUATION_MIN_VOL_MULT,
-                )
-                signal_type = "post_gap_shelf"
+                min_gap_close_pos=GAP_CONTINUATION_MIN_CLOSE_POS,
+                max_gap_upper_wick_pct=gap_continuation_max_gap_day_upper_wick_pct,
+            )
             if gap_idx is None:
                 return None
 
             gap_bar = df.iloc[gap_idx]
             prior_close = float(close.iloc[gap_idx - 1]) if gap_idx >= 1 else float(gap_bar["Open"])
             gap_mid = prior_close + ((float(gap_bar["Open"]) - prior_close) * 0.5)
-            close_pos = ((last_close - last_low) / (last_high - last_low)) if last_high > last_low else 0.0
+            days_since_gap = (len(df) - 1) - gap_idx
+            if days_since_gap < 1 or days_since_gap > GAP_CONTINUATION_MAX_SHELF_DAYS:
+                return None
 
-            if signal_type == "gap_day":
-                if close_pos < GAP_CONTINUATION_MIN_CLOSE_POS:
-                    return None
-                if last_close <= last_open:
-                    return None
-                entry_price = last_open
-                stop_loss = float(gap_bar["Low"])
-            else:
-                days_since_gap = (len(df) - 1) - gap_idx
-                shelf_slice = df.iloc[gap_idx : len(df)]
+            signal_type = "confirmed_gap_breakout"
+            close_pos = ((last_close - last_low) / (last_high - last_low)) if last_high > last_low else 0.0
+            if close_pos < gap_continuation_min_breakout_close_pos:
+                return None
+            if last_close <= last_open:
+                return None
+
+            shelf_slice = df.iloc[gap_idx + 1 : len(df) - 1]
+            if not shelf_slice.empty:
                 shelf_range = (
                     (float(shelf_slice["High"].max()) - float(shelf_slice["Low"].min())) / last_close
                     if last_close > 0
                     else 0.0
                 )
-                prior_shelf_closes = shelf_slice["Close"].iloc[:-1]
-                prior_shelf_max_close = float(prior_shelf_closes.max()) if not prior_shelf_closes.empty else 0.0
-                if days_since_gap < 1 or days_since_gap > GAP_CONTINUATION_MAX_SHELF_DAYS:
-                    return None
                 if shelf_range > GAP_CONTINUATION_MAX_SHELF_RANGE_PCT:
                     return None
-                if close_pos < GAP_CONTINUATION_MIN_SHELF_CLOSE_POS:
+                if float(shelf_slice["Close"].min()) <= gap_mid:
                     return None
-                if last_close <= gap_mid:
+                if self._min_close_position(shelf_slice) < GAP_CONTINUATION_MIN_SHELF_CLOSE_POS:
                     return None
-                if prior_shelf_max_close > 0 and last_close < prior_shelf_max_close:
-                    return None
-                entry_price = last_close
-                stop_loss = gap_mid
 
-            min_room_to_resistance = (
-                self.POST_SHELF_MIN_ROOM_TO_RESISTANCE
-                if signal_type == "post_gap_shelf"
-                else self.GAP_DAY_MIN_ROOM_TO_RESISTANCE
+            post_gap_slice = df.iloc[gap_idx + 1 :]
+            if post_gap_slice.empty:
+                return None
+            if float(post_gap_slice["Close"].min()) <= gap_mid:
+                return None
+
+            breakout_level = float(gap_bar["High"])
+            if not shelf_slice.empty:
+                breakout_level = max(breakout_level, float(shelf_slice["High"].max()))
+            if last_close <= breakout_level or last_high <= breakout_level:
+                return None
+
+            entry_price = last_close
+            structural_support = max(gap_mid, float(post_gap_slice["Low"].min()))
+            effective_risk = max(
+                entry_price - structural_support,
+                entry_price * gap_continuation_min_effective_risk_pct,
+            )
+            if effective_risk <= 0:
+                return None
+            stop_loss = entry_price - effective_risk
+            if stop_loss <= 0 or stop_loss >= entry_price:
+                return None
+
+            min_room_to_resistance = max(
+                self.POST_SHELF_MIN_ROOM_TO_RESISTANCE,
+                GAP_CONTINUATION_TARGET_R_MULTIPLE * (effective_risk / entry_price),
             )
             if zone_snapshot is not None and not self._long_zone_entry_ok(
                 zone_snapshot,
@@ -210,17 +236,15 @@ class GapContinuationPosition(BaseStrategy):
             ):
                 return None
 
-            risk = abs(entry_price - stop_loss)
-            if risk <= 0:
-                return None
             zone_support = (
-                max(float(stop_loss), float(zone_snapshot.prior_short_low))
+                max(structural_support, float(zone_snapshot.prior_short_low))
                 if zone_snapshot is not None
-                else float(stop_loss)
+                else structural_support
             )
 
-            target_price = round(entry_price + GAP_CONTINUATION_TARGET_R_MULTIPLE * risk, 2)
-            gap = float(gap_pct(df).iloc[-1])
+            target_price = round(entry_price + GAP_CONTINUATION_TARGET_R_MULTIPLE * effective_risk, 2)
+            gap_window = df.iloc[: gap_idx + 1]
+            gap = float(gap_pct(gap_window).iloc[-1])
             score = round(
                 min(
                     100.0,
@@ -242,7 +266,7 @@ class GapContinuationPosition(BaseStrategy):
                 "StopLoss": round(stop_loss, 2),
                 "StopPrice": round(stop_loss, 2),
                 "GapLow": round(float(gap_bar["Low"]), 2),
-                "GapSupport": round(stop_loss, 2),
+                "GapSupport": round(structural_support, 2),
                 "ZoneSupport": round(zone_support, 2),
                 "RoomToResistancePct": round(
                     float(zone_snapshot.room_to_long_ceiling_pct) * 100,
@@ -251,6 +275,7 @@ class GapContinuationPosition(BaseStrategy):
                 "SignalType": signal_type,
                 "GapPct": round(gap * 100, 2),
                 "Target": target_price,
+                "RiskPerShare": round(effective_risk, 2),
                 "SmoothedRSI": round(current_srsi, 2),
                 "ClosePos": round(close_pos, 2),
                 "Score": score,
@@ -347,6 +372,8 @@ class GapContinuationPosition(BaseStrategy):
         min_gap_pct: float,
         min_gap_atr_mult: float,
         min_vol_mult: float,
+        min_gap_close_pos: float,
+        max_gap_upper_wick_pct: float,
     ) -> bool:
         if gap_idx < 1:
             return False
@@ -362,6 +389,13 @@ class GapContinuationPosition(BaseStrategy):
             avg_vol_20 = float(window["Volume"].iloc[-21:-1].mean())
             if avg_vol_20 > 0 and float(window["Volume"].iloc[-1]) < avg_vol_20 * min_vol_mult:
                 return False
+        gap_bar = window.iloc[-1]
+        if float(gap_bar["Close"]) <= float(gap_bar["Open"]):
+            return False
+        if GapContinuationPosition._close_position_for_bar(gap_bar) < min_gap_close_pos:
+            return False
+        if GapContinuationPosition._upper_wick_fraction_for_bar(gap_bar) > max_gap_upper_wick_pct:
+            return False
         return True
 
     def _find_recent_gap_up_bar(
@@ -372,6 +406,8 @@ class GapContinuationPosition(BaseStrategy):
         min_gap_pct: float,
         min_gap_atr_mult: float,
         min_vol_mult: float,
+        min_gap_close_pos: float,
+        max_gap_upper_wick_pct: float,
     ) -> int | None:
         last_index = len(df) - 2
         first_index = max(1, len(df) - 1 - max_shelf_days)
@@ -382,9 +418,34 @@ class GapContinuationPosition(BaseStrategy):
                 min_gap_pct=min_gap_pct,
                 min_gap_atr_mult=min_gap_atr_mult,
                 min_vol_mult=min_vol_mult,
+                min_gap_close_pos=min_gap_close_pos,
+                max_gap_upper_wick_pct=max_gap_upper_wick_pct,
             ):
                 return gap_idx
         return None
+
+    @classmethod
+    def _load_external_settings(cls) -> dict[str, Any]:
+        if cls.EXTERNAL_SETTINGS_PATH.exists():
+            with cls.EXTERNAL_SETTINGS_PATH.open("r", encoding="utf-8") as handle:
+                settings = json.load(handle)
+        else:
+            with tempfile.TemporaryDirectory(prefix="gap-continuation-settings-") as tmp_dir:
+                local_path = Path(tmp_dir) / "settings.json"
+                if not download_file("config/settings.json", local_path):
+                    raise FileNotFoundError(
+                        "Missing required settings file: config\\settings.json "
+                        "(expected locally or in GCS)."
+                    )
+                with local_path.open("r", encoding="utf-8") as handle:
+                    settings = json.load(handle)
+
+        missing = sorted(key for key in cls.REQUIRED_EXTERNAL_KEYS if key not in settings)
+        if missing:
+            raise ValueError(
+                f"Gap continuation config missing required settings keys: {missing}"
+            )
+        return settings
 
     @staticmethod
     def _long_zone_entry_ok(zone_snapshot, *, min_room_to_resistance: float) -> bool:
@@ -398,3 +459,29 @@ class GapContinuationPosition(BaseStrategy):
                 and not zone_snapshot.in_long_seller_zone
             )
         )
+
+    @staticmethod
+    def _close_position_for_bar(bar: pd.Series) -> float:
+        high = float(bar["High"])
+        low = float(bar["Low"])
+        close = float(bar["Close"])
+        if high <= low:
+            return 0.0
+        return (close - low) / (high - low)
+
+    @classmethod
+    def _min_close_position(cls, df: pd.DataFrame) -> float:
+        if df.empty:
+            return 1.0
+        return min(cls._close_position_for_bar(row) for _, row in df.iterrows())
+
+    @staticmethod
+    def _upper_wick_fraction_for_bar(bar: pd.Series) -> float:
+        high = float(bar["High"])
+        low = float(bar["Low"])
+        open_price = float(bar["Open"])
+        close = float(bar["Close"])
+        if high <= low:
+            return 0.0
+        upper_wick = high - max(open_price, close)
+        return max(0.0, upper_wick) / (high - low)
