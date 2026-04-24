@@ -280,6 +280,10 @@ class WalkForwardBacktester:
             'rs_partial_stage': 0,  # Track dual-stage partial exit progress for RS_Ranker
             'gap_pct': trade.get("GapPct"),
             'smoothed_rsi': trade.get("SmoothedRSI"),
+            'gap_low': trade.get("GapLow"),
+            'gap_support': trade.get("GapSupport"),
+            'zone_support': trade.get("ZoneSupport"),
+            'signal_type': trade.get("SignalType"),
         }
 
         self.open_positions.append(position)
@@ -319,7 +323,7 @@ class WalkForwardBacktester:
             # Get today's bar
             if current_date not in df.index:
                 # Still enforce MaxDays even when today's bar is missing
-                if position['strategy'] == "GapReversal_Position" and position['days_held'] >= position['max_days']:
+                if position['strategy'] in {"GapReversal_Position", "GapContinuation_Position"} and position['days_held'] >= position['max_days']:
                     last_price = float(df['Close'].iloc[-1])
                     entry = position['entry_price']
                     # Sanity check: exit price shouldn't be more than 50x entry (data corruption guard)
@@ -365,10 +369,10 @@ class WalkForwardBacktester:
             # =================================================================
             # PYRAMIDING LOGIC (add to winners on pullback)
             # =================================================================
-            # GapReversal is a mean-reversion strategy — pyramiding is not applicable
-            # and caused catastrophic losses when the short-side stock recovered.
+            # Gap strategies are thesis-specific campaigns; pyramiding adds noise and
+            # has historically distorted the gap trade profiles.
             if (POSITION_PYRAMID_ENABLED and
-                position['strategy'] != "GapReversal_Position" and
+                position['strategy'] not in {"GapReversal_Position", "GapContinuation_Position"} and
                 current_r >= POSITION_PYRAMID_R_TRIGGER and
                 len(position['pyramid_adds']) < POSITION_PYRAMID_MAX_ADDS and
                 not position['partial_exited']):
@@ -885,14 +889,43 @@ class WalkForwardBacktester:
                         )
                         return self._close_position(position, current_date, current_close, "EMA21_TrailingExit_Short", current_r)
 
+        elif strategy == "GapContinuation_Position":
+            from src.strategies.gap_continuation import GapContinuationPosition
+
+            continuation_strategy = GapContinuationPosition()
+            exit_cond = continuation_strategy.get_exit_conditions(
+                {
+                    "Direction": direction,
+                    "GapLow": position.get("gap_low"),
+                    "GapSupport": position.get("gap_support"),
+                    "ZoneSupport": position.get("zone_support"),
+                    "stop_loss": position.get("stop_price"),
+                    "metadata": {
+                        "GapLow": position.get("gap_low"),
+                        "GapSupport": position.get("gap_support"),
+                        "ZoneSupport": position.get("zone_support"),
+                    },
+                },
+                recent_df,
+                current_date,
+            )
+            if exit_cond is not None:
+                return self._close_position(
+                    position,
+                    current_date,
+                    float(exit_cond.get("exit_price", current_close)),
+                    str(exit_cond["reason"]),
+                    current_r,
+                )
+
 
         has_pyramids = len(position['pyramid_adds']) > 0
 
         # GapReversal: always enforce MaxDays hard cap — never pyramid, and open-ended
         # holds are what caused the -245R PLTR trade (1134 days with no exit).
-        if strategy == "GapReversal_Position" and days_held >= max_days:
+        if strategy in {"GapReversal_Position", "GapContinuation_Position"} and days_held >= max_days:
             self.log.info(
-                f"GapReversal EXIT max_days | {position.get('ticker','?')} {direction} | "
+                f"{strategy} EXIT max_days | {position.get('ticker','?')} {direction} | "
                 f"date={current_date} days={days_held} R={current_r:.2f}"
             )
             return self._close_position(position, current_date, current_close, f"TimeStop_{max_days}d", current_r)
@@ -996,6 +1029,7 @@ class WalkForwardBacktester:
             "PyramidAdds": len(position['pyramid_adds']),
             "GapPct": position.get("gap_pct"),
             "SmoothedRSI": position.get("smoothed_rsi"),
+            "SignalType": position.get("signal_type"),
         }
 
         # Track cooldown for strategies that need it
@@ -1330,4 +1364,4 @@ class WalkForwardBacktester:
             summary["ExitReasonAnalysis"] = exit_analysis.to_dict("index")
 
         return summary
-
+

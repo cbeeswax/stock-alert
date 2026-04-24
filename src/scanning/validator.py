@@ -320,7 +320,9 @@ def pre_buy_check(combined_signals, rr_ratio=None, benchmark="SPY", as_of_date=N
             if target_val is not None and not pd.isna(target_val):
                 target = target_val
             else:
-                risk = abs(entry - stop)
+                risk = s.get("RiskPerShare")
+                if risk is None or pd.isna(risk) or risk <= 0:
+                    risk = max(abs(entry - stop), entry * 0.01)
                 target = entry + 2.0 * risk
         else:
             stop = get_stop_loss(strategy, entry, atr)
@@ -380,6 +382,8 @@ def pre_buy_check(combined_signals, rr_ratio=None, benchmark="SPY", as_of_date=N
             "GapLow": s.get("GapLow"),
             "GapSupport": s.get("GapSupport"),
             "ZoneSupport": s.get("ZoneSupport"),
+            "RiskPerShare": round(float(s.get("RiskPerShare")), 2) if s.get("RiskPerShare") is not None else round(max(abs(entry - stop), entry * 0.01), 2),
+            "RoomToResistancePct": s.get("RoomToResistancePct"),
             "SetupType": s.get("SetupType"),
             "SignalType": s.get("SignalType"),
             "EntryScore": s.get("EntryScore", s.get("Score", 0)),

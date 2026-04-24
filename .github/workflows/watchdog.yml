@@ -9,29 +9,60 @@ jobs:
   check-daily-ran:
     runs-on: ubuntu-latest
     steps:
-      - name: Check if daily scan ran today
+      - name: Check if daily scan ran for the current market day
         id: check
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MARKET_TZ: America/New_York
         run: |
-          # Get the last run of the daily workflow
-          LAST_RUN=$(gh api \
-            "repos/${{ github.repository }}/actions/workflows/daily-stock-alert.yml/runs?per_page=1&status=completed" \
-            --jq '.workflow_runs[0].created_at')
+          RUNS_JSON=$(mktemp)
+          gh api \
+            "repos/${{ github.repository }}/actions/workflows/daily-stock-alert.yml/runs?per_page=10" \
+            > "$RUNS_JSON"
 
-          echo "Last run: $LAST_RUN"
+          python3 - "$RUNS_JSON" "$GITHUB_OUTPUT" "$MARKET_TZ" <<'PY'
+          import json
+          import sys
+          from datetime import datetime, timezone
+          from zoneinfo import ZoneInfo
 
-          # Compare date (UTC)
-          TODAY=$(date -u +%Y-%m-%d)
-          RUN_DATE=$(echo "$LAST_RUN" | cut -c1-10)
+          runs_path, output_path, market_tz_name = sys.argv[1:4]
+          market_tz = ZoneInfo(market_tz_name)
 
-          echo "Today: $TODAY | Last run date: $RUN_DATE"
+          with open(runs_path, "r", encoding="utf-8") as f:
+              payload = json.load(f)
 
-          if [ "$RUN_DATE" != "$TODAY" ]; then
-            echo "missed=true" >> $GITHUB_OUTPUT
-          else
-            echo "missed=false" >> $GITHUB_OUTPUT
-          fi
+          runs = payload.get("workflow_runs", [])
+          market_today = datetime.now(timezone.utc).astimezone(market_tz).date()
+          matching_run = None
+
+          for run in runs:
+              created_at = datetime.fromisoformat(run["created_at"].replace("Z", "+00:00"))
+              run_market_date = created_at.astimezone(market_tz).date()
+              if run_market_date == market_today:
+                  matching_run = run
+                  break
+
+          print(f"Market day ({market_tz_name}): {market_today.isoformat()}")
+          if matching_run:
+              print(
+                  "Latest daily scan for market day: "
+                  f"{matching_run['created_at']} | status={matching_run['status']} | "
+                  f"conclusion={matching_run.get('conclusion')}"
+              )
+          else:
+              print("No daily scan run found for the current market day.")
+
+          with open(output_path, "a", encoding="utf-8") as out:
+              out.write(f"market_day={market_today.isoformat()}\n")
+              if matching_run:
+                  out.write("missed=false\n")
+                  out.write(f"run_status={matching_run['status']}\n")
+                  out.write(f"run_conclusion={matching_run.get('conclusion') or ''}\n")
+                  out.write(f"run_created_at={matching_run['created_at']}\n")
+              else:
+                  out.write("missed=true\n")
+          PY
 
       - name: Send missed-run alert
         if: steps.check.outputs.missed == 'true'
@@ -42,16 +73,18 @@ jobs:
           secure: true
           username: ${{ secrets.EMAIL_SENDER }}
           password: ${{ secrets.EMAIL_PASSWORD }}
-          subject: "⚠️ Stock Alert DID NOT RUN today – ${{ github.run_id }}"
+          subject: "⚠️ Stock Alert DID NOT RUN for market day – ${{ github.run_id }}"
           to: ${{ secrets.EMAIL_FAILURE_RECEIVER }}
           from: ${{ secrets.EMAIL_SENDER }}
           body: |
-            WARNING: The daily stock alert workflow did not run today.
+            WARNING: The daily stock alert workflow did not run for the current market day.
 
             This could mean:
             - The scheduled workflow was skipped (repo inactive > 60 days)
             - GitHub Actions had an outage
             - The workflow was manually disabled
+
+            Market day timezone: America/New_York
 
             Check here: https://github.com/${{ github.repository }}/actions/workflows/daily-stock-alert.yml
 
