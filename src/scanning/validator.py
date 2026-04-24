@@ -379,11 +379,16 @@ def pre_buy_check(combined_signals, rr_ratio=None, benchmark="SPY", as_of_date=N
             "GapPct": s.get("GapPct"),               # GapReversal: gap size % (for trade log)
             "SmoothedRSI": s.get("SmoothedRSI"),     # GapReversal: smoothed RSI at entry (for trade log)
             "GapFillLevel": s.get("GapFillLevel"),   # GapReversal: gap fill stop level
+            "GapHigh": s.get("GapHigh"),
             "GapLow": s.get("GapLow"),
+            "GapMid": s.get("GapMid"),
             "GapSupport": s.get("GapSupport"),
+            "GapResistance": s.get("GapResistance"),
             "ZoneSupport": s.get("ZoneSupport"),
+            "ZoneResistance": s.get("ZoneResistance"),
             "RiskPerShare": round(float(s.get("RiskPerShare")), 2) if s.get("RiskPerShare") is not None else round(max(abs(entry - stop), entry * 0.01), 2),
             "RoomToResistancePct": s.get("RoomToResistancePct"),
+            "RoomToSupportPct": s.get("RoomToSupportPct"),
             "SetupType": s.get("SetupType"),
             "SignalType": s.get("SignalType"),
             "EntryScore": s.get("EntryScore", s.get("Score", 0)),

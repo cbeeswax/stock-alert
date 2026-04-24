@@ -379,9 +379,14 @@ if __name__ == "__main__":
                 'entry_score': trade.get('EntryScore', trade.get('Score')),
                 'setup_type': trade.get('SetupType'),
                 'signal_type': trade.get('SignalType'),
+                'gap_fill_level': trade.get('GapFillLevel'),
+                'gap_high': trade.get('GapHigh'),
                 'zone_support': trade.get('ZoneSupport'),
+                'zone_resistance': trade.get('ZoneResistance'),
                 'gap_low': trade.get('GapLow'),
+                'gap_mid': trade.get('GapMid'),
                 'gap_support': trade.get('GapSupport'),
+                'gap_resistance': trade.get('GapResistance'),
             }
             extra_fields = {
                 key: value
