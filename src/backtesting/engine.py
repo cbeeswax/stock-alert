@@ -280,9 +280,14 @@ class WalkForwardBacktester:
             'rs_partial_stage': 0,  # Track dual-stage partial exit progress for RS_Ranker
             'gap_pct': trade.get("GapPct"),
             'smoothed_rsi': trade.get("SmoothedRSI"),
+            'gap_fill_level': trade.get("GapFillLevel"),
+            'gap_high': trade.get("GapHigh"),
             'gap_low': trade.get("GapLow"),
+            'gap_mid': trade.get("GapMid"),
             'gap_support': trade.get("GapSupport"),
+            'gap_resistance': trade.get("GapResistance"),
             'zone_support': trade.get("ZoneSupport"),
+            'zone_resistance': trade.get("ZoneResistance"),
             'signal_type': trade.get("SignalType"),
         }
 
@@ -846,48 +851,43 @@ class WalkForwardBacktester:
                             return self._close_position(position, current_date, current_close, f"TimeStop_Early_{early_exit_days}d_Leader", current_r)
 
         elif strategy == "GapReversal_Position":
-            # GAP REVERSAL: Gap-fill stop + EMA21 trailing exit
-            gap_fill_lvl = position.get('stop_price')  # stored as stop_price at entry
-            current_low = today_data.get('Low', current_close)
-            ticker = position.get('ticker', '?')
+            from src.strategies.gap_reversal import GapReversalPosition
 
-            # 1. Gap-fill stop: guard against NaN Low/High before comparison
-            import math as _math
-            low_ok = not _math.isnan(float(current_low)) if current_low is not None else False
-            high_ok = not _math.isnan(float(high_price)) if high_price is not None else False
-
-            # 1a. LONG: gap fills if Low dips to/below prior close
-            if direction == "LONG" and gap_fill_lvl is not None and low_ok and current_low <= float(gap_fill_lvl):
-                self.log.debug(
-                    f"GapReversal EXIT gap_fill | {ticker} LONG | "
-                    f"date={current_date} low={current_low:.2f} fill_lvl={float(gap_fill_lvl):.2f} R={current_r:.2f}"
+            reversal_strategy = GapReversalPosition()
+            exit_cond = reversal_strategy.get_exit_conditions(
+                {
+                    "Direction": direction,
+                    "GapFillLevel": position.get("gap_fill_level"),
+                    "GapHigh": position.get("gap_high"),
+                    "GapLow": position.get("gap_low"),
+                    "GapMid": position.get("gap_mid"),
+                    "GapSupport": position.get("gap_support"),
+                    "GapResistance": position.get("gap_resistance"),
+                    "ZoneSupport": position.get("zone_support"),
+                    "ZoneResistance": position.get("zone_resistance"),
+                    "stop_loss": position.get("stop_price"),
+                    "metadata": {
+                        "GapFillLevel": position.get("gap_fill_level"),
+                        "GapHigh": position.get("gap_high"),
+                        "GapLow": position.get("gap_low"),
+                        "GapMid": position.get("gap_mid"),
+                        "GapSupport": position.get("gap_support"),
+                        "GapResistance": position.get("gap_resistance"),
+                        "ZoneSupport": position.get("zone_support"),
+                        "ZoneResistance": position.get("zone_resistance"),
+                    },
+                },
+                recent_df,
+                current_date,
+            )
+            if exit_cond is not None:
+                return self._close_position(
+                    position,
+                    current_date,
+                    float(exit_cond.get("exit_price", current_close)),
+                    str(exit_cond["reason"]),
+                    current_r,
                 )
-                return self._close_position(position, current_date, float(gap_fill_lvl), "GapFillStop", current_r)
-
-            # 1b. SHORT: gap fills if High rallies back to/above prior close
-            if direction == "SHORT" and gap_fill_lvl is not None and high_ok and float(high_price) >= float(gap_fill_lvl):
-                self.log.debug(
-                    f"GapReversal EXIT gap_fill_short | {ticker} SHORT | "
-                    f"date={current_date} high={float(high_price):.2f} fill_lvl={float(gap_fill_lvl):.2f} R={current_r:.2f}"
-                )
-                return self._close_position(position, current_date, float(gap_fill_lvl), "GapFillStop_Short", current_r)
-
-            # 2. EMA21 trailing exit
-            if len(recent_df) >= 21:
-                ema21 = recent_df['Close'].ewm(span=21, adjust=False).mean().iloc[-1]
-                if pd.notna(ema21):
-                    if direction == "LONG" and current_close < ema21:
-                        self.log.debug(
-                            f"GapReversal EXIT ema21_trail | {ticker} LONG | "
-                            f"date={current_date} close={current_close:.2f} ema21={ema21:.2f} R={current_r:.2f}"
-                        )
-                        return self._close_position(position, current_date, current_close, "EMA21_TrailingExit", current_r)
-                    if direction == "SHORT" and current_close > ema21:
-                        self.log.debug(
-                            f"GapReversal EXIT ema21_trail_short | {ticker} SHORT | "
-                            f"date={current_date} close={current_close:.2f} ema21={ema21:.2f} R={current_r:.2f}"
-                        )
-                        return self._close_position(position, current_date, current_close, "EMA21_TrailingExit_Short", current_r)
 
         elif strategy == "GapContinuation_Position":
             from src.strategies.gap_continuation import GapContinuationPosition

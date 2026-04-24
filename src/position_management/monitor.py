@@ -265,14 +265,20 @@ def monitor_positions(position_tracker):
                         closes_below_trail = 0
 
             elif strategy == "GapReversal_Position":
-                # GapReversal: EMA21 single-close exit (immediate, no consecutive count needed)
-                if ema21 and pd.notna(ema21):
-                    if direction == "LONG" and current_close < ema21:
+                try:
+                    from src.strategies.gap_reversal import GapReversalPosition
+
+                    reversal_strategy = GapReversalPosition()
+                    position_with_ticker = dict(pos)
+                    position_with_ticker["ticker"] = ticker
+                    exit_cond = reversal_strategy.get_exit_conditions(position_with_ticker, df, today)
+                    if exit_cond is not None:
+                        exit_price = float(exit_cond.get("exit_price", current_close))
                         exits.append({
                             'ticker': ticker,
-                            'type': 'EMA21_TRAIL_GAP',
-                            'reason': f'Close ${current_close:.2f} crossed below EMA{GAP_REVERSAL_TRAIL_MA} (${ema21:.2f})',
-                            'action': f'EXIT at market (${current_close:.2f})',
+                            'type': str(exit_cond["reason"]).upper(),
+                            'reason': f'Gap reversal exit: {exit_cond["reason"]}',
+                            'action': f'EXIT ALL at ${exit_price:.2f}',
                             'current_r': current_r,
                             'days_held': days_held,
                             'urgency': 'HIGH',
@@ -280,19 +286,8 @@ def monitor_positions(position_tracker):
                             'current_price': current_close
                         })
                         trail_triggered = True
-                    elif direction == "SHORT" and current_close > ema21:
-                        exits.append({
-                            'ticker': ticker,
-                            'type': 'EMA21_TRAIL_GAP_SHORT',
-                            'reason': f'Close ${current_close:.2f} crossed above EMA{GAP_REVERSAL_TRAIL_MA} (${ema21:.2f})',
-                            'action': f'EXIT SHORT at market (${current_close:.2f})',
-                            'current_r': current_r,
-                            'days_held': days_held,
-                            'urgency': 'HIGH',
-                            'entry_price': entry_price,
-                                'current_price': current_close
-                            })
-                        trail_triggered = True
+                except Exception:
+                    pass
 
             elif strategy == "RallyPattern_Position":
                 try:
