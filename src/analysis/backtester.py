@@ -42,10 +42,6 @@ from src.config.settings import (
     EMA_CROSS_POS_TRAIL_MA,
     EMA_CROSS_POS_TRAIL_DAYS,
 
-    MR_POS_PARTIAL_R,
-    MR_POS_TRAIL_MA,
-    MR_POS_TRAIL_DAYS,
-
     PERCENT_B_POS_PARTIAL_R,
     PERCENT_B_POS_TRAIL_MA,
     PERCENT_B_POS_TRAIL_DAYS,
@@ -76,8 +72,6 @@ from src.config.settings import (
     SHORT_CFG_SIDEWAYS,
     SHORT_CFG_BEAR,
     LEADER_SHORT_CFG_BULL,
-    MEGACAP_WEEKLY_SLIDE_CFG,
-
     # Backtest settings
     BACKTEST_START_DATE,
     BACKTEST_SCAN_FREQUENCY,
@@ -303,11 +297,6 @@ class WalkForwardBacktester:
                         partial_trigger = f"{EMA_CROSS_POS_PARTIAL_R}R"
                         partial_size = EMA_CROSS_POS_PARTIAL_SIZE
 
-                elif strategy == "MeanReversion_Position":
-                    if current_r >= MR_POS_PARTIAL_R:
-                        should_partial = True
-                        partial_trigger = f"{MR_POS_PARTIAL_R}R"
-
                 elif strategy == "%B_MeanReversion_Position":
                     if current_r >= PERCENT_B_POS_PARTIAL_R:
                         should_partial = True
@@ -348,14 +337,6 @@ class WalkForwardBacktester:
                         should_partial = True
                         partial_trigger = f"{cfg['PARTIAL_R']}R"
                         partial_size = cfg["PARTIAL_SIZE"]
-
-                elif strategy == "MegaCap_WeeklySlide_Short":
-                    # Use signal-specific partial exit parameters
-                    partial_r = position.get('PartialR', 2.0)
-                    if current_r >= partial_r:
-                        should_partial = True
-                        partial_trigger = f"{partial_r}R"
-                        partial_size = position.get('PartialSize', 0.5)
 
                 if should_partial:
                     position['partial_exited'] = True
@@ -486,15 +467,6 @@ class WalkForwardBacktester:
                     position['closes_below_trail'] += 1
                     if position['closes_below_trail'] >= EMA_CROSS_POS_TRAIL_DAYS:
                         return self._close_position(position, current_date, current_close, "MA100_Trail", current_r)
-                else:
-                    position['closes_below_trail'] = 0
-
-        elif strategy == "MeanReversion_Position":
-            if ma50 and pd.notna(ma50):
-                if current_close < ma50:
-                    position['closes_below_trail'] += 1
-                    if position['closes_below_trail'] >= MR_POS_TRAIL_DAYS:
-                        return self._close_position(position, current_date, current_close, "MA50_Trail", current_r)
                 else:
                     position['closes_below_trail'] = 0
 
@@ -736,12 +708,6 @@ class WalkForwardBacktester:
             "PyramidAdds": len(position['pyramid_adds']),
         }
 
-        # Track cooldown for strategies that need it
-        if strategy == "MegaCap_WeeklySlide_Short":
-            if strategy not in self.cooldown_tracker:
-                self.cooldown_tracker[strategy] = {}
-            self.cooldown_tracker[strategy][ticker] = exit_date
-
         return result
 
     def run(self):
@@ -832,16 +798,6 @@ class WalkForwardBacktester:
 
                             if strategy_count >= max_for_strategy:
                                 continue
-
-                            # Check cooldown for strategies that need it
-                            if strategy == "MegaCap_WeeklySlide_Short":
-                                ticker = trade["Ticker"]
-                                if strategy in self.cooldown_tracker and ticker in self.cooldown_tracker[strategy]:
-                                    exit_date = self.cooldown_tracker[strategy][ticker]
-                                    days_since_exit = (day - exit_date).days
-                                    cooldown_days = MEGACAP_WEEKLY_SLIDE_CFG.get("COOLDOWN_DAYS", 10)
-                                    if days_since_exit < cooldown_days:
-                                        continue  # Still in cooldown period
 
                             # Enter position
                             success = self._enter_position(day, trade.to_dict())
