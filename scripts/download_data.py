@@ -109,17 +109,21 @@ def download_multiple_tickers(
 
 def load_sp500_constituents() -> list:
     """Load S&P 500 ticker list."""
-    sp500_file = project_root / "data" / "sp500_constituents.csv"
+    sp500_file = project_root / "data" / "sp500_current_constituents.csv"
+    fallback_file = project_root / "data" / "sp500_constituents.csv"
     
     if not sp500_file.exists():
-        print(f"⚠️  S&P 500 file not found: {sp500_file}")
-        print("   Using default list of major stocks")
-        return [
-            "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA",
-            "META", "TSLA", "BRK.B", "JNJ", "V",
-            "MA", "PG", "UNH", "HD", "MCD",
-            "NFLX", "PYPL", "AMD", "CRM", "ADBE",
-        ]
+        if fallback_file.exists():
+            sp500_file = fallback_file
+        else:
+            print(f"⚠️  Current S&P 500 file not found: {sp500_file}")
+            print("   Using default list of major stocks")
+            return [
+                "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA",
+                "META", "TSLA", "BRK.B", "JNJ", "V",
+                "MA", "PG", "UNH", "HD", "MCD",
+                "NFLX", "PYPL", "AMD", "CRM", "ADBE",
+            ]
     
     try:
         df = pd.read_csv(sp500_file)

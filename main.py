@@ -19,6 +19,7 @@ from src.notifications.email import send_email_alert
 from src.position_management.tracker import PositionTracker, filter_trades_by_position
 from src.position_management.monitor import monitor_positions
 from src.data.market import get_historical_data
+from src.data.universe import get_sp500_tickers
 from src.analysis.market_regime import get_position_regime, get_regime_params, PositionRegime
 from src.config.settings import (
     POSITION_MAX_TOTAL,
@@ -266,8 +267,11 @@ if __name__ == "__main__":
     print("🔍 SCANNING S&P 500 FOR POSITION TRADES...")
     print("="*80 + "\n")
 
-    # Load S&P 500 tickers
-    tickers = pd.read_csv("data/sp500_constituents.csv")["Symbol"].tolist()
+    # Load current S&P 500 tickers (with historical-file fallback during bootstrap)
+    tickers = get_sp500_tickers()
+    if not tickers:
+        print("⚠️  Could not load S&P 500 constituents for the live scan")
+        tickers = []
 
     # Run scanner as of today
     today = pd.Timestamp.today()

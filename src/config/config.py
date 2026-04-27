@@ -6,8 +6,7 @@ import os
 MIN_MARKET_CAP = 1_000_000_000   # 1B USD
 
 SP500_SOURCE = (
-    "https://raw.githubusercontent.com/datasets/s-and-p-500-companies"
-    "/main/data/constituents.csv"
+    "data/sp500_current_constituents.csv"
 )
 
 EMAIL_SENDER   = os.getenv("EMAIL_SENDER")
