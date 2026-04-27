@@ -179,7 +179,11 @@ def download_ticker(ticker: str, force: bool = False):
 # Main loop
 # ----------------------------
 def main():
-    sp500 = pd.read_csv(SP500_SOURCE)
+    sp500_path = Path(SP500_SOURCE)
+    fallback_path = Path("data/sp500_constituents.csv")
+    if not sp500_path.exists() and fallback_path.exists():
+        sp500_path = fallback_path
+    sp500 = pd.read_csv(sp500_path)
     tickers = sp500["Symbol"].tolist()
 
     for i, ticker in enumerate(tickers, 1):

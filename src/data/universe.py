@@ -8,23 +8,26 @@ import pandas as pd
 from pathlib import Path
 from functools import lru_cache
 
-_SP500_PATH = Path("data") / "sp500_constituents.csv"
+_SP500_CURRENT_PATH = Path("data") / "sp500_current_constituents.csv"
+_SP500_FALLBACK_PATH = Path("data") / "sp500_constituents.csv"
 
 
 @lru_cache(maxsize=1)
 def _load_sp500() -> pd.DataFrame:
-    """Load S&P 500 constituents (cached in memory after first call).
+    """Load current S&P 500 constituents (cached in memory after first call).
     Falls back to GCS if not found locally."""
-    if not _SP500_PATH.exists():
+    if not _SP500_CURRENT_PATH.exists():
         try:
             from src.storage.gcs import download_file
-            download_file("config/sp500_constituents.csv", _SP500_PATH)
+            download_file("config/sp500_current_constituents.csv", _SP500_CURRENT_PATH)
         except Exception as exc:
-            print(f"⚠️  [universe] Could not pull sp500_constituents.csv from GCS: {exc}")
+            print(f"⚠️  [universe] Could not pull sp500_current_constituents.csv from GCS: {exc}")
     try:
-        return pd.read_csv(_SP500_PATH)
+        return pd.read_csv(_SP500_CURRENT_PATH)
     except FileNotFoundError:
-        print(f"Warning: S&P 500 data file not found at {_SP500_PATH}")
+        if _SP500_FALLBACK_PATH.exists():
+            return pd.read_csv(_SP500_FALLBACK_PATH)
+        print(f"Warning: S&P 500 data file not found at {_SP500_CURRENT_PATH}")
         return pd.DataFrame()
 
 

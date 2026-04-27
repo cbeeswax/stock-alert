@@ -201,7 +201,10 @@ def run_scanner(
     print("=" * 80 + "\n")
 
     # Load S&P 500 tickers
-    sp500_file = project_root / "data" / "sp500_constituents.csv"
+    sp500_file = project_root / "data" / "sp500_current_constituents.csv"
+    fallback_file = project_root / "data" / "sp500_constituents.csv"
+    if not sp500_file.exists() and fallback_file.exists():
+        sp500_file = fallback_file
     if not sp500_file.exists():
         print(f"⚠️  Could not find S&P 500 constituents file at {sp500_file}")
         return pd.DataFrame()
