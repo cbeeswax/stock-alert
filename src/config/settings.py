@@ -28,6 +28,7 @@ POSITION_MAX_PER_STRATEGY = {
     "GapContinuation_Position": 10,           # ACTIVE: bullish earnings / gap-and-go continuation
     "RelativeStrength_Ranker_Position": 10,   # ACTIVE: 48.8% WR, 2.16R, +$620k net (backtested)
     "RallyPattern_Position": 10,              # ACTIVE: daily rally-pattern leader scan
+    "DivergenceReversal_Position": 0,         # DISABLED: new RSI-divergence reversal candidate
     "ConsumerDisc_Ranker_Position": 0,        # DISABLED: unvalidated
     "High52_Position": 0,                      # DISABLED
     "BigBase_Breakout_Position": 0,           # DISABLED
@@ -69,11 +70,12 @@ POSITION_PYRAMID_PULLBACK_ATR = 1.0   # Within 1 ATR of EMA21
 STRATEGY_PRIORITY = {
     "BigBase_Breakout_Position": 1,
     "RelativeStrength_Ranker_Position": 2,
-    "RallyPattern_Position": 3,
-    "TrendContinuation_Position": 4,
-    "EMA_Crossover_Position": 5,
-    "High52_Position": 6,
-    "%B_MeanReversion_Position": 7,
+    "DivergenceReversal_Position": 3,
+    "RallyPattern_Position": 4,
+    "TrendContinuation_Position": 5,
+    "EMA_Crossover_Position": 6,
+    "High52_Position": 7,
+    "%B_MeanReversion_Position": 8,
 }
 
 # =============================================================================
@@ -205,6 +207,10 @@ GAP_CONTINUATION_LONG_MACRO_FILTER = False
 GAP_CONTINUATION_MAX_SHELF_DAYS = 5
 GAP_CONTINUATION_MAX_SHELF_RANGE_PCT = 0.10
 GAP_CONTINUATION_MIN_SHELF_CLOSE_POS = 0.50
+
+# 11. DIVERGENCEREVERSAL_POSITION
+# Repo intentionally carries no default parameter values for this strategy.
+# Runtime config is required in config/settings.json (local or GCS-backed).
 
 # =============================================================================
 # INDEX REGIME FILTERS

@@ -8,6 +8,7 @@ Usage:
     python scripts/backtest_strategies.py                      # all active strategies
     python scripts/backtest_strategies.py --strategy gap       # GapReversal only
     python scripts/backtest_strategies.py --strategy gapcont   # GapContinuation only
+    python scripts/backtest_strategies.py --strategy div       # DivergenceReversal only
     python scripts/backtest_strategies.py --strategy rs        # RS Ranker only
     python scripts/backtest_strategies.py --strategy all       # explicitly all
     python scripts/backtest_strategies.py --start 2020-01-01
@@ -17,6 +18,8 @@ Usage:
 Strategy aliases:
     gap       → GapReversal_Position
     gapcont   → GapContinuation_Position
+    div       → DivergenceReversal_Position
+    divergence → DivergenceReversal_Position
     rs        → RelativeStrength_Ranker_Position
     high52    → High52_Position
     bigbase   → BigBase_Breakout_Position
@@ -30,8 +33,10 @@ if sys.platform == "win32":
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8")
 
 import argparse
+import json
 import logging
 import time
+import tempfile
 from pathlib import Path
 
 import pandas as pd
@@ -44,12 +49,15 @@ from src.backtesting.engine import WalkForwardBacktester
 from src.config.settings import BACKTEST_START_DATE, BACKTEST_SCAN_FREQUENCY
 from scripts.download_history import download_ticker, was_update_session_today, mark_update_session
 import src.config.settings as cfg
+from src.storage.gcs import download_file
 
 
 # ─── Strategy aliases & max positions for backtest ────────────────────────────
 STRATEGY_ALIASES = {
     "gap":     "GapReversal_Position",
     "gapcont": "GapContinuation_Position",
+    "div":     "DivergenceReversal_Position",
+    "divergence": "DivergenceReversal_Position",
     "rs":      "RelativeStrength_Ranker_Position",
     "high52":  "High52_Position",
     "bigbase": "BigBase_Breakout_Position",
@@ -110,6 +118,36 @@ def _parse_args():
     p.add_argument("--output", default=None, help="Output CSV (default: auto-named)")
     p.add_argument("--no-download", action="store_true", help="Skip data download")
     return p.parse_args()
+
+
+def _load_external_settings() -> dict:
+    local_path = ROOT / "config" / "settings.json"
+    if local_path.exists():
+        with local_path.open("r", encoding="utf-8") as handle:
+            return json.load(handle)
+
+    with tempfile.TemporaryDirectory(prefix="backtest-settings-") as tmp_dir:
+        downloaded = Path(tmp_dir) / "settings.json"
+        if not download_file("config/settings.json", downloaded):
+            raise FileNotFoundError(
+                "Missing required settings file: config\\settings.json "
+                "(expected locally or in GCS)."
+            )
+        with downloaded.open("r", encoding="utf-8") as handle:
+            return json.load(handle)
+
+
+def _resolve_backtest_max_positions(strategy_name: str) -> int:
+    if strategy_name == "DivergenceReversal_Position":
+        settings = _load_external_settings()
+        if "DIVERGENCE_REVERSAL_BACKTEST_MAX_POSITIONS" not in settings:
+            raise ValueError(
+                "Divergence backtest config missing required settings key: "
+                "DIVERGENCE_REVERSAL_BACKTEST_MAX_POSITIONS"
+            )
+        return int(settings["DIVERGENCE_REVERSAL_BACKTEST_MAX_POSITIONS"])
+
+    return BACKTEST_MAX_POSITIONS.get(strategy_name, 5)
 
 
 # ─── Metrics ──────────────────────────────────────────────────────────────────
@@ -298,15 +336,18 @@ def main():
     # Apply config overrides
     if run_all:
         # Enable all known strategies for backtest (keep production-disabled ones enabled for testing)
-        for strat, max_pos in BACKTEST_MAX_POSITIONS.items():
+        strategies_to_enable = list(BACKTEST_MAX_POSITIONS.keys())
+        if "DivergenceReversal_Position" in cfg.POSITION_MAX_PER_STRATEGY:
+            strategies_to_enable.append("DivergenceReversal_Position")
+        for strat in strategies_to_enable:
             if cfg.POSITION_MAX_PER_STRATEGY.get(strat, 0) == 0:
-                cfg.POSITION_MAX_PER_STRATEGY[strat] = max_pos
+                cfg.POSITION_MAX_PER_STRATEGY[strat] = _resolve_backtest_max_positions(strat)
         label = "ALL STRATEGIES"
     else:
         # Isolate: zero everything, enable only the target
         for strat in list(cfg.POSITION_MAX_PER_STRATEGY.keys()):
             cfg.POSITION_MAX_PER_STRATEGY[strat] = 0
-        cfg.POSITION_MAX_PER_STRATEGY[target_strategy] = BACKTEST_MAX_POSITIONS.get(target_strategy, 5)
+        cfg.POSITION_MAX_PER_STRATEGY[target_strategy] = _resolve_backtest_max_positions(target_strategy)
         if target_strategy == "GapReversal_Position":
             direction = args.direction or "both"
             cfg.GAP_REVERSAL_DIRECTION = direction

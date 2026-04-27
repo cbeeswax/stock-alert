@@ -21,7 +21,13 @@ from typing import Any, Dict, Optional
 
 import pandas as pd
 
-from src.analysis.zone_structure import build_zone_snapshot, long_zone_broken, short_zone_broken
+from src.analysis.zone_structure import (
+    build_zone_snapshot,
+    long_zone_broken,
+    long_zone_entry_ok,
+    short_zone_broken,
+    short_zone_entry_ok,
+)
 from src.storage.gcs import download_file
 from src.strategies.base import BaseStrategy
 from src.ta.indicators.gaps import gap_fill_level, gap_pct, is_gap_down, is_gap_up
@@ -177,7 +183,11 @@ class GapReversalPosition(BaseStrategy):
                     self.LONG_MIN_ROOM_TO_RESISTANCE,
                     GAP_REVERSAL_TARGET_R_MULTIPLE * (effective_risk / last_close),
                 )
-                if zone_snapshot is not None and not self._long_zone_entry_ok(zone_snapshot, min_room):
+                if zone_snapshot is not None and not long_zone_entry_ok(
+                    zone_snapshot,
+                    min_room_to_resistance=min_room,
+                    require_near_term_check=True,
+                ):
                     return None
 
                 zone_support = structural_support
@@ -216,7 +226,11 @@ class GapReversalPosition(BaseStrategy):
                     self.SHORT_MIN_ROOM_TO_SUPPORT,
                     GAP_REVERSAL_TARGET_R_MULTIPLE * (effective_risk / last_close),
                 )
-                if zone_snapshot is not None and not self._short_zone_entry_ok(zone_snapshot, min_room):
+                if zone_snapshot is not None and not short_zone_entry_ok(
+                    zone_snapshot,
+                    min_room_to_support=min_room,
+                    require_near_term_check=True,
+                ):
                     return None
 
                 zone_resistance = structural_resistance
@@ -613,44 +627,3 @@ class GapReversalPosition(BaseStrategy):
             raise ValueError(f"Gap reversal config missing required settings keys: {missing}")
         return settings
 
-    def _long_zone_entry_ok(self, zone_snapshot, min_room_to_resistance: float) -> bool:
-        near_term_supply_tight = (
-            zone_snapshot.prior_short_high > 0
-            and zone_snapshot.close < zone_snapshot.prior_short_high
-            and zone_snapshot.room_to_short_ceiling_pct < min_room_to_resistance
-            and zone_snapshot.in_short_seller_zone
-        )
-        if near_term_supply_tight:
-            return False
-
-        broader_overhead_supply = zone_snapshot.prior_long_high > (zone_snapshot.prior_short_high * 1.01)
-        return (
-            zone_snapshot.prior_long_high <= 0
-            or not broader_overhead_supply
-            or zone_snapshot.close >= zone_snapshot.prior_long_high
-            or (
-                zone_snapshot.room_to_long_ceiling_pct >= min_room_to_resistance
-                and not zone_snapshot.in_long_seller_zone
-            )
-        )
-
-    def _short_zone_entry_ok(self, zone_snapshot, min_room_to_support: float) -> bool:
-        near_term_support_tight = (
-            zone_snapshot.prior_short_low > 0
-            and zone_snapshot.close > zone_snapshot.prior_short_low
-            and zone_snapshot.room_to_short_floor_pct < min_room_to_support
-            and zone_snapshot.in_short_demand_zone
-        )
-        if near_term_support_tight:
-            return False
-
-        broader_support_below = zone_snapshot.prior_long_low < (zone_snapshot.prior_short_low * 0.99)
-        return (
-            zone_snapshot.prior_long_low <= 0
-            or not broader_support_below
-            or zone_snapshot.close <= zone_snapshot.prior_long_low
-            or (
-                zone_snapshot.room_to_long_floor_pct >= min_room_to_support
-                and not zone_snapshot.in_long_demand_zone
-            )
-        )

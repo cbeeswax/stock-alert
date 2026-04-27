@@ -115,6 +115,7 @@ STRATEGY_METRICS = {
 
     "Relative Strength": (0.30, 2.0, -1.0),     # Default values
     "RallyPattern_Position": (0.33, 2.0, -1.0),
+    "DivergenceReversal_Position": (0.35, 2.0, -1.0),
 }
 
 # NOTE: These metrics come from actual backtest 2022-2026
@@ -164,6 +165,7 @@ def normalize_score(score, strategy):
         "BB+RSI Combo": (50, 100),            # Double confirmation: Max 100 pts
         "Relative Strength": (5, 15),
         "RallyPattern_Position": (45, 100),
+        "DivergenceReversal_Position": (45, 100),
     }
 
     low, high = ranges.get(strategy, (0, 20))
@@ -220,6 +222,7 @@ def pre_buy_check(combined_signals, rr_ratio=None, benchmark="SPY", as_of_date=N
         "BigBase_Breakout_Position": 7,           # Highest - rarest, biggest moves
         "RelativeStrength_Ranker_Position": 6,    # Proven workhorse
         "RallyPattern_Position": 6,               # Daily rally-pattern leaders
+        "DivergenceReversal_Position": 7,         # Confirmed reversal after divergence + trigger
         "High52_Position": 5,                     # Momentum breakout
         "EMA_Crossover_Position": 4,
         "TrendContinuation_Position": 3,
@@ -242,8 +245,18 @@ def pre_buy_check(combined_signals, rr_ratio=None, benchmark="SPY", as_of_date=N
     for s in combined_signals:
         t = s["Ticker"]
         strategy = s["Strategy"]
-        # Use .get() with default to avoid KeyError if strategy not in priority dict
-        if t not in best_signal or priority.get(strategy, 0) > priority.get(best_signal[t]["Strategy"], 0):
+
+        candidate_priority = s.get("Priority")
+        if candidate_priority is None or pd.isna(candidate_priority):
+            candidate_priority = priority.get(strategy, 0)
+
+        existing_priority = None
+        if t in best_signal:
+            existing_priority = best_signal[t].get("Priority")
+            if existing_priority is None or pd.isna(existing_priority):
+                existing_priority = priority.get(best_signal[t]["Strategy"], 0)
+
+        if t not in best_signal or candidate_priority > existing_priority:
             best_signal[t] = s
 
     signals = list(best_signal.values())

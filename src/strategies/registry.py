@@ -114,6 +114,12 @@ def register_builtin_strategies() -> None:
     except ImportError:
         pass
 
+    try:
+        from .divergence_reversal import DivergenceReversalPosition
+        StrategyRegistry.register("DivergenceReversal_Position", DivergenceReversalPosition)
+    except ImportError:
+        pass
+
 
 # Auto-register strategies on import
 register_builtin_strategies()

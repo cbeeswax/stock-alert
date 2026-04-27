@@ -322,7 +322,7 @@ class WalkForwardBacktester:
             # Get today's bar
             if current_date not in df.index:
                 # Still enforce MaxDays even when today's bar is missing
-                if position['strategy'] in {"GapReversal_Position", "GapContinuation_Position"} and position['days_held'] >= position['max_days']:
+                if position['strategy'] in {"GapReversal_Position", "GapContinuation_Position", "DivergenceReversal_Position"} and position['days_held'] >= position['max_days']:
                     last_price = float(df['Close'].iloc[-1])
                     entry = position['entry_price']
                     # Sanity check: exit price shouldn't be more than 50x entry (data corruption guard)
@@ -371,7 +371,7 @@ class WalkForwardBacktester:
             # Gap strategies are thesis-specific campaigns; pyramiding adds noise and
             # has historically distorted the gap trade profiles.
             if (POSITION_PYRAMID_ENABLED and
-                position['strategy'] not in {"GapReversal_Position", "GapContinuation_Position"} and
+                position['strategy'] not in {"GapReversal_Position", "GapContinuation_Position", "DivergenceReversal_Position"} and
                 current_r >= POSITION_PYRAMID_R_TRIGGER and
                 len(position['pyramid_adds']) < POSITION_PYRAMID_MAX_ADDS and
                 not position['partial_exited']):
@@ -889,12 +889,39 @@ class WalkForwardBacktester:
                     current_r,
                 )
 
+        elif strategy == "DivergenceReversal_Position":
+            from src.strategies.divergence_reversal import DivergenceReversalPosition
+
+            divergence_strategy = DivergenceReversalPosition()
+            exit_cond = divergence_strategy.get_exit_conditions(
+                {
+                    "Direction": direction,
+                    "ZoneSupport": position.get("zone_support"),
+                    "ZoneResistance": position.get("zone_resistance"),
+                    "stop_loss": position.get("stop_price"),
+                    "metadata": {
+                        "ZoneSupport": position.get("zone_support"),
+                        "ZoneResistance": position.get("zone_resistance"),
+                    },
+                },
+                recent_df,
+                current_date,
+            )
+            if exit_cond is not None:
+                return self._close_position(
+                    position,
+                    current_date,
+                    float(exit_cond.get("exit_price", current_close)),
+                    str(exit_cond["reason"]),
+                    current_r,
+                )
+
 
         has_pyramids = len(position['pyramid_adds']) > 0
 
         # GapReversal: always enforce MaxDays hard cap — never pyramid, and open-ended
         # holds are what caused the -245R PLTR trade (1134 days with no exit).
-        if strategy in {"GapReversal_Position", "GapContinuation_Position"} and days_held >= max_days:
+        if strategy in {"GapReversal_Position", "GapContinuation_Position", "DivergenceReversal_Position"} and days_held >= max_days:
             self.log.info(
                 f"{strategy} EXIT max_days | {position.get('ticker','?')} {direction} | "
                 f"date={current_date} days={days_held} R={current_r:.2f}"

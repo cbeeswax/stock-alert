@@ -33,7 +33,7 @@ from src.ta.indicators.gaps import gap_pct, is_gap_up
 from src.ta.indicators.momentum import smoothed_rsi
 from src.ta.indicators.moving_averages import ema
 from src.ta.indicators.volatility import atr_latest
-from src.analysis.zone_structure import build_zone_snapshot, long_zone_broken
+from src.analysis.zone_structure import build_zone_snapshot, long_zone_broken, long_zone_entry_ok
 
 
 class GapContinuationPosition(BaseStrategy):
@@ -230,9 +230,10 @@ class GapContinuationPosition(BaseStrategy):
                 self.POST_SHELF_MIN_ROOM_TO_RESISTANCE,
                 GAP_CONTINUATION_TARGET_R_MULTIPLE * (effective_risk / entry_price),
             )
-            if zone_snapshot is not None and not self._long_zone_entry_ok(
+            if zone_snapshot is not None and not long_zone_entry_ok(
                 zone_snapshot,
                 min_room_to_resistance=min_room_to_resistance,
+                require_near_term_check=False,
             ):
                 return None
 
@@ -446,19 +447,6 @@ class GapContinuationPosition(BaseStrategy):
                 f"Gap continuation config missing required settings keys: {missing}"
             )
         return settings
-
-    @staticmethod
-    def _long_zone_entry_ok(zone_snapshot, *, min_room_to_resistance: float) -> bool:
-        broader_overhead_supply = zone_snapshot.prior_long_high > (zone_snapshot.prior_short_high * 1.01)
-        return (
-            zone_snapshot.prior_long_high <= 0
-            or not broader_overhead_supply
-            or zone_snapshot.close >= zone_snapshot.prior_long_high
-            or (
-                zone_snapshot.room_to_long_ceiling_pct >= min_room_to_resistance
-                and not zone_snapshot.in_long_seller_zone
-            )
-        )
 
     @staticmethod
     def _close_position_for_bar(bar: pd.Series) -> float:

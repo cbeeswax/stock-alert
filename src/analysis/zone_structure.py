@@ -129,6 +129,62 @@ def short_zone_broken(close: float, zone_high: float, tolerance_pct: float = 0.0
     return close > (zone_high * (1.0 + tolerance_pct))
 
 
+def long_zone_entry_ok(
+    zone_snapshot: ZoneSnapshot,
+    *,
+    min_room_to_resistance: float,
+    require_near_term_check: bool = False,
+) -> bool:
+    if require_near_term_check:
+        near_term_supply_tight = (
+            zone_snapshot.prior_short_high > 0
+            and zone_snapshot.close < zone_snapshot.prior_short_high
+            and zone_snapshot.room_to_short_ceiling_pct < min_room_to_resistance
+            and zone_snapshot.in_short_seller_zone
+        )
+        if near_term_supply_tight:
+            return False
+
+    broader_overhead_supply = zone_snapshot.prior_long_high > (zone_snapshot.prior_short_high * 1.01)
+    return (
+        zone_snapshot.prior_long_high <= 0
+        or not broader_overhead_supply
+        or zone_snapshot.close >= zone_snapshot.prior_long_high
+        or (
+            zone_snapshot.room_to_long_ceiling_pct >= min_room_to_resistance
+            and not zone_snapshot.in_long_seller_zone
+        )
+    )
+
+
+def short_zone_entry_ok(
+    zone_snapshot: ZoneSnapshot,
+    *,
+    min_room_to_support: float,
+    require_near_term_check: bool = False,
+) -> bool:
+    if require_near_term_check:
+        near_term_support_tight = (
+            zone_snapshot.prior_short_low > 0
+            and zone_snapshot.close > zone_snapshot.prior_short_low
+            and zone_snapshot.room_to_short_floor_pct < min_room_to_support
+            and zone_snapshot.in_short_demand_zone
+        )
+        if near_term_support_tight:
+            return False
+
+    broader_support_below = zone_snapshot.prior_long_low < (zone_snapshot.prior_short_low * 0.99)
+    return (
+        zone_snapshot.prior_long_low <= 0
+        or not broader_support_below
+        or zone_snapshot.close <= zone_snapshot.prior_long_low
+        or (
+            zone_snapshot.room_to_long_floor_pct >= min_room_to_support
+            and not zone_snapshot.in_long_demand_zone
+        )
+    )
+
+
 def _rolling_series(
     df: pd.DataFrame,
     *,
