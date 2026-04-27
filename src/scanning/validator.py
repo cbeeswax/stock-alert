@@ -223,8 +223,7 @@ def pre_buy_check(combined_signals, rr_ratio=None, benchmark="SPY", as_of_date=N
         "High52_Position": 5,                     # Momentum breakout
         "EMA_Crossover_Position": 4,
         "TrendContinuation_Position": 3,
-        "MeanReversion_Position": 2,
-        "%B_MeanReversion_Position": 1,
+        "%B_MeanReversion_Position": 2,
         "GapReversal_Position": 8,                # Highest - rare extreme RSI + gap setup
         "ShortWeakRS_Retrace_Position": 0,        # Shorts LOSE to longs in deduplication (priority 0)
 

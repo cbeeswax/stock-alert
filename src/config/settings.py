@@ -28,20 +28,14 @@ POSITION_MAX_PER_STRATEGY = {
     "GapContinuation_Position": 10,           # ACTIVE: bullish earnings / gap-and-go continuation
     "RelativeStrength_Ranker_Position": 10,   # ACTIVE: 48.8% WR, 2.16R, +$620k net (backtested)
     "RallyPattern_Position": 10,              # ACTIVE: daily rally-pattern leader scan
-    "Industrials_Ranker_Position": 0,         # DISABLED: unvalidated
-    "Healthcare_Ranker_Position": 0,          # DISABLED: unvalidated
-    "Energy_Ranker_Position": 0,              # DISABLED: unvalidated
-    "Materials_Ranker_Position": 0,           # DISABLED: unvalidated
     "ConsumerDisc_Ranker_Position": 0,        # DISABLED: unvalidated
     "High52_Position": 0,                      # DISABLED
     "BigBase_Breakout_Position": 0,           # DISABLED
     "EMA_Crossover_Position": 0,              # DISABLED
     "TrendContinuation_Position": 0,          # DISABLED
-    "MeanReversion_Position": 0,              # DISABLED
     "%B_MeanReversion_Position": 0,           # DISABLED
     "ShortWeakRS_Retrace_Position": 0,        # DISABLED
     "LeaderPullback_Short_Position": 0,       # DISABLED
-    "MegaCap_WeeklySlide_Short": 0,           # DISABLED
 }
 
 POSITION_MAX_PER_STRATEGY_DEFAULT = 5
@@ -79,8 +73,7 @@ STRATEGY_PRIORITY = {
     "TrendContinuation_Position": 4,
     "EMA_Crossover_Position": 5,
     "High52_Position": 6,
-    "MeanReversion_Position": 7,
-    "%B_MeanReversion_Position": 8,
+    "%B_MeanReversion_Position": 7,
 }
 
 # =============================================================================
@@ -96,17 +89,7 @@ EMA_CROSS_POS_TRAIL_MA = 100
 EMA_CROSS_POS_TRAIL_DAYS = 5
 EMA_CROSS_POS_MAX_DAYS = 120
 
-# 2. MEANREVERSION_POSITION
-MR_POS_RSI_OVERSOLD = 38
-MR_POS_RS_THRESHOLD = 0.15
-MR_POS_STOP_ATR_MULT = 3.5
-MR_POS_PARTIAL_R = 2.0
-MR_POS_PARTIAL_SIZE = 0.3
-MR_POS_TRAIL_MA = 50
-MR_POS_TRAIL_DAYS = 5
-MR_POS_MAX_DAYS = 90
-
-# 3. %B_MEANREVERSION_POSITION
+# 2. %B_MEANREVERSION_POSITION
 PERCENT_B_POS_OVERSOLD = 0.12
 PERCENT_B_POS_RSI_OVERSOLD = 38
 PERCENT_B_POS_STOP_ATR_MULT = 3.5
@@ -337,23 +320,6 @@ LEADER_SHORT_CFG_BULL = {
     "RISK_PER_TRADE_PCT": 0.35,
 }
 
-# MegaCap Weekly Slide Config
-MEGACAP_WEEKLY_SLIDE_CFG = {
-    "ENABLED": False,
-    "DEBUG_MODE": False,
-    "SYMBOLS": ["MSFT", "ORCL", "META", "AAPL", "NVDA", "GOOGL", "AMZN", "AVGO", "ADBE", "CRM"],
-    "MIN_PRICE": 30,
-    "MIN_DOLLAR_VOLUME": 100_000_000,
-    "RISK_PER_TRADE_PCT": 0.5,
-    "MAX_POSITIONS": 2,
-    "ONE_PER_SYMBOL": True,
-    "COOLDOWN_DAYS": 10,
-    "PARTIAL_R": 2.0,
-    "PARTIAL_SIZE": 0.5,
-    "BREAKEVEN_AFTER_PARTIAL": True,
-    "MAX_DAYS": 50,
-}
-
 # =============================================================================
 # REGIME CLASSIFICATION
 # =============================================================================
@@ -390,11 +356,6 @@ BIGBASE_STOP_ATR_MULT = 2.0
 BIGBASE_MAX_DAYS = 120
 BIGBASE_PARTIAL_R = 3.0
 BIGBASE_PARTIAL_SIZE = 0.3
-
-MR_POS_RSI_OVERSOLD = 38
-MR_POS_RS_THRESHOLD = 0.15
-MR_POS_STOP_ATR_MULT = 3.5
-MR_POS_MAX_DAYS = 90
 
 PERCENT_B_POS_OVERSOLD = -0.5
 PERCENT_B_POS_RSI_OVERSOLD = 40

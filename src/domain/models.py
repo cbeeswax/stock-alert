@@ -17,7 +17,6 @@ class StrategyType(str, Enum):
     BIGBASE_BREAKOUT = "BigBase_Breakout_Position"
     EMA_CROSSOVER = "EMA_Crossover_Position"
     TREND_CONTINUATION = "TrendContinuation_Position"
-    MEAN_REVERSION = "MeanReversion_Position"
     PERCENT_B = "%B_MeanReversion_Position"
 
 

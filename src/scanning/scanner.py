@@ -1,17 +1,16 @@
 """
 Long-Term Position Trading Scanner
 ===================================
-Complete scanner for 7 position strategies (60-120 day holds).
+Complete scanner for long-term position strategies (60-120 day holds).
 Target: 8-20 trades/year total across all strategies.
 
 STRATEGIES:
 1. EMA_Crossover_Position
-2. MeanReversion_Position
-3. %B_MeanReversion_Position
-4. High52_Position
-5. BigBase_Breakout_Position
-6. TrendContinuation_Position
-7. RelativeStrength_Ranker_Position
+2. %B_MeanReversion_Position
+3. High52_Position
+4. BigBase_Breakout_Position
+5. TrendContinuation_Position
+6. RelativeStrength_Ranker_Position
 """
 
 import pandas as pd
@@ -52,12 +51,7 @@ from src.config.settings import (
     EMA_CROSS_POS_STOP_ATR_MULT,
     EMA_CROSS_POS_MAX_DAYS,
 
-    # Strategy 2: MeanReversion_Position
-    MR_POS_RSI_OVERSOLD,
-    MR_POS_RS_THRESHOLD,
-    MR_POS_MAX_DAYS,
-
-    # Strategy 3: %B_MeanReversion_Position
+    # Strategy 2: %B_MeanReversion_Position
     PERCENT_B_POS_OVERSOLD,
     PERCENT_B_POS_RSI_OVERSOLD,
     PERCENT_B_POS_STOP_ATR_MULT,
@@ -105,8 +99,6 @@ from src.config.settings import (
     LEADER_SHORT_CFG_BULL,
     LEADER_SHORT_ALLOWED_REGIMES,
 
-    # Strategy 10: MegaCap Weekly Slide SHORT
-    MEGACAP_WEEKLY_SLIDE_CFG,
 )
 
 
@@ -378,7 +370,6 @@ def detect_liquidity_zone(df, cfg):
 # will be dispatched automatically via strategy.scan(ticker, df, as_of_date).
 _LEGACY_STRATEGY_NAMES = frozenset({
     "EMA_Crossover_Position",
-    "MeanReversion_Position",
     "%B_MeanReversion_Position",
     "High52_Position",
     "BigBase_Breakout_Position",
@@ -386,11 +377,6 @@ _LEGACY_STRATEGY_NAMES = frozenset({
     "RelativeStrength_Ranker_Position",
     "ShortWeakRS_Retrace_Position",
     "LeaderPullback_Short_Position",
-    "MegaCap_WeeklySlide_Short",
-    "Industrials_Ranker_Position",
-    "Healthcare_Ranker_Position",
-    "Energy_Ranker_Position",
-    "Materials_Ranker_Position",
     "ConsumerDisc_Ranker_Position",
 })
 
@@ -577,61 +563,7 @@ def run_scan_as_of(as_of_date, tickers, rs_bought_tracker=None):
                 pass
 
         # =====================================================================
-        # STRATEGY 2: MEANREVERSION_POSITION
-        # =====================================================================
-        # Entry: Long-term uptrend, RSI14 < 38, price near EMA50, then breakout
-        # =====================================================================
-        if is_bull_regime and len(df) >= 150 and rs_6mo is not None:
-            try:
-                # Long-term uptrend
-                close_above_ma150 = last_close > ma150.iloc[-1]
-                ma150_rising = check_ma_rising(df, 150, 20)
-                strong_rs = rs_6mo >= MR_POS_RS_THRESHOLD
-
-                # Oversold condition
-                rsi_oversold = rsi14.iloc[-1] < MR_POS_RSI_OVERSOLD
-                near_ema50 = abs(last_close - ema50.iloc[-1]) / ema50.iloc[-1] < 0.03  # Within 3%
-
-                # Trigger: Close back above EMA50 and prior high
-                close_above_ema50 = last_close > ema50.iloc[-1]
-                if len(high) >= 2:
-                    close_above_prior_high = last_close > high.iloc[-2]
-                else:
-                    close_above_prior_high = False
-
-                if all([close_above_ma150, ma150_rising, strong_rs, (rsi_oversold or near_ema50),
-                       close_above_ema50, close_above_prior_high]):
-                    # Calculate weekly swing low for stop
-                    if len(low) >= 10:
-                        weekly_swing_low = low.iloc[-10:].min()
-                        # Weekly ATR approximation
-                        weekly_atr = atr14.iloc[-1] * 1.5
-                        stop_price = weekly_swing_low - (1.5 * weekly_atr)
-                    else:
-                        stop_price = last_close - (3 * atr14.iloc[-1])
-
-                    # Quality score
-                    score = min(rs_6mo / MR_POS_RS_THRESHOLD * 40, 60)  # Max 60
-                    score += (MR_POS_RSI_OVERSOLD - rsi14.iloc[-1]) * 2  # Lower RSI = higher score
-
-                    signals.append({
-                        "Ticker": ticker,
-                        "Strategy": "MeanReversion_Position",
-                        "Priority": STRATEGY_PRIORITY["MeanReversion_Position"],
-                        "Price": round(last_close, 2),
-                        "StopPrice": round(stop_price, 2),
-                        "ATR14": round(atr14.iloc[-1], 2),
-                        "RSI14": round(rsi14.iloc[-1], 2),
-                        "RS_6mo": round(rs_6mo * 100, 2),
-                        "Score": round(score, 2),
-                        "AsOfDate": as_of_date,
-                        "MaxDays": MR_POS_MAX_DAYS,
-                    })
-            except Exception:
-                pass
-
-        # =====================================================================
-        # STRATEGY 3: %B_MEANREVERSION_POSITION
+        # STRATEGY 2: %B_MEANREVERSION_POSITION
         # =====================================================================
         # Entry: %B < 0.12, RSI14 < 38, then close above lower BB
         # =====================================================================
@@ -1444,174 +1376,6 @@ def run_scan_as_of(as_of_date, tickers, rs_bought_tracker=None):
         run_scan_as_of._debug_counters = None
 
     # =========================================================================
-    # Strategy 10: MegaCap Weekly Slide SHORT
-    # =========================================================================
-    cfg_mega = MEGACAP_WEEKLY_SLIDE_CFG
-    if cfg_mega.get("ENABLED", True) and SHORT_ENABLED and POSITION_MAX_PER_STRATEGY.get("MegaCap_WeeklySlide_Short", 0) > 0:
-        for ticker in cfg_mega.get("SYMBOLS", []):
-            try:
-                # Load daily data
-                df = get_historical_data(ticker)
-                if df is None or len(df) < 300:
-                    continue
-
-                df = df[df.index <= as_of_date]
-                if len(df) < 100:
-                    continue
-
-                # Universe filters
-                last_close = df["Close"].iloc[-1]
-                today_high = df["High"].iloc[-1]
-                today_low = df["Low"].iloc[-1]
-                today_volume = df["Volume"].iloc[-1]
-
-                # Price filter
-                if last_close < cfg_mega.get("MIN_PRICE", 30):
-                    continue
-
-                # Dollar volume filter
-                avg_vol_20 = df["Volume"].iloc[-20:].mean()
-                dollar_vol = last_close * avg_vol_20
-                if dollar_vol < cfg_mega.get("MIN_DOLLAR_VOLUME", 100_000_000):
-                    continue
-
-                # Load weekly data
-                df_weekly = df.resample('W-FRI').agg({
-                    'Open': 'first',
-                    'High': 'max',
-                    'Low': 'min',
-                    'Close': 'last',
-                    'Volume': 'sum'
-                }).dropna()
-
-                if len(df_weekly) < 60:
-                    continue
-
-                # Calculate weekly indicators
-                weekly_ma10 = df_weekly["Close"].rolling(cfg_mega.get("WEEKLY_MA10", 10)).mean()
-                weekly_ma20 = df_weekly["Close"].rolling(cfg_mega.get("WEEKLY_MA20", 20)).mean()
-
-                rsi_period = cfg_mega.get("WEEKLY_RSI_PERIOD", 14)
-                weekly_rsi = compute_rsi(df_weekly["Close"], rsi_period)
-
-                high_lookback = cfg_mega.get("WEEKLY_HIGH_LOOKBACK", 52)
-                highest_close_52w = df_weekly["Close"].rolling(high_lookback).max()
-
-                # Check weekly context (use last completed week)
-                weekly_close = df_weekly["Close"].iloc[-1]
-                weekly_ma10_val = weekly_ma10.iloc[-1]
-                weekly_ma20_val = weekly_ma20.iloc[-1]
-                weekly_rsi_val = weekly_rsi.iloc[-1]
-                weekly_high_52w = highest_close_52w.iloc[-1]
-
-                if pd.isna(weekly_ma10_val) or pd.isna(weekly_ma20_val) or pd.isna(weekly_rsi_val) or pd.isna(weekly_high_52w):
-                    continue
-
-                # Weekly slide context
-                weekly_trend_break = (weekly_close < weekly_ma10_val) and (weekly_close < weekly_ma20_val)
-                weekly_momentum_down = weekly_rsi_val < cfg_mega.get("WEEKLY_RSI_THRESHOLD", 50)
-                weekly_off_high = weekly_close <= (cfg_mega.get("WEEKLY_OFF_HIGH_PCT", 0.90) * weekly_high_52w)
-
-                weekly_slide_context = weekly_trend_break and weekly_momentum_down and weekly_off_high
-
-                if not weekly_slide_context:
-                    continue
-
-                # Daily entry conditions
-                daily_ma20 = df["Close"].rolling(cfg_mega.get("DAILY_MA20", 20)).mean()
-                daily_ma20_val = daily_ma20.iloc[-1]
-
-                if pd.isna(daily_ma20_val):
-                    continue
-
-                # Condition 1: close < MA20_day
-                below_ma20 = last_close < daily_ma20_val
-
-                # Condition 2: close < lowest_low_10d (exclude today)
-                lookback = cfg_mega.get("DAILY_LOW_LOOKBACK", 10)
-                if len(df) < lookback + 1:
-                    continue
-
-                lowest_low_10d = df["Low"].iloc[-(lookback+1):-1].min()  # Exclude current bar
-                below_lowest = last_close < lowest_low_10d
-
-                # Condition 3: volume >= 1.1 * avg_volume_20d
-                vol_period = cfg_mega.get("DAILY_VOLUME_PERIOD", 20)
-                avg_vol = df["Volume"].iloc[-vol_period:].mean()
-                vol_mult = cfg_mega.get("DAILY_VOLUME_MULT", 1.1)
-                volume_ok = today_volume >= (vol_mult * avg_vol)
-
-                # All daily conditions must pass
-                if not (below_ma20 and below_lowest and volume_ok):
-                    continue
-
-                # Calculate stop loss
-                swing_lookback = cfg_mega.get("STOP_SWING_HIGH_LOOKBACK", 10)
-                swing_high = df["High"].iloc[-swing_lookback:].max()
-                stop_buffer = cfg_mega.get("STOP_BUFFER_PCT", 0.01)
-
-                # Stop is max of swing high and MA20, plus buffer
-                stop_price = max(swing_high, daily_ma20_val) * (1 + stop_buffer)
-
-                # Entry price (use close)
-                entry_price = last_close
-
-                # Validate stop (must be above entry for SHORT)
-                if stop_price <= entry_price:
-                    continue
-
-                # Calculate position size
-                risk_per_share = stop_price - entry_price
-                risk_pct = cfg_mega.get("RISK_PER_TRADE_PCT", 0.5) / 100.0
-                equity = POSITION_INITIAL_EQUITY
-                risk_dollars = equity * risk_pct
-                shares = int(risk_dollars / risk_per_share)
-
-                if shares <= 0:
-                    continue
-
-                # Calculate target (2R for partial)
-                partial_r = cfg_mega.get("PARTIAL_R", 2.0)
-                target_price = entry_price - (partial_r * risk_per_share)
-
-                # Create signal
-                signals.append({
-                    "Ticker": ticker,
-                    "Date": as_of_date,
-                    "Strategy": "MegaCap_WeeklySlide_Short",
-                    "Entry": entry_price,
-                    "StopLoss": stop_price,
-                    "Target": target_price,
-                    "Shares": shares,
-                    "Direction": "SHORT",
-                    "MaxDays": cfg_mega.get("MAX_DAYS", 50),
-                    "PartialR": cfg_mega.get("PARTIAL_R", 2.0),
-                    "PartialSize": cfg_mega.get("PARTIAL_SIZE", 0.5),
-                    "BreakevenAfterPartial": cfg_mega.get("BREAKEVEN_AFTER_PARTIAL", True),
-                    "TrailEMA": cfg_mega.get("TRAIL_EMA"),
-                    "EarlyExitDays": cfg_mega.get("EARLY_EXIT_DAYS"),
-                    "WeeklyContext": {
-                        "weekly_close": weekly_close,
-                        "weekly_ma10": weekly_ma10_val,
-                        "weekly_ma20": weekly_ma20_val,
-                        "weekly_rsi": weekly_rsi_val,
-                        "weekly_52w_high": weekly_high_52w,
-                    },
-                    "DailyContext": {
-                        "daily_ma20": daily_ma20_val,
-                        "lowest_low_10d": lowest_low_10d,
-                        "volume": today_volume,
-                        "avg_volume_20d": avg_vol,
-                    },
-                })
-
-            except Exception as e:
-                # Skip on errors (data issues, etc.)
-                if cfg_mega.get("DEBUG_MODE", False):
-                    print(f"❌ ERROR in MegaCap_WeeklySlide_Short for {ticker}: {e}")
-                continue
-
-    # =========================================================================
     # GAP REVERSAL POSITION
     # =========================================================================
     # Runs as a separate pass so it can use its own 60-bar minimum
@@ -1687,69 +1451,21 @@ def run_scan_as_of(as_of_date, tickers, rs_bought_tracker=None):
     # Phase 2-3: SECTOR-BASED STRATEGIES
     # =========================================================================
     
-    # Load sector ETF data for all sector strategies
-    xli_df = get_historical_data("XLI")  # Industrials
-    xlv_df = get_historical_data("XLV")  # Healthcare
-    xle_df = get_historical_data("XLE")  # Energy
-    xlb_df = get_historical_data("XLB")  # Materials
+    # Load sector ETF data for the surviving sector strategy
     xly_df = get_historical_data("XLY")  # Consumer Discretionary
-    
+
     # Ensure all sector ETF indices are datetime
-    for etf_df in [xli_df, xlv_df, xle_df, xlb_df, xly_df]:
+    for etf_df in [xly_df]:
         if not etf_df.empty and not isinstance(etf_df.index, pd.DatetimeIndex):
             try:
                 etf_df.index = pd.to_datetime(etf_df.index, format='%Y-%m-%d', errors='coerce')
                 etf_df = etf_df[etf_df.index.notna()]
             except:
                 pass
-    
-    if not xli_df.empty:
-        xli_df = xli_df[xli_df.index <= as_of_date]
-    if not xlv_df.empty:
-        xlv_df = xlv_df[xlv_df.index <= as_of_date]
-    if not xle_df.empty:
-        xle_df = xle_df[xle_df.index <= as_of_date]
-    if not xlb_df.empty:
-        xlb_df = xlb_df[xlb_df.index <= as_of_date]
+
     if not xly_df.empty:
         xly_df = xly_df[xly_df.index <= as_of_date]
-    
-    # Industrials Ranker
-    if POSITION_MAX_PER_STRATEGY.get("Industrials_Ranker_Position", 0) > 0 and not xli_df.empty:
-        try:
-            from src.strategies.industrials_ranker import scan_industrials
-            ind_signals = scan_industrials(tickers, as_of_date, xli_df, adx_threshold)
-            signals.extend(ind_signals)
-        except Exception as e:
-            pass  # Silently skip if module not available
-    
-    # Healthcare Ranker
-    if POSITION_MAX_PER_STRATEGY.get("Healthcare_Ranker_Position", 0) > 0 and not xlv_df.empty:
-        try:
-            from src.strategies.healthcare_ranker import scan_healthcare
-            hc_signals = scan_healthcare(tickers, as_of_date, xlv_df, adx_threshold)
-            signals.extend(hc_signals)
-        except Exception as e:
-            pass
-    
-    # Energy Ranker
-    if POSITION_MAX_PER_STRATEGY.get("Energy_Ranker_Position", 0) > 0 and not xle_df.empty:
-        try:
-            from src.strategies.energy_ranker import scan_energy
-            energy_signals = scan_energy(tickers, as_of_date, xle_df, adx_threshold)
-            signals.extend(energy_signals)
-        except Exception as e:
-            pass
-    
-    # Materials Ranker
-    if POSITION_MAX_PER_STRATEGY.get("Materials_Ranker_Position", 0) > 0 and not xlb_df.empty:
-        try:
-            from src.strategies.materials_ranker import scan_materials
-            mat_signals = scan_materials(tickers, as_of_date, xlb_df, adx_threshold)
-            signals.extend(mat_signals)
-        except Exception as e:
-            pass
-    
+
     # Consumer Discretionary Ranker
     if POSITION_MAX_PER_STRATEGY.get("ConsumerDisc_Ranker_Position", 0) > 0 and not xly_df.empty:
         try:

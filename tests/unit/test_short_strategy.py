@@ -64,7 +64,6 @@ def run_short_only_backtest():
     POSITION_MAX_PER_STRATEGY["BigBase_Breakout_Position"] = 0
     POSITION_MAX_PER_STRATEGY["EMA_Crossover_Position"] = 0
     POSITION_MAX_PER_STRATEGY["TrendContinuation_Position"] = 0
-    POSITION_MAX_PER_STRATEGY["MeanReversion_Position"] = 0
     POSITION_MAX_PER_STRATEGY["%B_MeanReversion_Position"] = 0
 
     print(f"🚫 Disabled all LONG strategies for isolated SHORT testing")
