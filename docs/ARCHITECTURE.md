@@ -223,7 +223,9 @@ class Strategy:
 
 ## Entry Points
 
-All entry points are located in `scripts/`:
+All entry points are located in `scripts/`. Implementations are grouped under
+`scripts/live`, `scripts/data`, `scripts/backtests`, and `scripts/daytrading`,
+while the historic top-level `scripts/*.py` commands remain as compatibility wrappers:
 
 ### 1. **scan.py** - Live Scanner
 - Scans S&P 500 for new trading opportunities

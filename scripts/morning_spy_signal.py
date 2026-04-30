@@ -6,7 +6,7 @@ project_root = Path(__file__).resolve().parent.parent
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
-from scripts.live.scan import main
+from scripts.daytrading.morning_spy_signal import main
 
 
 if __name__ == "__main__":

@@ -141,12 +141,15 @@ stock-alert/
 │   │   └── email.py                   # Email notifications
 │   └── utils/                        # Utilities
 │
-├── scripts/                          # Entry point scripts
-│   ├── scan.py                        # Live scanner
-│   ├── backtest.py                    # Backtester
-│   ├── monitor.py                     # Position monitor
-│   ├── manage_positions.py            # Position manager
-│   └── download_data.py               # Data downloader
+├── scripts/                          # Entry point scripts + grouped implementations
+│   ├── live/                          # Live scan / monitor / position CLIs
+│   ├── data/                          # Market data maintenance CLIs
+│   ├── backtests/                     # Backtest runners and experiments
+│   ├── daytrading/                    # Intraday / daytrading CLIs
+│   ├── scan.py                        # Compatibility wrapper for live scanner
+│   ├── monitor.py                     # Compatibility wrapper for position monitor
+│   ├── manage_positions.py            # Compatibility wrapper for position manager
+│   └── download_data.py               # Compatibility wrapper for data downloader
 │
 ├── tests/                            # Tests
 │   ├── unit/                          # Unit tests

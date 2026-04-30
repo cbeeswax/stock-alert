@@ -32,6 +32,7 @@ ema_data/
 
 # Local settings override (keep strategy params out of git)
 config/settings.json
+config/daytrading_settings.json
 
 # S&P 500 constituents (stored in GCS config/)
 data/sp500_constituents.csv
@@ -54,3 +55,5 @@ backtest_results.csv
 # Environment variables
 .env
 .env.local
+
+data/intraday/
