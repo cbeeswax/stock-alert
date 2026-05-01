@@ -108,3 +108,25 @@ class BaseStrategy(ABC):
 
     def format_signals(self, signals: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         return [s for s in signals if self.validate_signal(s)]
+
+    def build_price_action_context(self, df: pd.DataFrame):
+        from src.analysis.price_action_context import analyze_price_action_context
+
+        return analyze_price_action_context(df)
+
+    def enrich_signal_with_price_action_context(
+        self,
+        signal: Optional[Dict[str, Any]],
+        df: pd.DataFrame,
+        *,
+        context=None,
+    ) -> Optional[Dict[str, Any]]:
+        if signal is None:
+            return None
+
+        from src.analysis.price_action_context import context_to_signal_fields
+
+        computed_context = context if context is not None else self.build_price_action_context(df)
+        enriched_signal = dict(signal)
+        enriched_signal.update(context_to_signal_fields(computed_context))
+        return enriched_signal

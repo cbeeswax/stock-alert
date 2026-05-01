@@ -4,6 +4,7 @@ import pytest
 
 import src.strategies.divergence_reversal as divergence_module
 from src.analysis.zone_structure import ZoneSnapshot
+from src.analysis.price_action_context import analyze_price_action_context
 from src.strategies.divergence_reversal import DivergenceReversalPosition
 from src.ta.indicators.divergence import DivergenceSetup
 
@@ -161,6 +162,8 @@ def test_divergence_reversal_generates_confirmed_long_signal(monkeypatch):
     assert signal["StopLoss"] < signal["Entry"]
     assert signal["ZoneSupport"] >= 90.0
     assert signal["MACDBonus"] == 12.0
+    assert signal["OrderFlowBias"] == "bullish"
+    assert "LiquiditySweep" in signal
 
 
 def test_divergence_reversal_generates_confirmed_short_signal(monkeypatch):
@@ -214,6 +217,8 @@ def test_divergence_reversal_generates_confirmed_short_signal(monkeypatch):
     assert signal["Entry"] == 104.0
     assert signal["StopLoss"] > signal["Entry"]
     assert signal["ZoneResistance"] <= 116.0
+    assert signal["OrderFlowBias"] == "bearish"
+    assert "LiquiditySweep" in signal
 
 
 def test_divergence_reversal_rejects_without_price_confirmation(monkeypatch):
@@ -317,6 +322,35 @@ def test_divergence_reversal_uses_minimum_practical_risk_floor(monkeypatch):
     assert signal["RiskPerShare"] == round(signal["Entry"] * 0.01, 2)
 
 
+def test_divergence_reversal_rejects_bullish_setup_with_bearish_order_flow(monkeypatch):
+    df = _base_long_df()
+    df.iloc[-1, df.columns.get_loc("Open")] = 100.6
+    df.iloc[-1, df.columns.get_loc("High")] = 100.8
+    df.iloc[-1, df.columns.get_loc("Low")] = 99.0
+    df.iloc[-1, df.columns.get_loc("Close")] = 99.2
+    monkeypatch.setattr(
+        divergence_module,
+        "find_bullish_divergence_setup",
+        lambda *args, **kwargs: DivergenceSetup(
+            direction="LONG",
+            first_pivot_idx=100,
+            second_pivot_idx=120,
+            trigger_level=99.0,
+            invalidation_level=90.0,
+            first_price=95.0,
+            second_price=90.0,
+            first_oscillator=22.0,
+            second_oscillator=31.0,
+            macd_bonus=12.0,
+        ),
+    )
+    monkeypatch.setattr(divergence_module, "find_bearish_divergence_setup", lambda *args, **kwargs: None)
+
+    signal = DivergenceReversalPosition().scan("TEST", df, df.index[-1])
+
+    assert signal is None
+
+
 def test_divergence_reversal_exit_on_zone_support_fail():
     strat = DivergenceReversalPosition()
     df = _base_long_df()
@@ -337,3 +371,29 @@ def test_divergence_reversal_exit_on_zone_resistance_fail():
 
     assert exit_cond is not None
     assert exit_cond["reason"] == "zone_resistance_fail"
+
+
+def test_price_action_context_detects_bullish_and_bearish_sweeps():
+    dates = pd.date_range("2024-01-02", periods=25, freq="B")
+    bullish_df = pd.DataFrame(
+        {
+            "Open": np.full(25, 100.0),
+            "High": np.full(25, 104.0),
+            "Low": np.full(25, 98.0),
+            "Close": np.full(25, 101.0),
+            "Volume": np.full(25, 1_000_000.0),
+        },
+        index=dates,
+    )
+    bullish_df.iloc[-1] = [99.5, 103.5, 97.5, 101.8, 1_600_000.0]
+
+    bearish_df = bullish_df.copy()
+    bearish_df.iloc[-1] = [102.5, 104.8, 99.5, 100.1, 1_600_000.0]
+
+    bullish_context = analyze_price_action_context(bullish_df)
+    bearish_context = analyze_price_action_context(bearish_df)
+
+    assert bullish_context.liquidity_sweep == "bullish_sweep"
+    assert bullish_context.order_flow_bias == "bullish"
+    assert bearish_context.liquidity_sweep == "bearish_sweep"
+    assert bearish_context.order_flow_bias == "bearish"

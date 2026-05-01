@@ -256,7 +256,7 @@ class GapContinuationPosition(BaseStrategy):
                 1,
             )
 
-            return {
+            signal = {
                 "Ticker": ticker,
                 "Strategy": self.name,
                 "Direction": "LONG",
@@ -285,6 +285,7 @@ class GapContinuationPosition(BaseStrategy):
                 "AsOfDate": as_of_date if as_of_date is not None else df.index[-1],
                 "MaxDays": GAP_CONTINUATION_MAX_DAYS,
             }
+            return self.enrich_signal_with_price_action_context(signal, df)
         except Exception:
             return None
 

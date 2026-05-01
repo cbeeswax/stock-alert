@@ -166,7 +166,7 @@ class RelativeStrengthRanker(BaseStrategy):
             stop = last_close - (RS_RANKER_STOP_ATR_MULT * atr20)
             score = min((rs_6mo / RS_RANKER_RS_THRESHOLD) * 100, 100)
 
-            return {
+            signal = {
                 "Ticker": ticker,
                 "Strategy": self.name,
                 "Priority": STRATEGY_PRIORITY.get(self.name, 2),
@@ -184,6 +184,7 @@ class RelativeStrengthRanker(BaseStrategy):
                 "AsOfDate": as_of_date or df.index[-1],
                 "MaxDays": RS_RANKER_MAX_DAYS,
             }
+            return self.enrich_signal_with_price_action_context(signal, df)
 
         except Exception:
             return None

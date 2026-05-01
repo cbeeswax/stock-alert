@@ -106,10 +106,14 @@ class RallyPatternPosition(BaseStrategy):
         if raw_df.empty:
             return []
 
+        history_by_ticker = self._history_by_ticker(raw_df)
         candidates = self._latest_candidate_rows(raw_df, scan_date)
         signals: list[dict[str, Any]] = []
         for _, row in candidates.iterrows():
-            signal = self._signal_from_row(row)
+            signal = self._signal_from_row(
+                row,
+                history_by_ticker.get(str(row.get("ticker", "")).upper()),
+            )
             if signal is not None:
                 signals.append(signal)
         return signals
@@ -225,7 +229,11 @@ class RallyPatternPosition(BaseStrategy):
             ascending=[True, False, False, True],
         ).reset_index(drop=True)
 
-    def _signal_from_row(self, row: pd.Series) -> Optional[dict[str, Any]]:
+    def _signal_from_row(
+        self,
+        row: pd.Series,
+        price_history: pd.DataFrame | None = None,
+    ) -> Optional[dict[str, Any]]:
         entry = float(row["close"])
         stop = float(row.get("entry_structural_support", 0.0))
         risk_per_share = float(row.get("entry_risk_per_share", 0.0))
@@ -242,7 +250,7 @@ class RallyPatternPosition(BaseStrategy):
         target = entry + (self.target_r_multiple * (entry - stop))
         signal_date = pd.Timestamp(row["Date"])
 
-        return {
+        signal = {
             "Ticker": str(row["ticker"]).upper(),
             "Strategy": self.name,
             "Direction": "LONG",
@@ -263,3 +271,26 @@ class RallyPatternPosition(BaseStrategy):
             "AsOfDate": signal_date,
             "MaxDays": self.max_days,
         }
+        if price_history is None:
+            return self.enrich_signal_with_price_action_context(signal, pd.DataFrame())
+        return self.enrich_signal_with_price_action_context(signal, price_history)
+
+    @staticmethod
+    def _history_by_ticker(raw_df: pd.DataFrame) -> dict[str, pd.DataFrame]:
+        if raw_df.empty:
+            return {}
+
+        working = raw_df.copy()
+        working["ticker"] = working["ticker"].astype(str).str.upper()
+        rename_map = {
+            "open": "Open",
+            "high": "High",
+            "low": "Low",
+            "close": "Close",
+            "volume": "Volume",
+        }
+        histories: dict[str, pd.DataFrame] = {}
+        for ticker, group in working.groupby("ticker"):
+            local = group.sort_values("Date").rename(columns=rename_map)
+            histories[ticker] = local.set_index("Date")[["Open", "High", "Low", "Close", "Volume"]]
+        return histories

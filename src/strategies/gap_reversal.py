@@ -294,7 +294,7 @@ class GapReversalPosition(BaseStrategy):
                 signal["GapResistance"] = round(gap_resistance, 2)
                 signal["ZoneResistance"] = round(zone_resistance, 2)
                 signal["RoomToSupportPct"] = round(room_to_target, 2) if room_to_target is not None else None
-            return signal
+            return self.enrich_signal_with_price_action_context(signal, df)
 
         except Exception:
             return None

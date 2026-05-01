@@ -372,7 +372,10 @@ def pre_buy_check(combined_signals, rr_ratio=None, benchmark="SPY", as_of_date=N
             print(f"   ❌ {ticker} [{strategy}]: filtered — LONG stop ${stop:.2f} not below entry ${entry:.2f}")
             continue
 
-        print(f"   ✅ {ticker} [{strategy}]: passed pre_buy_check (entry=${entry:.2f}, stop=${stop:.2f}, target=${target:.2f})")
+        print(
+            f"   ✅ {ticker} [{strategy} {direction}]: passed pre_buy_check "
+            f"(entry=${entry:.2f}, stop=${stop:.2f}, target=${target:.2f})"
+        )
 
         trades.append({
             "Ticker": ticker,

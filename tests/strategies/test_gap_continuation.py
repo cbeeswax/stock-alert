@@ -116,6 +116,8 @@ def test_gap_continuation_generates_confirmed_breakout_signal():
     assert signal["GapSupport"] > float(df["Close"].iloc[-4])
     assert signal["StopLoss"] <= signal["GapSupport"]
     assert signal["RiskPerShare"] == round(signal["Entry"] - signal["StopLoss"], 2)
+    assert "OrderFlowBias" in signal
+    assert "LiquiditySweep" in signal
 
 
 def test_gap_continuation_rejects_weak_breakout_close():

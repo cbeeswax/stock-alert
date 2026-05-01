@@ -31,6 +31,7 @@ class DivergenceReversalPosition(BaseStrategy):
 
     name = "DivergenceReversal_Position"
     description = "Confirmed RSI divergence reversal with MACD score bonus and zone-aware risk control"
+    MIN_DIRECTIONAL_ORDER_FLOW_SCORE = 15.0
     EXTERNAL_SETTINGS_PATH = Path("config\\settings.json")
     REQUIRED_EXTERNAL_KEYS = {
         "DIVERGENCE_REVERSAL_DIRECTION",
@@ -337,8 +338,13 @@ class DivergenceReversalPosition(BaseStrategy):
             macd_bonus=setup.macd_bonus,
             close_pos=close_pos,
         )
+        context = self.build_price_action_context(df)
+        if context.liquidity_sweep == "bearish_sweep":
+            return None
+        if context.order_flow_score < self.MIN_DIRECTIONAL_ORDER_FLOW_SCORE:
+            return None
 
-        return {
+        signal = {
             "Ticker": ticker,
             "Strategy": self.name,
             "Direction": "LONG",
@@ -366,6 +372,7 @@ class DivergenceReversalPosition(BaseStrategy):
             "AsOfDate": as_of_date if as_of_date is not None else df.index[-1],
             "MaxDays": max_days,
         }
+        return self.enrich_signal_with_price_action_context(signal, df, context=context)
 
     def _build_short_signal(
         self,
@@ -437,8 +444,13 @@ class DivergenceReversalPosition(BaseStrategy):
             macd_bonus=setup.macd_bonus,
             close_pos=(1.0 - close_pos),
         )
+        context = self.build_price_action_context(df)
+        if context.liquidity_sweep == "bullish_sweep":
+            return None
+        if context.order_flow_score > (-1.0 * self.MIN_DIRECTIONAL_ORDER_FLOW_SCORE):
+            return None
 
-        return {
+        signal = {
             "Ticker": ticker,
             "Strategy": self.name,
             "Direction": "SHORT",
@@ -466,6 +478,7 @@ class DivergenceReversalPosition(BaseStrategy):
             "AsOfDate": as_of_date if as_of_date is not None else df.index[-1],
             "MaxDays": max_days,
         }
+        return self.enrich_signal_with_price_action_context(signal, df, context=context)
 
     @staticmethod
     def _has_meaningful_prior_decline(

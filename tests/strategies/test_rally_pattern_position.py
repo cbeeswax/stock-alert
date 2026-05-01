@@ -81,6 +81,8 @@ def test_rally_pattern_run_packages_ranked_candidate(monkeypatch):
     assert signal["StopLoss"] == 95.0
     assert signal["Target"] == 110.0
     assert signal["ZoneSupport"] == 94.0
+    assert signal["OrderFlowBias"] == "neutral"
+    assert signal["LiquiditySweep"] == "none"
 
 
 def test_rally_pattern_latest_candidates_skip_stale_scan(monkeypatch):

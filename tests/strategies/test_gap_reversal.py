@@ -135,6 +135,8 @@ def test_gap_reversal_generates_confirmed_long_signal():
     assert signal["RiskPerShare"] == round(signal["Entry"] - signal["StopLoss"], 2)
     assert signal["GapFillLevel"] < signal["Entry"]
     assert signal["GapSupport"] >= signal["GapMid"]
+    assert "OrderFlowBias" in signal
+    assert "LiquiditySweep" in signal
 
 
 def test_gap_reversal_generates_confirmed_short_signal():
@@ -149,6 +151,8 @@ def test_gap_reversal_generates_confirmed_short_signal():
     assert signal["StopLoss"] > signal["Entry"]
     assert signal["GapResistance"] <= signal["GapMid"]
     assert signal["ZoneResistance"] >= signal["GapResistance"]
+    assert "OrderFlowBias" in signal
+    assert "LiquiditySweep" in signal
 
 
 def test_gap_reversal_rejects_weak_gap_bar():
