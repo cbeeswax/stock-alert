@@ -381,14 +381,17 @@ _LEGACY_STRATEGY_NAMES = frozenset({
 })
 
 
+def _is_strategy_enabled(name: str) -> bool:
+    return POSITION_MAX_PER_STRATEGY.get(name, 0) > 0
+
+
 def _get_active_registry_strategies():
     """Return list of (name, strategy_instance) for all registry strategies NOT in legacy set."""
-    from src.config.settings import POSITION_MAX_PER_STRATEGY
     result = []
     for name in StrategyRegistry.list_available():
         if name in _LEGACY_STRATEGY_NAMES:
             continue
-        if POSITION_MAX_PER_STRATEGY.get(name, 0) > 0:
+        if _is_strategy_enabled(name):
             try:
                 result.append((name, StrategyRegistry.create(name)))
             except Exception:
@@ -507,7 +510,7 @@ def run_scan_as_of(as_of_date, tickers, rs_bought_tracker=None):
         # Entry: Strong trend, EMA20 crosses above EMA50 + new 50-day high
         # Regime: Bull (QQQ > 200-MA)
         # =====================================================================
-        if is_bull_regime and len(df) >= 100:
+        if _is_strategy_enabled("EMA_Crossover_Position") and is_bull_regime and len(df) >= 100:
             try:
                 # Check for EMA20 crossing EMA50 in last 3 days
                 ema20_crossed_ema50 = False
@@ -567,7 +570,7 @@ def run_scan_as_of(as_of_date, tickers, rs_bought_tracker=None):
         # =====================================================================
         # Entry: %B < 0.12, RSI14 < 38, then close above lower BB
         # =====================================================================
-        if is_bull_regime and len(df) >= 150:
+        if _is_strategy_enabled("%B_MeanReversion_Position") and is_bull_regime and len(df) >= 150:
             try:
                 # Calculate Bollinger Bands
                 middle_band, upper_band, lower_band, bandwidth = compute_bollinger_bands(close, period=20, std_dev=2)
@@ -623,7 +626,7 @@ def run_scan_as_of(as_of_date, tickers, rs_bought_tracker=None):
         #        ADX 30+, stacked MAs
         # Goal: Catch ONLY high-conviction breakouts, not exhaustion tops
         # =====================================================================
-        if is_bull_regime and len(df) >= 252 and rs_6mo is not None:
+        if _is_strategy_enabled("High52_Position") and is_bull_regime and len(df) >= 252 and rs_6mo is not None:
             try:
                 # MULTI-MONTH TREND FILTERS
                 # Stacked MAs: Price > 50 > 100 > 200
@@ -677,7 +680,7 @@ def run_scan_as_of(as_of_date, tickers, rs_bought_tracker=None):
         # Entry: 14+ week consolidation (≤22% range), 6-mo high breakout, RS 15%+, 1.5x 5-day vol
         # Note: NO ADX requirement (consolidations have low ADX by definition)
         # =====================================================================
-        if is_bull_regime and len(df) >= 140:  # 14+ weeks * 5 days + buffer
+        if _is_strategy_enabled("BigBase_Breakout_Position") and is_bull_regime and len(df) >= 140:  # 14+ weeks * 5 days + buffer
             try:
                 # Check 14-week (70-day) base
                 lookback_days = BIGBASE_MIN_WEEKS * 5
@@ -739,7 +742,7 @@ def run_scan_as_of(as_of_date, tickers, rs_bought_tracker=None):
         # =====================================================================
         # Entry: Strong trend, 150-MA rising, pullback to 21-EMA, then resume
         # =====================================================================
-        if is_bull_regime and len(df) >= 150 and rs_6mo is not None:
+        if _is_strategy_enabled("TrendContinuation_Position") and is_bull_regime and len(df) >= 150 and rs_6mo is not None:
             try:
                 # MULTI-MONTH TREND FILTERS
                 # Stacked MAs: Price > 50 > 100 > 150 > 200
@@ -801,7 +804,7 @@ def run_scan_as_of(as_of_date, tickers, rs_bought_tracker=None):
         # =====================================================================
         # Entry: Tech stocks, RS > +30%, new 3-mo high or pullback, ADX 30+, all MAs rising
         # =====================================================================
-        if rs_6mo is not None and POSITION_MAX_PER_STRATEGY.get("RelativeStrength_Ranker_Position", 0) > 0:
+        if _is_strategy_enabled("RelativeStrength_Ranker_Position") and rs_6mo is not None:
             try:
                 # Check if already bought - skip duplicate BUY signals
                 if rs_tracker.is_bought(ticker):
@@ -883,7 +886,7 @@ def run_scan_as_of(as_of_date, tickers, rs_bought_tracker=None):
         # - SIDEWAYS: Range-trade mean reversion (RS ≤ -10%, RSI 65-75, 20d max)
         # - BEAR: Primary offensive (RS ≤ -5%, RSI 55-70, 45d max hold)
         # =====================================================================
-        if rs_6mo is not None and SHORT_ENABLED and POSITION_MAX_PER_STRATEGY.get("ShortWeakRS_Retrace_Position", 0) > 0:
+        if _is_strategy_enabled("ShortWeakRS_Retrace_Position") and rs_6mo is not None and SHORT_ENABLED:
             try:
                 # REGIME CLASSIFICATION
                 regime = get_regime_label(as_of_date)
@@ -1032,7 +1035,7 @@ def run_scan_as_of(as_of_date, tickers, rs_bought_tracker=None):
         # Exit: 50% at +2R, early stop at 20d if R<=0, hard stop at 40d
         # Portfolio: Max 3 positions, 0.35% risk per trade
         # =====================================================================
-        if rs_6mo is not None and SHORT_ENABLED and POSITION_MAX_PER_STRATEGY.get("LeaderPullback_Short_Position", 0) > 0:
+        if _is_strategy_enabled("LeaderPullback_Short_Position") and rs_6mo is not None and SHORT_ENABLED:
             try:
                 # Active in configured regimes (bull/sideways)
                 regime = get_regime_label(as_of_date)
@@ -1380,7 +1383,7 @@ def run_scan_as_of(as_of_date, tickers, rs_bought_tracker=None):
     # =========================================================================
     # Runs as a separate pass so it can use its own 60-bar minimum
     # (main loop requires 252 bars, which would filter out some valid setups).
-    if POSITION_MAX_PER_STRATEGY.get("GapReversal_Position", 0) > 0:
+    if _is_strategy_enabled("GapReversal_Position"):
         try:
             from src.strategies.gap_reversal import GapReversalPosition
             gap_strategy = GapReversalPosition()
@@ -1409,7 +1412,7 @@ def run_scan_as_of(as_of_date, tickers, rs_bought_tracker=None):
     # =========================================================================
     # GAP CONTINUATION POSITION
     # =========================================================================
-    if POSITION_MAX_PER_STRATEGY.get("GapContinuation_Position", 0) > 0:
+    if _is_strategy_enabled("GapContinuation_Position"):
         try:
             from src.strategies.gap_continuation import GapContinuationPosition
 
@@ -1467,7 +1470,7 @@ def run_scan_as_of(as_of_date, tickers, rs_bought_tracker=None):
         xly_df = xly_df[xly_df.index <= as_of_date]
 
     # Consumer Discretionary Ranker
-    if POSITION_MAX_PER_STRATEGY.get("ConsumerDisc_Ranker_Position", 0) > 0 and not xly_df.empty:
+    if _is_strategy_enabled("ConsumerDisc_Ranker_Position") and not xly_df.empty:
         try:
             from src.strategies.consumer_disc_ranker import scan_consumer_disc
             cd_signals = scan_consumer_disc(tickers, as_of_date, xly_df, adx_threshold)
