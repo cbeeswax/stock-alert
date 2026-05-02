@@ -5,6 +5,8 @@ Walk-forward backtester for 8 position strategies (60-120 day holds).
 Features: Strategy-specific exits, pyramiding, per-strategy position limits.
 """
 import logging
+from collections import defaultdict
+
 import pandas as pd
 from src.scanning.scanner import run_scan_as_of
 from src.scanning.validator import pre_buy_check
@@ -147,6 +149,35 @@ class WalkForwardBacktester:
                 print(f"✓ Deleted stale backtest tracker: {tracker_file}")
         except Exception as e:
             print(f"⚠️  Could not delete tracker file {tracker_file}: {e}")
+
+    @staticmethod
+    def _log_entry_pipeline_summary(
+        day,
+        prebuy_counts,
+        post_hold_counts,
+        entered_counts,
+        skip_reason_counts,
+    ):
+        strategies = set(prebuy_counts) | set(post_hold_counts) | set(entered_counts) | set(skip_reason_counts)
+        if not strategies:
+            return
+
+        print(f"      Entry pipeline summary for {pd.Timestamp(day).date()}:")
+        for strategy in sorted(strategies):
+            reason_counts = skip_reason_counts.get(strategy, {})
+            reason_parts = [
+                f"{reason}={count}"
+                for reason, count in sorted(reason_counts.items())
+                if count > 0
+            ]
+            reasons_text = ", ".join(reason_parts) if reason_parts else "none"
+            print(
+                "         - "
+                f"{strategy}: pre_buy={prebuy_counts.get(strategy, 0)}, "
+                f"after_hold={post_hold_counts.get(strategy, 0)}, "
+                f"entered={entered_counts.get(strategy, 0)}, "
+                f"skip_reasons=[{reasons_text}]"
+            )
 
     def _update_market_regime(self, as_of_date):
         """
@@ -1130,11 +1161,28 @@ class WalkForwardBacktester:
                     print(f"      Filtered by pre_buy_check: -{filtered_out} ({100*filtered_out/signal_count:.0f}%)")
                 
                 if not validated.empty:
+                    prebuy_counts = {
+                        str(strategy): int(count)
+                        for strategy, count in validated["Strategy"].value_counts().items()
+                    }
                     # Filter out positions we already hold
                     before_filter = len(validated)
                     validated = filter_trades_by_position(validated, self.position_tracker, as_of_date=day)
                     held_filter = before_filter - len(validated)
-                    
+                    post_hold_counts = (
+                        {
+                            str(strategy): int(count)
+                            for strategy, count in validated["Strategy"].value_counts().items()
+                        }
+                        if not validated.empty
+                        else {}
+                    )
+                    skip_reason_counts = defaultdict(lambda: defaultdict(int))
+                    for strategy, count in prebuy_counts.items():
+                        removed_by_hold = count - post_hold_counts.get(strategy, 0)
+                        if removed_by_hold > 0:
+                            skip_reason_counts[strategy]["already_holding"] += removed_by_hold
+                     
                     if held_filter > 0 and (idx % 5 == 0 or before_filter > 5):
                         print(f"      Already holding: -{held_filter}")
 
@@ -1148,18 +1196,21 @@ class WalkForwardBacktester:
                         # Take trades respecting limits
                         entered_count = 0
                         skipped_count = 0
-                        
+                        entered_counts = defaultdict(int)
+                         
                         for _, trade in validated.iterrows():
                             strategy = trade["Strategy"]
 
                             # Check if new entries allowed in current regime
                             if not allow_new_entries:
                                 skipped_count += 1
+                                skip_reason_counts[strategy]["regime_blocked"] += 1
                                 continue  # Skip all new entries in RISK_OFF
 
                             # Check global position limit
                             if len(self.position_tracker.positions) >= POSITION_MAX_TOTAL:
                                 skipped_count += 1
+                                skip_reason_counts[strategy]["global_limit"] += 1
                                 break
 
                             # Check per-strategy limit
@@ -1172,6 +1223,7 @@ class WalkForwardBacktester:
 
                             if strategy_count >= max_for_strategy:
                                 skipped_count += 1
+                                skip_reason_counts[strategy]["strategy_limit"] += 1
                                 continue
 
                             # Enter position
@@ -1187,6 +1239,7 @@ class WalkForwardBacktester:
                                         f"gap={trade.get('GapPct','?')}% rsi={trade.get('SmoothedRSI','?')}"
                                     )
                                 entered_count += 1
+                                entered_counts[strategy] += 1
 
                                 # Update position counts
                                 self.position_tracker.add_position(
@@ -1197,10 +1250,28 @@ class WalkForwardBacktester:
                                     as_of_date=day
                                 )
                                 self.strategy_positions[strategy] = strategy_count + 1
-                        
+                            else:
+                                skipped_count += 1
+                                skip_reason_counts[strategy]["entry_failed"] += 1
+                         
                         # Log summary for day
                         if entered_count > 0 or skipped_count > 0:
                             print(f"      Summary: Entered={entered_count}, Skipped={skipped_count}, Total Open={len(self.position_tracker.positions)}/{POSITION_MAX_TOTAL}")
+                            self._log_entry_pipeline_summary(
+                                day,
+                                prebuy_counts=prebuy_counts,
+                                post_hold_counts=post_hold_counts,
+                                entered_counts=dict(entered_counts),
+                                skip_reason_counts={k: dict(v) for k, v in skip_reason_counts.items()},
+                            )
+                    elif held_filter > 0:
+                        self._log_entry_pipeline_summary(
+                            day,
+                            prebuy_counts=prebuy_counts,
+                            post_hold_counts=post_hold_counts,
+                            entered_counts={},
+                            skip_reason_counts={k: dict(v) for k, v in skip_reason_counts.items()},
+                        )
 
         # =================================================================
         # Close any remaining open positions at end of backtest

@@ -23,19 +23,22 @@ from pathlib import Path
 GCS_BUCKET = os.getenv("GCS_BUCKET", "stock-alert-prod")
 
 _client = None   # lazy singleton
+_client_init_attempted = False
 
 
 def get_client():
     """Return a GCS client, or None if credentials are not available."""
-    global _client
-    if _client is not None:
+    global _client, _client_init_attempted
+    if _client_init_attempted:
         return _client
+    _client_init_attempted = True
     try:
         from google.cloud import storage  # noqa: PLC0415
         _client = storage.Client()
         return _client
     except Exception as exc:
         print(f"⚠️  [gcs] GCS unavailable — running in local-only mode ({exc})")
+        _client = None
         return None
 
 
