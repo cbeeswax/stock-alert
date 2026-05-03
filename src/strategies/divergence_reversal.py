@@ -42,6 +42,7 @@ class DivergenceReversalPosition(BaseStrategy):
     _debug_date: pd.Timestamp | None = None
     _debug_counts: dict[str, int] = {}
     _debug_samples: dict[str, list[str]] = {}
+    _debug_session_started = False
     EXTERNAL_SETTINGS_PATH = Path("config\\settings.json")
     REQUIRED_EXTERNAL_KEYS = {
         "DIVERGENCE_REVERSAL_DIRECTION",
@@ -653,12 +654,25 @@ class DivergenceReversalPosition(BaseStrategy):
     @classmethod
     def _debug_start_scan(cls, scan_date: pd.Timestamp) -> None:
         cls._debug_ensure_date(scan_date)
+        if not cls._debug_session_started:
+            cls._get_debug_logger().info(
+                "Divergence debug session started | log_path=%s",
+                Path(cls.DEBUG_LOG_PATH),
+            )
+            cls._debug_session_started = True
         cls._debug_counts["scanned"] += 1
 
     @classmethod
     def _debug_reject(cls, scan_date: pd.Timestamp, ticker: str, reason: str, **details) -> None:
         cls._debug_ensure_date(scan_date)
         cls._debug_counts[reason] += 1
+        cls._debug_log_event(
+            event_type="reject",
+            scan_date=scan_date,
+            ticker=ticker,
+            label=reason,
+            **details,
+        )
         if len(cls._debug_samples[reason]) < 5:
             detail_text = ", ".join(f"{key}={value}" for key, value in details.items())
             cls._debug_samples[reason].append(
@@ -671,6 +685,13 @@ class DivergenceReversalPosition(BaseStrategy):
         cls._debug_ensure_date(scan_date)
         cls._debug_counts["raw_signals"] += 1
         cls._debug_counts[f"{direction.lower()}_signals"] += 1
+        cls._debug_log_event(
+            event_type="raw_signal",
+            scan_date=scan_date,
+            ticker=ticker,
+            label=direction,
+            score=round(score, 1),
+        )
         if len(cls._debug_samples["raw_signals"]) < 5:
             cls._debug_samples["raw_signals"].append(f"{ticker} ({direction}, score={score:.1f})")
 
@@ -702,3 +723,23 @@ class DivergenceReversalPosition(BaseStrategy):
                 logger.info("  samples | %s -> %s", reason, " | ".join(samples))
 
         cls._debug_reset_state()
+
+    @classmethod
+    def _debug_log_event(
+        cls,
+        *,
+        event_type: str,
+        scan_date: pd.Timestamp,
+        ticker: str,
+        label: str,
+        **details,
+    ) -> None:
+        logger = cls._get_debug_logger()
+        detail_text = " | ".join(f"{key}={value}" for key, value in details.items())
+        message = (
+            f"{event_type} | date={pd.Timestamp(scan_date).normalize().date()} | "
+            f"ticker={ticker} | {event_type if event_type == 'raw_signal' else 'reason'}={label}"
+        )
+        if detail_text:
+            message = f"{message} | {detail_text}"
+        logger.info(message)

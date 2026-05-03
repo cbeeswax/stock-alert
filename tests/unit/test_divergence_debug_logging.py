@@ -29,6 +29,9 @@ def test_divergence_debug_logging_writes_daily_summary(tmp_path, monkeypatch):
     DivergenceReversalPosition._flush_debug_summary()
 
     text = log_path.read_text(encoding="utf-8")
+    assert "Divergence debug session started | log_path=" in text
+    assert "reject | date=2024-01-10 | ticker=AAPL | reason=long_failed_trigger_break | close=100.0 | trigger=101.0" in text
+    assert "raw_signal | date=2024-01-10 | ticker=MSFT | raw_signal=LONG | score=82.5" in text
     assert "Divergence scan summary | date=2024-01-10 | scanned=1 | raw_signals=1" in text
     assert "reject_count | long_failed_trigger_break=1" in text
     assert "outcome_count | long_signals=1" in text
