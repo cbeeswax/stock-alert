@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import atexit
 import json
+import logging
 import tempfile
+from collections import defaultdict
 from pathlib import Path
 from typing import Any, Optional
 
@@ -32,6 +35,13 @@ class DivergenceReversalPosition(BaseStrategy):
     name = "DivergenceReversal_Position"
     description = "Confirmed RSI divergence reversal with MACD score bonus and zone-aware risk control"
     MIN_DIRECTIONAL_ORDER_FLOW_SCORE = 15.0
+    DEBUG_LOG_PATH = Path("logs\\divergence_reversal_debug.log")
+    _debug_logger: logging.Logger | None = None
+    _debug_logger_path: Path | None = None
+    _debug_atexit_registered = False
+    _debug_date: pd.Timestamp | None = None
+    _debug_counts: dict[str, int] = {}
+    _debug_samples: dict[str, list[str]] = {}
     EXTERNAL_SETTINGS_PATH = Path("config\\settings.json")
     REQUIRED_EXTERNAL_KEYS = {
         "DIVERGENCE_REVERSAL_DIRECTION",
@@ -69,6 +79,8 @@ class DivergenceReversalPosition(BaseStrategy):
     ) -> Optional[dict[str, Any]]:
         from src.config.settings import MIN_LIQUIDITY_USD, MIN_PRICE
 
+        scan_date = pd.Timestamp(as_of_date) if as_of_date is not None else pd.Timestamp(df.index[-1]) if df is not None and not df.empty else pd.Timestamp.today()
+        self._debug_start_scan(scan_date)
         settings = self._load_external_settings()
         direction_mode = str(settings["DIVERGENCE_REVERSAL_DIRECTION"]).strip().lower()
         ema_period = int(settings["DIVERGENCE_REVERSAL_EMA_PERIOD"])
@@ -96,7 +108,7 @@ class DivergenceReversalPosition(BaseStrategy):
 
         required_columns = {"Open", "High", "Low", "Close", "Volume"}
         if df is None or df.empty or not required_columns.issubset(df.columns):
-            return None
+            return self._debug_reject(scan_date, ticker, "scan_invalid_ohlcv")
 
         min_bars = max(
             pivot_lookback_bars + pivot_right_bars + 5,
@@ -105,13 +117,13 @@ class DivergenceReversalPosition(BaseStrategy):
             min_history_bars,
         )
         if len(df) < min_bars:
-            return None
+            return self._debug_reject(scan_date, ticker, "scan_insufficient_history", bars=len(df), required=min_bars)
 
         if as_of_date is not None:
             as_of_ts = pd.Timestamp(as_of_date)
             bar_age_days = (as_of_ts - pd.Timestamp(df.index[-1])).days
             if bar_age_days > max_signal_age_days:
-                return None
+                return self._debug_reject(scan_date, ticker, "scan_stale_bar", bar_age_days=bar_age_days, max_age=max_signal_age_days)
 
         close = pd.to_numeric(df["Close"], errors="coerce")
         open_ = pd.to_numeric(df["Open"], errors="coerce")
@@ -119,18 +131,18 @@ class DivergenceReversalPosition(BaseStrategy):
         low = pd.to_numeric(df["Low"], errors="coerce")
         volume = pd.to_numeric(df["Volume"], errors="coerce")
         if close.isna().iloc[-1] or open_.isna().iloc[-1] or high.isna().iloc[-1] or low.isna().iloc[-1]:
-            return None
+            return self._debug_reject(scan_date, ticker, "scan_invalid_last_bar")
 
         last_close = float(close.iloc[-1])
         last_open = float(open_.iloc[-1])
         last_high = float(high.iloc[-1])
         last_low = float(low.iloc[-1])
         if last_close < MIN_PRICE:
-            return None
+            return self._debug_reject(scan_date, ticker, "scan_below_min_price", close=last_close, min_price=MIN_PRICE)
 
         avg_vol = float(volume.rolling(20).mean().iloc[-1]) if len(volume) >= 20 else 0.0
         if avg_vol * last_close < MIN_LIQUIDITY_USD:
-            return None
+            return self._debug_reject(scan_date, ticker, "scan_low_liquidity", avg_dollar_vol=avg_vol * last_close)
 
         rsi_series = rsi(close, rsi_period)
         macd_frame = macd(
@@ -142,7 +154,7 @@ class DivergenceReversalPosition(BaseStrategy):
         ema_series = ema(close, ema_period)
         current_ema = float(ema_series.iloc[-1])
         if pd.isna(rsi_series.iloc[-1]) or pd.isna(current_ema):
-            return None
+            return self._debug_reject(scan_date, ticker, "scan_indicator_nan")
 
         zone_snapshot = build_zone_snapshot(df)
         candidates: list[dict[str, Any]] = []
@@ -157,6 +169,8 @@ class DivergenceReversalPosition(BaseStrategy):
                 min_separation_bars=min_separation_bars,
                 max_pivot_lookback=pivot_lookback_bars,
             )
+            if long_setup is None:
+                self._debug_reject(scan_date, ticker, "long_no_divergence_setup")
             long_signal = self._build_long_signal(
                 ticker=ticker,
                 df=df,
@@ -176,6 +190,7 @@ class DivergenceReversalPosition(BaseStrategy):
                 max_days=max_days,
                 as_of_date=as_of_date,
                 volume=volume,
+                scan_date=scan_date,
             )
             if long_signal is not None:
                 candidates.append(long_signal)
@@ -190,6 +205,8 @@ class DivergenceReversalPosition(BaseStrategy):
                 min_separation_bars=min_separation_bars,
                 max_pivot_lookback=pivot_lookback_bars,
             )
+            if short_setup is None:
+                self._debug_reject(scan_date, ticker, "short_no_divergence_setup")
             short_signal = self._build_short_signal(
                 ticker=ticker,
                 df=df,
@@ -209,13 +226,21 @@ class DivergenceReversalPosition(BaseStrategy):
                 max_days=max_days,
                 as_of_date=as_of_date,
                 volume=volume,
+                scan_date=scan_date,
             )
             if short_signal is not None:
                 candidates.append(short_signal)
 
         if not candidates:
-            return None
-        return max(candidates, key=lambda signal: float(signal["Score"]))
+            return self._debug_reject(scan_date, ticker, "scan_no_candidates")
+        selected = max(candidates, key=lambda signal: float(signal["Score"]))
+        self._debug_signal(
+            scan_date,
+            ticker,
+            str(selected.get("Direction", "UNKNOWN")).upper(),
+            float(selected.get("Score", 0.0)),
+        )
+        return selected
 
     def get_exit_conditions(
         self,
@@ -287,29 +312,32 @@ class DivergenceReversalPosition(BaseStrategy):
         max_days: int,
         as_of_date: pd.Timestamp | None,
         volume: pd.Series,
+        scan_date: pd.Timestamp,
     ) -> Optional[dict[str, Any]]:
-        if setup is None or last_close <= current_ema:
+        if setup is None:
             return None
+        if last_close <= current_ema:
+            return self._debug_reject(scan_date, ticker, "long_failed_ema_side", close=last_close, ema=current_ema)
         if last_close <= setup.trigger_level or last_high <= setup.trigger_level:
-            return None
+            return self._debug_reject(scan_date, ticker, "long_failed_trigger_break", close=last_close, trigger=setup.trigger_level)
 
         close_pos = self._close_position_for_bar(df.iloc[-1])
         if last_close <= last_open or close_pos < min_confirm_close_pos:
-            return None
+            return self._debug_reject(scan_date, ticker, "long_failed_close_confirmation", close=last_close, open=last_open, close_pos=close_pos)
         if not self._has_meaningful_prior_decline(
             df,
             pivot_idx=setup.second_pivot_idx,
             lookback=prior_decline_lookback,
             min_decline_pct=prior_decline_pct,
         ):
-            return None
+            return self._debug_reject(scan_date, ticker, "long_failed_prior_decline")
 
         effective_risk = max(last_close - float(setup.invalidation_level), last_close * min_effective_risk_pct)
         if effective_risk <= 0:
-            return None
+            return self._debug_reject(scan_date, ticker, "long_failed_effective_risk", risk=effective_risk)
         stop_loss = last_close - effective_risk
         if stop_loss <= 0:
-            return None
+            return self._debug_reject(scan_date, ticker, "long_failed_stop_loss", stop=stop_loss)
 
         min_room = max(long_min_room_to_resistance, target_r_multiple * (effective_risk / last_close))
         if zone_snapshot is not None and not long_zone_entry_ok(
@@ -317,7 +345,7 @@ class DivergenceReversalPosition(BaseStrategy):
             min_room_to_resistance=min_room,
             require_near_term_check=True,
         ):
-            return None
+            return self._debug_reject(scan_date, ticker, "long_failed_zone_room", min_room=min_room)
 
         zone_support = float(setup.invalidation_level)
         if zone_snapshot is not None and 0 < float(zone_snapshot.prior_short_low) < last_close:
@@ -340,9 +368,9 @@ class DivergenceReversalPosition(BaseStrategy):
         )
         context = self.build_price_action_context(df)
         if context.liquidity_sweep == "bearish_sweep":
-            return None
+            return self._debug_reject(scan_date, ticker, "long_blocked_by_liquidity_sweep", sweep=context.liquidity_sweep)
         if context.order_flow_score < self.MIN_DIRECTIONAL_ORDER_FLOW_SCORE:
-            return None
+            return self._debug_reject(scan_date, ticker, "long_blocked_by_order_flow", order_flow_score=context.order_flow_score)
 
         signal = {
             "Ticker": ticker,
@@ -395,26 +423,29 @@ class DivergenceReversalPosition(BaseStrategy):
         max_days: int,
         as_of_date: pd.Timestamp | None,
         volume: pd.Series,
+        scan_date: pd.Timestamp,
     ) -> Optional[dict[str, Any]]:
-        if setup is None or last_close >= current_ema:
+        if setup is None:
             return None
+        if last_close >= current_ema:
+            return self._debug_reject(scan_date, ticker, "short_failed_ema_side", close=last_close, ema=current_ema)
         if last_close >= setup.trigger_level or last_low >= setup.trigger_level:
-            return None
+            return self._debug_reject(scan_date, ticker, "short_failed_trigger_break", close=last_close, trigger=setup.trigger_level)
 
         close_pos = self._close_position_for_bar(df.iloc[-1])
         if last_close >= last_open or close_pos > (1.0 - min_confirm_close_pos):
-            return None
+            return self._debug_reject(scan_date, ticker, "short_failed_close_confirmation", close=last_close, open=last_open, close_pos=close_pos)
         if not self._has_meaningful_prior_rally(
             df,
             pivot_idx=setup.second_pivot_idx,
             lookback=prior_rally_lookback,
             min_rally_pct=prior_rally_pct,
         ):
-            return None
+            return self._debug_reject(scan_date, ticker, "short_failed_prior_rally")
 
         effective_risk = max(float(setup.invalidation_level) - last_close, last_close * min_effective_risk_pct)
         if effective_risk <= 0:
-            return None
+            return self._debug_reject(scan_date, ticker, "short_failed_effective_risk", risk=effective_risk)
         stop_loss = last_close + effective_risk
 
         min_room = max(short_min_room_to_support, target_r_multiple * (effective_risk / last_close))
@@ -423,7 +454,7 @@ class DivergenceReversalPosition(BaseStrategy):
             min_room_to_support=min_room,
             require_near_term_check=True,
         ):
-            return None
+            return self._debug_reject(scan_date, ticker, "short_failed_zone_room", min_room=min_room)
 
         zone_resistance = float(setup.invalidation_level)
         if zone_snapshot is not None and float(zone_snapshot.prior_short_high) > last_close:
@@ -446,9 +477,9 @@ class DivergenceReversalPosition(BaseStrategy):
         )
         context = self.build_price_action_context(df)
         if context.liquidity_sweep == "bullish_sweep":
-            return None
+            return self._debug_reject(scan_date, ticker, "short_blocked_by_liquidity_sweep", sweep=context.liquidity_sweep)
         if context.order_flow_score > (-1.0 * self.MIN_DIRECTIONAL_ORDER_FLOW_SCORE):
-            return None
+            return self._debug_reject(scan_date, ticker, "short_blocked_by_order_flow", order_flow_score=context.order_flow_score)
 
         signal = {
             "Ticker": ticker,
@@ -569,3 +600,105 @@ class DivergenceReversalPosition(BaseStrategy):
         if missing:
             raise ValueError(f"Divergence reversal config missing required settings keys: {missing}")
         return settings
+
+    @classmethod
+    def _get_debug_logger(cls) -> logging.Logger:
+        log_path = Path(cls.DEBUG_LOG_PATH)
+        if cls._debug_logger is not None and cls._debug_logger_path == log_path:
+            return cls._debug_logger
+
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        logger = logging.getLogger("divergence_reversal_debug")
+        logger.setLevel(logging.DEBUG)
+        logger.propagate = False
+
+        resolved = log_path.resolve()
+        keep_handlers = []
+        for handler in logger.handlers:
+            if isinstance(handler, logging.FileHandler) and Path(handler.baseFilename).resolve() == resolved:
+                keep_handlers.append(handler)
+            else:
+                handler.close()
+        logger.handlers = keep_handlers
+
+        if not logger.handlers:
+            formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
+            file_handler = logging.FileHandler(log_path, encoding="utf-8")
+            file_handler.setLevel(logging.DEBUG)
+            file_handler.setFormatter(formatter)
+            logger.addHandler(file_handler)
+
+        cls._debug_logger = logger
+        cls._debug_logger_path = log_path
+        if not cls._debug_atexit_registered:
+            atexit.register(cls._flush_debug_summary)
+            cls._debug_atexit_registered = True
+        return logger
+
+    @classmethod
+    def _debug_reset_state(cls, current_date: pd.Timestamp | None = None) -> None:
+        cls._debug_date = pd.Timestamp(current_date).normalize() if current_date is not None else None
+        cls._debug_counts = defaultdict(int)
+        cls._debug_samples = defaultdict(list)
+
+    @classmethod
+    def _debug_ensure_date(cls, scan_date: pd.Timestamp) -> None:
+        normalized = pd.Timestamp(scan_date).normalize()
+        if cls._debug_date is None:
+            cls._debug_reset_state(normalized)
+        elif normalized != cls._debug_date:
+            cls._flush_debug_summary()
+            cls._debug_reset_state(normalized)
+
+    @classmethod
+    def _debug_start_scan(cls, scan_date: pd.Timestamp) -> None:
+        cls._debug_ensure_date(scan_date)
+        cls._debug_counts["scanned"] += 1
+
+    @classmethod
+    def _debug_reject(cls, scan_date: pd.Timestamp, ticker: str, reason: str, **details) -> None:
+        cls._debug_ensure_date(scan_date)
+        cls._debug_counts[reason] += 1
+        if len(cls._debug_samples[reason]) < 5:
+            detail_text = ", ".join(f"{key}={value}" for key, value in details.items())
+            cls._debug_samples[reason].append(
+                f"{ticker}" if not detail_text else f"{ticker} ({detail_text})"
+            )
+        return None
+
+    @classmethod
+    def _debug_signal(cls, scan_date: pd.Timestamp, ticker: str, direction: str, score: float) -> None:
+        cls._debug_ensure_date(scan_date)
+        cls._debug_counts["raw_signals"] += 1
+        cls._debug_counts[f"{direction.lower()}_signals"] += 1
+        if len(cls._debug_samples["raw_signals"]) < 5:
+            cls._debug_samples["raw_signals"].append(f"{ticker} ({direction}, score={score:.1f})")
+
+    @classmethod
+    def _flush_debug_summary(cls) -> None:
+        if cls._debug_date is None or not cls._debug_counts:
+            return
+
+        logger = cls._get_debug_logger()
+        logger.info(
+            "Divergence scan summary | date=%s | scanned=%s | raw_signals=%s",
+            cls._debug_date.date(),
+            cls._debug_counts.get("scanned", 0),
+            cls._debug_counts.get("raw_signals", 0),
+        )
+
+        for reason, count in sorted(cls._debug_counts.items()):
+            if reason in {"scanned", "raw_signals", "long_signals", "short_signals"} or count <= 0:
+                continue
+            logger.info("  reject_count | %s=%s", reason, count)
+
+        for reason in ("raw_signals", "long_signals", "short_signals"):
+            count = cls._debug_counts.get(reason, 0)
+            if count > 0:
+                logger.info("  outcome_count | %s=%s", reason, count)
+
+        for reason, samples in sorted(cls._debug_samples.items()):
+            if samples:
+                logger.info("  samples | %s -> %s", reason, " | ".join(samples))
+
+        cls._debug_reset_state()
