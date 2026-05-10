@@ -33,6 +33,7 @@ if sys.platform == "win32":
 
 import argparse
 import logging
+import os
 import time
 from pathlib import Path
 
@@ -75,6 +76,38 @@ BACKTEST_MAX_POSITIONS = {
 
 
 # ─── Logging ──────────────────────────────────────────────────────────────────
+class _TeeStream:
+    def __init__(self, *streams) -> None:
+        self._streams = streams
+        self.encoding = getattr(streams[0], "encoding", "utf-8") if streams else "utf-8"
+
+    def write(self, data: str) -> int:
+        for stream in self._streams:
+            stream.write(data)
+        return len(data)
+
+    def flush(self) -> None:
+        for stream in self._streams:
+            stream.flush()
+
+    def isatty(self) -> bool:
+        return any(getattr(stream, "isatty", lambda: False)() for stream in self._streams)
+
+    def fileno(self) -> int:
+        return self._streams[0].fileno()
+
+
+def _enable_debug_capture(strategy_key: str) -> Path:
+    log_dir = ROOT / "logs"
+    log_dir.mkdir(exist_ok=True)
+    timestamp = time.strftime("%Y%m%d-%H%M%S")
+    debug_log_path = log_dir / f"backtest_debug_{strategy_key}_{timestamp}.log"
+    debug_file = debug_log_path.open("w", encoding="utf-8", buffering=1)
+    sys.stdout = _TeeStream(sys.stdout, debug_file)
+    sys.stderr = _TeeStream(sys.stderr, debug_file)
+    return debug_log_path
+
+
 def _setup_logging() -> logging.Logger:
     log_dir = ROOT / "logs"
     log_dir.mkdir(exist_ok=True)
@@ -284,7 +317,12 @@ def _print_combined_summary(trades: pd.DataFrame):
 # ─── Main ─────────────────────────────────────────────────────────────────────
 def main():
     args = _parse_args()
+    debug_log_path = _enable_debug_capture(args.strategy.lower())
+    os.environ["STOCK_ALERT_BACKTEST_DEBUG"] = "1"
+    os.environ["STOCK_ALERT_BACKTEST_DEBUG_LOG"] = str(debug_log_path)
     log = _setup_logging()
+    print(f"📝 Debug log: {debug_log_path}")
+    log.info("Debug capture enabled: %s", debug_log_path)
 
     # Resolve strategy selection
     strategy_key = args.strategy.lower()
@@ -371,6 +409,7 @@ def main():
     elapsed = time.time() - t0
     print(f"\n⏱️  Backtest completed in {elapsed:.1f}s")
     print(f"📊 Total trades: {len(trades)}")
+    print(f"📝 Debug log saved to: {debug_log_path}")
 
     if trades.empty:
         print("\n⚠️  No trades — check filters, thresholds, or data quality.")

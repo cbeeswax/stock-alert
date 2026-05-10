@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import tempfile
 from pathlib import Path
 from typing import Any, Optional
@@ -29,6 +30,14 @@ class RallyPatternPosition(BaseStrategy):
         "strategy_config",
         "ranking_config",
     }
+
+    @staticmethod
+    def _debug_enabled() -> bool:
+        return os.getenv("STOCK_ALERT_BACKTEST_DEBUG", "").strip().lower() in {"1", "true", "yes", "on"}
+
+    def _debug(self, message: str) -> None:
+        if self._debug_enabled():
+            print(f"🔎 [rally] {message}")
 
     def __init__(self) -> None:
         super().__init__()
@@ -109,16 +118,25 @@ class RallyPatternPosition(BaseStrategy):
             if benchmark not in universe:
                 universe.append(benchmark)
 
+        self._debug(f"scan_date={scan_date.date()} requested={len(universe)}")
+
         raw_df = self._load_history_frame(universe, scan_date)
         if raw_df.empty:
+            self._debug("raw history frame empty after local data load")
             return []
+        self._debug(
+            f"raw_rows={len(raw_df)} raw_tickers={raw_df['ticker'].nunique()} "
+            f"date_range={pd.Timestamp(raw_df['Date'].min()).date()}..{pd.Timestamp(raw_df['Date'].max()).date()}"
+        )
 
         candidates = self._latest_candidate_rows(raw_df, scan_date)
+        self._debug(f"latest_candidates={len(candidates)}")
         signals: list[dict[str, Any]] = []
         for _, row in candidates.iterrows():
             signal = self._signal_from_row(row)
             if signal is not None:
                 signals.append(signal)
+        self._debug(f"signals_emitted={len(signals)}")
         return signals
 
     def get_exit_conditions(
@@ -186,9 +204,13 @@ class RallyPatternPosition(BaseStrategy):
 
     def _load_history_frame(self, tickers: list[str], as_of_date: pd.Timestamp) -> pd.DataFrame:
         frames: list[pd.DataFrame] = []
+        missing_or_empty = 0
+        short_history = 0
+        missing_required_cols = 0
         for ticker in tickers:
             df = get_historical_data(ticker)
             if df is None or df.empty:
+                missing_or_empty += 1
                 continue
 
             local = df.copy()
@@ -198,6 +220,7 @@ class RallyPatternPosition(BaseStrategy):
 
             local = local[local.index <= as_of_date].copy()
             if len(local) < self.min_history_bars:
+                short_history += 1
                 continue
 
             local = local.reset_index().rename(columns={"index": "Date"})
@@ -210,9 +233,15 @@ class RallyPatternPosition(BaseStrategy):
             local = local.rename(columns=rename_map)
             required = {"Date", "ticker", "open", "high", "low", "close", "volume"}
             if not required.issubset(local.columns):
+                missing_required_cols += 1
                 continue
             frames.append(local[["Date", "ticker", "open", "high", "low", "close", "volume"]])
 
+        self._debug(
+            "history_load "
+            f"loaded={len(frames)} missing_or_empty={missing_or_empty} "
+            f"short_history={short_history} missing_required_cols={missing_required_cols}"
+        )
         if not frames:
             return pd.DataFrame(columns=["Date", "ticker", "open", "high", "low", "close", "volume"])
         return pd.concat(frames, ignore_index=True)
@@ -220,13 +249,23 @@ class RallyPatternPosition(BaseStrategy):
     def _latest_candidate_rows(self, raw_df: pd.DataFrame, scan_date: pd.Timestamp) -> pd.DataFrame:
         ranked = self.strategy.rank_candidates(raw_df)
         if ranked.empty:
+            self._debug("rank_candidates returned no entry candidates")
             return ranked
 
         latest_signal_date = pd.Timestamp(ranked["Date"].max())
         if (scan_date - latest_signal_date).days > self.max_signal_age_days:
+            self._debug(
+                f"latest signal stale latest_signal_date={latest_signal_date.date()} "
+                f"scan_date={scan_date.date()} max_signal_age_days={self.max_signal_age_days}"
+            )
             return ranked.iloc[0:0]
 
         latest = ranked[ranked["Date"] == latest_signal_date].copy()
+        setup_counts = latest["setup_type"].value_counts().to_dict() if "setup_type" in latest.columns else {}
+        self._debug(
+            f"ranked_candidates={len(ranked)} latest_date_candidates={len(latest)} "
+            f"latest_signal_date={latest_signal_date.date()} setup_counts={setup_counts}"
+        )
         return latest.sort_values(
             by=["setup_priority", "score", "volume_ratio_20", "ticker"],
             ascending=[True, False, False, True],
