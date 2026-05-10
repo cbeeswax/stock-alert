@@ -17,7 +17,7 @@ def _test_rally_config() -> dict:
         "score_config": RallyPatternStrategy.DEFAULT_SCORE_CONFIG,
         "entry_logic_config": RallyPatternStrategy.DEFAULT_ENTRY_LOGIC_CONFIG,
         "exit_logic_config": RallyPatternStrategy.DEFAULT_EXIT_LOGIC_CONFIG,
-        "strategy_config": {"strict_entry": False},
+        "strategy_config": RallyPatternStrategy.default_strategy_config(),
         "ranking_config": RallyPatternStrategy.DEFAULT_RANKING_CONFIG,
     }
 
@@ -30,6 +30,15 @@ def test_rally_pattern_requires_external_config(monkeypatch):
     )
 
     with pytest.raises(ValueError, match="missing required sections|placeholder"):
+        RallyPatternPosition()
+
+
+def test_rally_pattern_requires_complete_strategy_config(monkeypatch):
+    config = _test_rally_config()
+    config["strategy_config"].pop("emerging_leader_min_score")
+    monkeypatch.setattr(RallyPatternPosition, "_load_required_config", classmethod(lambda cls: config))
+
+    with pytest.raises(ValueError, match="strategy_config missing required keys"):
         RallyPatternPosition()
 
 

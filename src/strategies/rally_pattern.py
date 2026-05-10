@@ -81,6 +81,13 @@ class RallyPatternPosition(BaseStrategy):
             raise ValueError("Rally pattern config strategy_config must not be empty.")
         if any(isinstance(value, str) and "..." in value for value in strategy_config.values()):
             raise ValueError("Rally pattern config strategy_config still contains placeholder values.")
+        required_strategy_keys = set(RallyPatternStrategy.default_strategy_config())
+        missing_strategy_keys = sorted(required_strategy_keys - set(strategy_config))
+        if missing_strategy_keys:
+            raise ValueError(
+                "Rally pattern config strategy_config missing required keys: "
+                f"{missing_strategy_keys}"
+            )
 
     def scan(
         self,

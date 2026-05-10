@@ -8,6 +8,7 @@ Usage:
     python scripts/backtest_strategies.py                      # all active strategies
     python scripts/backtest_strategies.py --strategy gap       # GapReversal only
     python scripts/backtest_strategies.py --strategy gapcont   # GapContinuation only
+    python scripts/backtest_strategies.py --strategy rally     # RallyPattern only
     python scripts/backtest_strategies.py --strategy rs        # RS Ranker only
     python scripts/backtest_strategies.py --strategy all       # explicitly all
     python scripts/backtest_strategies.py --start 2020-01-01
@@ -17,6 +18,7 @@ Usage:
 Strategy aliases:
     gap       → GapReversal_Position
     gapcont   → GapContinuation_Position
+    rally     → RallyPattern_Position
     rs        → RelativeStrength_Ranker_Position
     high52    → High52_Position
     bigbase   → BigBase_Breakout_Position
@@ -50,6 +52,7 @@ import src.config.settings as cfg
 STRATEGY_ALIASES = {
     "gap":     "GapReversal_Position",
     "gapcont": "GapContinuation_Position",
+    "rally":   "RallyPattern_Position",
     "rs":      "RelativeStrength_Ranker_Position",
     "high52":  "High52_Position",
     "bigbase": "BigBase_Breakout_Position",
@@ -62,6 +65,7 @@ STRATEGY_ALIASES = {
 BACKTEST_MAX_POSITIONS = {
     "GapReversal_Position": 5,
     "GapContinuation_Position": 5,
+    "RallyPattern_Position": 5,
     "RelativeStrength_Ranker_Position": 10,
     # High52_Position: disabled — needs further tuning
     # TrendContinuation_Position: disabled — needs further tuning
