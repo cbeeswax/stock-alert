@@ -20,7 +20,7 @@ class RallyPatternPosition(BaseStrategy):
 
     name = "RallyPattern_Position"
     description = "Cross-sectional rally-pattern leader scan"
-    CONFIG_PATH = Path("config\\rally_pattern_config.json")
+    CONFIG_PATH = Path("config") / "rally_pattern_config.json"
     REQUIRED_CONFIG_KEYS = {
         "live_config",
         "feature_config",
@@ -71,7 +71,7 @@ class RallyPatternPosition(BaseStrategy):
                     return json.load(handle)
 
         raise FileNotFoundError(
-            "Missing required rally config file: config\\rally_pattern_config.json "
+            "Missing required rally config file: config/rally_pattern_config.json "
             "(expected locally or in GCS)."
         )
 
