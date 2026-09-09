@@ -628,15 +628,24 @@ class WalkForwardBacktester:
         stop = position["stop_price"]
         days_held = position["days_held"]
 
+        # Streak positions are a fixed close-to-close hypothesis test. Do not
+        # allow intraday stops or generic exits to replace the next-session close.
         if strategy == "Streak_Position" and days_held >= 1:
-            return self._close_position(position, current_date, current_close, "NextSessionClose", current_r)
+            return self._close_position(
+                position, current_date, current_close, "NextSessionClose", current_r
+            )
 
-        low = float(today_data.get("Low", float("nan")))
-        high = float(today_data.get("High", float("nan")))
-        if direction == "LONG" and pd.notna(low) and low <= stop:
-            return self._close_position(position, current_date, stop, "StopLoss", (stop - entry) / max(position["risk_amount"], 0.01))
-        if direction == "SHORT" and pd.notna(high) and high >= stop:
-            return self._close_position(position, current_date, stop, "StopLoss", (entry - stop) / max(position["risk_amount"], 0.01))
+        # Check stop loss first — guard against NaN in OHLC data (prevents stop from silently not firing)
+        low_price = today_data.get('Low', float('nan')) if hasattr(today_data, 'get') else today_data['Low']
+        high_price = today_data.get('High', float('nan')) if hasattr(today_data, 'get') else today_data['High']
+        import math
+        risk_amount = max(position['risk_amount'], 0.01)
+        if direction == "LONG" and not math.isnan(float(low_price)) and float(low_price) <= stop:
+            stop_r = (stop - entry) / risk_amount  # actual R at stop (usually -1.0, but correct after breakeven moves)
+            return self._close_position(position, current_date, stop, "StopLoss", stop_r)
+        elif direction == "SHORT" and not math.isnan(float(high_price)) and float(high_price) >= stop:
+            stop_r = (entry - stop) / risk_amount  # actual R at stop for short
+            return self._close_position(position, current_date, stop, "StopLoss", stop_r)
 
         recent_df = full_df[full_df.index <= current_date].tail(250).copy()
         if strategy == "RallyPattern_Position":
