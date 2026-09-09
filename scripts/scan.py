@@ -4,8 +4,8 @@ Position Trading Scanner Entry Point
 
 Scans S&P 500 stocks for position trading opportunities using three strategies:
 - RelativeStrength_Ranker_Position
-- High52_Position  
-- BigBase_Breakout_Position
+- RallyPattern_Position
+- Streak_Position
 
 Monitors open positions for exit signals and manages position sizing with risk limits.
 
@@ -88,7 +88,7 @@ def display_header():
     print(f"📅 Scan Date: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
     print(f"⚠️  Risk per trade: {POSITION_RISK_PER_TRADE_PCT}%")
     print(f"📊 Max positions: {POSITION_MAX_TOTAL} total")
-    print(f"📊 Active strategies: RS_Ranker (10), High52 (6), BigBase (4)")
+    print(f"📊 Active strategies: Rally Pattern (10), RS Ranker (10), Streak (1)")
     print("=" * 80 + "\n")
 
 
@@ -276,7 +276,7 @@ def display_trade_ready_signals(trade_ready: pd.DataFrame):
                 continue
 
             # Calculate shares — enforce 1% minimum stop distance to prevent
-            # position-size explosions when gap fill level is very close to entry.
+            # position-size explosions when a stop is very close to entry.
             risk_per_share = abs(entry - stop)
             min_risk = entry * 0.01
             risk_per_share = max(risk_per_share, min_risk)

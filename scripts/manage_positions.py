@@ -151,17 +151,16 @@ def add_position(tracker: PositionTracker):
     
     print("\nAvailable Strategies:")
     strategies = [
+        "RallyPattern_Position",
         "RelativeStrength_Ranker_Position",
-        "High52_Position",
-        "BigBase_Breakout_Position",
-        "Manual"
+        "Streak_Position",
     ]
     for i, strat in enumerate(strategies, 1):
         print(f"  {i}. {strat}")
     
     while True:
-        choice = prompt_int("Select strategy (1-4)", min_val=1)
-        if 1 <= choice <= 4:
+        choice = prompt_int("Select strategy (1-3)", min_val=1)
+        if 1 <= choice <= 3:
             strategy = strategies[choice - 1]
             break
         print("Invalid choice")

@@ -23,9 +23,7 @@ def smoothed_rsi(series: pd.Series, ema_period: int = 21, rsi_period: int = 10) 
     """
     RSI computed on the EMA series instead of raw price.
 
-    This is the core novelty of the Breakaway Gap Reversal strategy:
-    RSI(10) of EMA(21) produces far fewer, higher-conviction extreme readings
-    (<10 or >90) than RSI on raw price, triggering only at genuine extremes.
+    Smoothing price before calculating RSI reduces noise in momentum readings.
 
     Args:
         series:     Raw price series (typically Close)

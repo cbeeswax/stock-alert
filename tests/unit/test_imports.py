@@ -5,7 +5,7 @@ print("Testing all key imports...")
 print("=" * 80)
 
 tests = [
-    ("src.config.settings", "POSITION_MAX_TOTAL, ADX_THRESHOLD", "from src.config.settings import POSITION_MAX_TOTAL, ADX_THRESHOLD"),
+    ("src.config.settings", "POSITION_MAX_TOTAL, UNIVERSAL_ADX_MIN", "from src.config.settings import POSITION_MAX_TOTAL, UNIVERSAL_ADX_MIN"),
     ("src.data.market", "get_historical_data", "from src.data.market import get_historical_data"),
     ("src.data.indicators", "compute_rsi, compute_ema_incremental", "from src.data.indicators import compute_rsi, compute_ema_incremental"),
     ("src.position_management.tracker", "PositionTracker", "from src.position_management.tracker import PositionTracker"),

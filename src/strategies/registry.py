@@ -71,60 +71,14 @@ class StrategyRegistry:
 
 
 def register_builtin_strategies() -> None:
-    """Register all built-in strategies."""
-    try:
-        from .relative_strength import RelativeStrengthRanker
-        StrategyRegistry.register("RelativeStrength_Ranker_Position", RelativeStrengthRanker)
-    except ImportError:
-        pass
+    """Register the supported production strategies."""
+    from .rally_pattern import RallyPatternPosition
+    from .relative_strength import RelativeStrengthRanker
+    from .streak import StreakPosition
 
-    try:
-        from .high_52w_strategy import High52Strategy
-        StrategyRegistry.register("High52_Position", High52Strategy)
-    except ImportError:
-        pass
-
-    try:
-        from .consolidation_breakout import ConsolidationBreakout
-        StrategyRegistry.register("BigBase_Breakout_Position", ConsolidationBreakout)
-    except ImportError:
-        pass
-
-    try:
-        from .ema_signals import EMACrossover
-        StrategyRegistry.register("EMA_Crossover_Position", EMACrossover)
-    except ImportError:
-        pass
-
-    try:
-        from .ema_stack_alignment import EMAStackAlignment
-        StrategyRegistry.register("EMA_StackAlignment_Position", EMAStackAlignment)
-    except ImportError:
-        pass
-
-    try:
-        from .gap_reversal import GapReversalPosition
-        StrategyRegistry.register("GapReversal_Position", GapReversalPosition)
-    except ImportError:
-        pass
-
-    try:
-        from .gap_continuation import GapContinuationPosition
-        StrategyRegistry.register("GapContinuation_Position", GapContinuationPosition)
-    except ImportError:
-        pass
-
-    try:
-        from .rally_pattern import RallyPatternPosition
-        StrategyRegistry.register("RallyPattern_Position", RallyPatternPosition)
-    except ImportError:
-        pass
-
-    try:
-        from .streak import StreakPosition
-        StrategyRegistry.register("Streak_Position", StreakPosition)
-    except ImportError:
-        pass
+    StrategyRegistry.register("RallyPattern_Position", RallyPatternPosition)
+    StrategyRegistry.register("RelativeStrength_Ranker_Position", RelativeStrengthRanker)
+    StrategyRegistry.register("Streak_Position", StreakPosition)
 
 
 # Auto-register strategies on import

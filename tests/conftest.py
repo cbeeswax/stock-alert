@@ -95,18 +95,10 @@ def sample_portfolio_data():
         "MSFT": {
             "entry_price": 340.00,
             "entry_date": datetime.now() - timedelta(days=5),
-            "strategy": "High52_Position",
+            "strategy": "RallyPattern_Position",
             "stop_loss": 330.00,
             "target": 360.00,
-            "max_days": 150
-        },
-        "GOOGL": {
-            "entry_price": 140.00,
-            "entry_date": datetime.now() - timedelta(days=3),
-            "strategy": "BigBase_Breakout_Position",
-            "stop_loss": 135.00,
-            "target": 155.00,
-            "max_days": 100
+            "max_days": 120
         }
     }
 
@@ -158,8 +150,8 @@ def test_config():
         "position_max_total": 20,
         "position_max_per_strategy": {
             "RelativeStrength_Ranker_Position": 10,
-            "High52_Position": 6,
-            "BigBase_Breakout_Position": 4,
+            "RallyPattern_Position": 10,
+            "Streak_Position": 1,
         },
         "position_risk_per_trade_pct": 2.0,
         "position_initial_equity": 100000,
@@ -183,29 +175,6 @@ def relative_strength_params():
         "rsi_period": 14,
         "rsi_threshold": 40,
         "ma_offset_pct": 0.02,
-    }
-
-
-@pytest.fixture
-def high52_params():
-    """Provide parameters for High52 strategy testing."""
-    return {
-        "lookback_weeks": 52,
-        "bb_length": 20,
-        "bb_std": 2,
-        "ma_period": 50,
-    }
-
-
-@pytest.fixture
-def bigbase_params():
-    """Provide parameters for BigBase strategy testing."""
-    return {
-        "lookback_weeks": 52,
-        "consolidation_length": 10,
-        "min_consolidation_length": 5,
-        "bb_length": 20,
-        "bb_std": 2,
     }
 
 

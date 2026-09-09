@@ -3,7 +3,7 @@ src/ta/timeframes.py
 =====================
 Multi-timeframe data utilities.
 Fetches and caches weekly (and monthly) OHLCV data for higher-timeframe
-trend confirmation in strategies like the Breakaway Gap Reversal.
+trend confirmation.
 
 Migrated and enhanced from utils/weekly_data_utils.py.
 """
@@ -98,10 +98,8 @@ def get_weekly_trend(ticker: str, as_of_date=None, ema_period: int = 21) -> str:
     """
     Determine weekly trend direction using EMA of weekly closes.
 
-    Used as the higher-timeframe filter in the Breakaway Gap Reversal strategy:
-      - "UP":      weekly close > weekly EMA(ema_period)  → bias long
-      - "DOWN":    weekly close < weekly EMA(ema_period)  → bias short
-      - "NEUTRAL": insufficient data
+    Returns ``UP`` when the weekly close is above its moving average,
+    ``DOWN`` when below it, and ``NEUTRAL`` for insufficient data.
 
     Args:
         ticker:      Stock symbol

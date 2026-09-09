@@ -241,8 +241,8 @@ class MockConfig:
             "position_max_total": 20,
             "position_max_per_strategy": {
                 "RelativeStrength_Ranker_Position": 10,
-                "High52_Position": 6,
-                "BigBase_Breakout_Position": 4,
+                "RallyPattern_Position": 10,
+                "Streak_Position": 1,
             },
             "position_risk_per_trade_pct": 2.0,
             "position_initial_equity": 100000,

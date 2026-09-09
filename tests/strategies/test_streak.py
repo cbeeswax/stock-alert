@@ -83,7 +83,7 @@ def test_streak_prediction_metadata_survives_validation_without_displacing_equit
     prediction = StreakPosition().run([], as_of_date=as_of)[0]
     equity = {
         "Ticker": prediction["Ticker"],
-        "Strategy": "GapContinuation_Position",
+        "Strategy": "RallyPattern_Position",
         "Entry": prediction["Entry"],
         "StopLoss": prediction["StopLoss"],
         "Target": prediction["Entry"] * 1.02,

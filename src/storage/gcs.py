@@ -41,7 +41,7 @@ def get_client():
         return _client
     except Exception as exc:
         _client_init_error = exc
-        print(f"⚠️  [gcs] GCS unavailable — running in local-only mode ({exc})")
+        print(f"[gcs] GCS unavailable; running in local-only mode ({exc})")
         return None
 
 
@@ -73,7 +73,7 @@ def download_file(gcs_path: str, local_path: str | Path) -> bool:
         blob.download_to_filename(str(local_path))
         return True
     except Exception as exc:
-        print(f"⚠️  [gcs] download_file({gcs_path}) failed: {exc}")
+        print(f"[gcs] download_file({gcs_path}) failed: {exc}")
         return False
 
 
@@ -93,7 +93,7 @@ def upload_file(local_path: str | Path, gcs_path: str) -> bool:
         blob.upload_from_filename(str(local_path))
         return True
     except Exception as exc:
-        print(f"⚠️  [gcs] upload_file({gcs_path}) failed: {exc}")
+        print(f"[gcs] upload_file({gcs_path}) failed: {exc}")
         return False
 
 
