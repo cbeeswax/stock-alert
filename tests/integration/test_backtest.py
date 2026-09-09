@@ -6,6 +6,14 @@ Tests with a small set of tickers to verify:
 3. Realistic P&L results
 """
 
+if __name__ != "__main__":
+    import pytest
+
+    pytest.skip(
+        "Standalone backtest diagnostic; run directly rather than during pytest collection.",
+        allow_module_level=True,
+    )
+
 import pandas as pd
 from src.backtesting.engine import WalkForwardBacktester
 

@@ -15,7 +15,6 @@ from src.data.market import get_historical_data
 from src.ta.indicators.momentum import rsi as _rsi_pure, smoothed_rsi
 from src.ta.indicators.volatility import bollinger_bands as _bb_pure, percent_b as _pct_b_pure
 from src.ta.indicators.trend import adx, adx_latest
-from src.ta.indicators.gaps import gap_pct, is_gap_up, is_gap_down, gap_fill_level
 
 
 EMA_FOLDER = Path("ema_data")

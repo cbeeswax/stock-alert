@@ -164,49 +164,9 @@ def df_to_html_table(df, score_column="Score", title="", max_rows=5):
     return html
 
 
-# ============================================================
-# Normalize lists for table-friendly DataFrames
-# ============================================================
-def normalize_highs_for_table(high_list):
-    if not high_list:
-        return pd.DataFrame()
-    df = pd.DataFrame(high_list)
-    preferred_columns = [
-        "Ticker", "Company", "Close", "High52", "PctFrom52High",
-        "EMA20", "EMA50", "EMA200", "VolumeRatio", "RSI14", "Score", "NormalizedScore",
-    ]
-    return df[[c for c in preferred_columns if c in df.columns]]
-
-
-def normalize_watchlist_for_table(watch_list):
-    if not watch_list:
-        return pd.DataFrame()
-    df = pd.DataFrame(watch_list)
-    preferred_columns = [
-        "Ticker", "Company", "Close", "High52", "PctFrom52High",
-        "EMA20", "EMA50", "EMA200", "RSI14",
-    ]
-    return df[[c for c in preferred_columns if c in df.columns]]
-
-
-def normalize_generic_for_table(generic_list):
-    """For consolidation_list or rs_list where Score/NormalizedScore may exist"""
-    if not generic_list:
-        return pd.DataFrame()
-    return pd.DataFrame(generic_list)  # keep all columns
-
-
-# ============================================================
-# Main Email Sender
-# ============================================================
 def send_email_alert(
     trade_df,
     all_signals=None,
-    high_buy_list=None,
-    high_watch_list=None,
-    ema_list=None,
-    consolidation_list=None,
-    rs_list=None,
     subject_prefix="📊 Market Summary",
     html_body=None,
     position_tracker=None,

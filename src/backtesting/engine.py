@@ -12,82 +12,34 @@ from src.scanning.validator import pre_buy_check
 from src.scanning.rs_bought_tracker import RSBoughtTracker
 from src.data.market import get_historical_data
 from src.position_management.tracker import PositionTracker, filter_trades_by_position
-from src.data.indicators import compute_rsi, compute_bollinger_bands, compute_percent_b
-from src.analysis.regime import get_regime_config
+from src.data.indicators import compute_rsi
 from src.analysis.market_regime import get_position_regime, PositionRegime, get_regime_params
 from src.config.settings import (
-    # Position trading settings
-    POSITION_RISK_PER_TRADE_PCT,
+    BACKTEST_BROKERAGE_ENABLED,
+    BACKTEST_COMPOUNDING,
+    BACKTEST_FINRA_TAF_MAX,
+    BACKTEST_FINRA_TAF_RATE,
+    BACKTEST_SCAN_FREQUENCY,
+    BACKTEST_SEC_FEE_RATE,
+    BACKTEST_START_DATE,
+    BACKTEST_TAX_ENABLED,
+    BACKTEST_TAX_LONG_TERM_RATE,
+    BACKTEST_TAX_SHORT_TERM_RATE,
     POSITION_MAX_PER_STRATEGY,
     POSITION_MAX_TOTAL,
     POSITION_PARTIAL_ENABLED,
     POSITION_PARTIAL_SIZE,
-    POSITION_PARTIAL_R_TRIGGER_LOW,
-    POSITION_PARTIAL_R_TRIGGER_MID,
-    POSITION_PARTIAL_R_TRIGGER_HIGH,
-    POSITION_MAX_DAYS_SHORT,
-    POSITION_MAX_DAYS_LONG,
-    SHORT_RISK_PER_TRADE_PCT,
-
-    # Pyramiding
     POSITION_PYRAMID_ENABLED,
+    POSITION_PYRAMID_MAX_ADDS,
+    POSITION_PYRAMID_PULLBACK_ATR,
+    POSITION_PYRAMID_PULLBACK_EMA,
     POSITION_PYRAMID_R_TRIGGER,
     POSITION_PYRAMID_SIZE,
-    POSITION_PYRAMID_MAX_ADDS,
-    POSITION_PYRAMID_PULLBACK_EMA,
-    POSITION_PYRAMID_PULLBACK_ATR,
-
-    # Strategy-specific configs
-    EMA_CROSS_POS_PARTIAL_R,
-    EMA_CROSS_POS_PARTIAL_SIZE,
-    EMA_CROSS_POS_TRAIL_MA,
-    EMA_CROSS_POS_TRAIL_DAYS,
-
-    PERCENT_B_POS_PARTIAL_R,
-    PERCENT_B_POS_TRAIL_MA,
-    PERCENT_B_POS_TRAIL_DAYS,
-
-    HIGH52_POS_PARTIAL_R,
-    HIGH52_POS_PARTIAL_SIZE,
-    HIGH52_POS_TRAIL_MA,
-    HIGH52_POS_TRAIL_DAYS,
-
-    BIGBASE_PARTIAL_R,
-    BIGBASE_PARTIAL_SIZE,
-    BIGBASE_TRAIL_MA,
-    BIGBASE_TRAIL_DAYS,
-
-    TREND_CONT_PARTIAL_R,
-    TREND_CONT_PARTIAL_SIZE,
-    TREND_CONT_TRAIL_MA,
-    TREND_CONT_TRAIL_DAYS,
-
+    POSITION_RISK_PER_TRADE_PCT,
     RS_RANKER_PARTIAL_R,
     RS_RANKER_PARTIAL_SIZE,
-    RS_RANKER_TRAIL_MA,
-    RS_RANKER_TRAIL_DAYS,
-
-    # Short strategies (regime-based)
-    SHORT_ENABLED,
-    SHORT_CFG_BULL,
-    SHORT_CFG_SIDEWAYS,
-    SHORT_CFG_BEAR,
-    LEADER_SHORT_CFG_BULL,
-    # Backtest settings
-    BACKTEST_START_DATE,
-    BACKTEST_SCAN_FREQUENCY,
-    BACKTEST_COMPOUNDING,
-    BACKTEST_BROKERAGE_ENABLED,
-    BACKTEST_SEC_FEE_RATE,
-    BACKTEST_FINRA_TAF_RATE,
-    BACKTEST_FINRA_TAF_MAX,
-    BACKTEST_TAX_ENABLED,
-    BACKTEST_TAX_SHORT_TERM_RATE,
-    BACKTEST_TAX_LONG_TERM_RATE,
-
-    # Legacy (for compatibility)
-    CAPITAL_PER_TRADE,
 )
+
 
 
 class WalkForwardBacktester:
@@ -110,6 +62,8 @@ class WalkForwardBacktester:
         initial_capital=100000,
         strategy_bucket_limits=None,
         scan_provider: Callable[[pd.Timestamp], list[dict[str, Any]]] | None = None,
+        rr_ratio: float | None = None,
+        max_days: int | None = None,
     ):
         """
         Args:
@@ -122,8 +76,10 @@ class WalkForwardBacktester:
                 {"RallyPattern_Position": {"emerging": 10, "confirmed": 10}}
             scan_provider: Optional callable to provide per-day signals instead of
                 calling the shared scanner directly.
+            rr_ratio: Optional reward-to-risk ratio passed to signal validation.
+            max_days: Optional cap on a signal's normal maximum holding period.
         """
-        self.log = logging.getLogger("backtest_gap_reversal")
+        self.log = logging.getLogger("walk_forward_backtest")
         self.tickers = tickers
         self.start_date = pd.to_datetime(start_date or BACKTEST_START_DATE)
         self.end_date = pd.to_datetime(end_date) if end_date is not None else None
@@ -131,6 +87,8 @@ class WalkForwardBacktester:
         self.initial_capital = initial_capital
         self.current_capital = initial_capital
         self.scan_provider = scan_provider
+        self.rr_ratio = rr_ratio
+        self.max_days = max_days
 
         # Position tracker
         self.position_tracker = PositionTracker(mode="backtest")
@@ -343,8 +301,7 @@ class WalkForwardBacktester:
         if risk_per_share == 0:
             return 0
 
-        # Enforce a minimum stop distance (1% of entry) to prevent position-size explosions
-        # when the gap fill level is very close to the entry price (e.g. tiny 0.1% gap).
+        # Enforce a minimum stop distance (1% of entry) to prevent position-size explosions.
         min_risk_per_share = entry_price * 0.01
         if risk_per_share < min_risk_per_share:
             risk_per_share = min_risk_per_share
@@ -357,101 +314,51 @@ class WalkForwardBacktester:
         return max(shares, 1)  # At least 1 share
 
     def _enter_position(self, entry_day, trade):
-        """
-        Enter a new position and add to open positions list.
-        Returns True if position entered successfully.
-        """
+        """Enter a validated signal and retain metadata used by supported exits."""
         ticker = trade["Ticker"]
         strategy = trade["Strategy"]
-        entry_price = trade["Entry"]
-        stop_price = trade["StopLoss"]
+        entry_price = float(trade["Entry"])
+        stop_price = float(trade["StopLoss"])
         direction = trade.get("Direction", "LONG")
-        max_days = trade.get("MaxDays", POSITION_MAX_DAYS_LONG)
-        regime = trade.get("Regime", None)  # Track regime for SHORT positions
-
-        # Position sizing (use strategy-specific or regime-based risk %)
-        risk_pct = None  # Default: use POSITION_RISK_PER_TRADE_PCT (2.0%)
-
-        # RS_Ranker uses regime-based risk
-        if strategy == "RelativeStrength_Ranker_Position":
-            risk_pct = self.regime_params.get('risk_per_trade_pct', POSITION_RISK_PER_TRADE_PCT)
-        
-        # Weak-RS shorts use 1.5% risk
-        elif strategy == "ShortWeakRS_Retrace_Position":
-            risk_pct = SHORT_RISK_PER_TRADE_PCT  # 1.5%
-
-        # Leader Pullback Shorts use smaller size (0.5% risk)
-        elif strategy == "LeaderPullback_Short_Position":
-            risk_pct = LEADER_SHORT_CFG_BULL["RISK_PER_TRADE_PCT"]  # 0.5%
-
+        max_days = trade.get("MaxDays") or 120
+        max_days_cap = getattr(self, "max_days", None)
+        if max_days_cap is not None:
+            max_days = min(max_days, max_days_cap)
+        risk_pct = self.regime_params.get("risk_per_trade_pct", POSITION_RISK_PER_TRADE_PCT) if strategy == "RelativeStrength_Ranker_Position" else None
         shares = self._calculate_position_size(entry_price, stop_price, risk_pct=risk_pct)
-        position_size_multiplier = trade.get("PositionSizeMultiplier", 1.0)
-        try:
-            position_size_multiplier = float(position_size_multiplier)
-        except (TypeError, ValueError):
-            position_size_multiplier = 1.0
-        if position_size_multiplier > 0:
-            shares = max(int(shares * position_size_multiplier), 1)
-        if shares == 0:
+        multiplier = float(trade.get("PositionSizeMultiplier", 1.0) or 1.0)
+        if multiplier > 0:
+            shares = max(int(shares * multiplier), 1)
+        if entry_price <= 0 or stop_price <= 0 or shares <= 0:
+            self.log.warning("SKIP %s %s: invalid entry=%s stop=%s", ticker, strategy, entry_price, stop_price)
             return False
 
-        # Validate entry price — skip if data looks corrupted
-        import math as _math
-        if entry_price <= 0 or _math.isnan(entry_price) or stop_price <= 0 or _math.isnan(stop_price):
-            self.log.warning(f"SKIP {ticker} {strategy}: invalid entry={entry_price} stop={stop_price}")
-            return False
-
-        raw_risk = abs(entry_price - stop_price)
-        # Apply the same 1% floor used in _calculate_position_size() so R-multiples
-        # are consistent with actual share sizing (prevents extreme R from tiny stops)
-        min_risk_per_share = entry_price * 0.01 if entry_price > 0 else 0.01
-        risk_amount = max(raw_risk, min_risk_per_share)
-
-        # Create position state
-        position = {
-            'ticker': ticker,
-            'strategy': strategy,
-            'direction': direction,
-            'entry_date': entry_day,
-            'entry_price': entry_price,
-            'stop_price': stop_price,
-            'initial_shares': shares,
-            'current_shares': shares,
-            'risk_amount': risk_amount,
-            'max_days': max_days,
-            'days_held': 0,
-            'highest_price': entry_price,
-            'partial_exited': False,
-            'partial_result': None,
-            'pyramid_adds': [],
-            'closes_below_trail': 0,
-            'regime': regime,  # Track market regime for regime-based strategies
-            'rs_partial_stage': 0,  # Track dual-stage partial exit progress for RS_Ranker
-            'gap_pct': trade.get("GapPct"),
-            'smoothed_rsi': trade.get("SmoothedRSI"),
-            'gap_fill_level': trade.get("GapFillLevel"),
-            'gap_high': trade.get("GapHigh"),
-            'gap_low': trade.get("GapLow"),
-            'gap_mid': trade.get("GapMid"),
-            'gap_support': trade.get("GapSupport"),
-            'gap_resistance': trade.get("GapResistance"),
-            'zone_support': trade.get("ZoneSupport"),
-            'zone_resistance': trade.get("ZoneResistance"),
-            'setup_type': trade.get("SetupType"),
-            'signal_type': trade.get("SignalType"),
-            'leadership_stage': self._resolve_trade_bucket(trade),
-            'position_size_multiplier': position_size_multiplier,
-        }
-
-        self.open_positions.append(position)
-
-        # Log GapReversal entries for diagnostic purposes
-        if strategy == "GapReversal_Position":
-            self.log.info(
-                f"ENTER {ticker} {direction} | entry={entry_price:.4f} stop={stop_price:.4f} "
-                f"raw_risk={raw_risk:.4f} risk_amount={risk_amount:.4f} shares={shares}"
-            )
-
+        risk_amount = max(abs(entry_price - stop_price), entry_price * 0.01)
+        self.open_positions.append({
+            "ticker": ticker,
+            "strategy": strategy,
+            "direction": direction,
+            "entry_date": pd.Timestamp(entry_day),
+            "entry_price": entry_price,
+            "stop_price": stop_price,
+            "initial_shares": shares,
+            "current_shares": shares,
+            "risk_amount": risk_amount,
+            "max_days": int(max_days),
+            "days_held": 0,
+            "highest_price": entry_price,
+            "partial_exited": False,
+            "partial_result": None,
+            "pyramid_adds": [],
+            "closes_below_trail": 0,
+            "rs_partial_stage": 0,
+            "zone_support": trade.get("ZoneSupport"),
+            "zone_resistance": trade.get("ZoneResistance"),
+            "setup_type": trade.get("SetupType"),
+            "signal_type": trade.get("SignalType"),
+            "leadership_stage": self._resolve_trade_bucket(trade),
+            "position_size_multiplier": multiplier,
+        })
         return True
 
     def _execute_pending_entries(self, current_date):
@@ -528,7 +435,7 @@ class WalkForwardBacktester:
             # Get today's bar
             if current_date not in df.index:
                 # Still enforce MaxDays even when today's bar is missing
-                if position['strategy'] in {"GapReversal_Position", "GapContinuation_Position"} and position['days_held'] >= position['max_days']:
+                if position['days_held'] >= position['max_days']:
                     last_price = float(df['Close'].iloc[-1])
                     entry = position['entry_price']
                     # Sanity check: exit price shouldn't be more than 50x entry (data corruption guard)
@@ -574,10 +481,8 @@ class WalkForwardBacktester:
             # =================================================================
             # PYRAMIDING LOGIC (add to winners on pullback)
             # =================================================================
-            # Gap strategies are thesis-specific campaigns; pyramiding adds noise and
-            # has historically distorted the gap trade profiles.
             if (POSITION_PYRAMID_ENABLED and
-                position['strategy'] not in {"GapReversal_Position", "GapContinuation_Position", "Streak_Position"} and
+                position['strategy'] != "Streak_Position" and
                 current_r >= POSITION_PYRAMID_R_TRIGGER and
                 len(position['pyramid_adds']) < POSITION_PYRAMID_MAX_ADDS and
                 not position['partial_exited']):
@@ -627,64 +532,10 @@ class WalkForwardBacktester:
                 partial_size = POSITION_PARTIAL_SIZE
                 strategy = position['strategy']
 
-                # Check strategy-specific partial exit triggers
-                if strategy in {"EMA_Crossover_Position", "EMA_StackAlignment_Position"}:
-                    if current_r >= EMA_CROSS_POS_PARTIAL_R:
-                        should_partial = True
-                        partial_trigger = f"{EMA_CROSS_POS_PARTIAL_R}R"
-                        partial_size = EMA_CROSS_POS_PARTIAL_SIZE
-
-                elif strategy == "%B_MeanReversion_Position":
-                    if current_r >= PERCENT_B_POS_PARTIAL_R:
-                        should_partial = True
-                        partial_trigger = f"{PERCENT_B_POS_PARTIAL_R}R"
-
-                elif strategy in ["High52_Position", "BigBase_Breakout_Position"]:
-                    target_r = HIGH52_POS_PARTIAL_R if strategy == "High52_Position" else BIGBASE_PARTIAL_R
-                    if current_r >= target_r:
-                        should_partial = True
-                        partial_trigger = f"{target_r}R"
-                        partial_size = HIGH52_POS_PARTIAL_SIZE if strategy == "High52_Position" else BIGBASE_PARTIAL_SIZE
-
-                elif strategy == "TrendContinuation_Position":
-                    if current_r >= TREND_CONT_PARTIAL_R:
-                        should_partial = True
-                        partial_trigger = f"{TREND_CONT_PARTIAL_R}R"
-                        partial_size = TREND_CONT_PARTIAL_SIZE
-
-                elif strategy == "RelativeStrength_Ranker_Position":
-                    # DUAL-STAGE PARTIALS: Exit 40% @ 2.5R, then 30% @ 4.0R
-                    if not position.get('partial_exited'):
-                        # First partial: Exit 40% @ 2.5R
-                        if current_r >= 2.5:
-                            should_partial = True
-                            partial_trigger = "2.5R_Stage1"
-                            partial_size = 0.40  # Exit 40%
-                            position['rs_partial_stage'] = 1
-                    elif position.get('rs_partial_stage') == 1:
-                        # Second partial: Exit 30% @ 4.0R (from remaining 60%)
-                        if current_r >= 4.0:
-                            should_partial = True
-                            partial_trigger = "4.0R_Stage2"
-                            partial_size = 0.30 / 0.60  # 30% of original = 50% of remaining
-                            position['rs_partial_stage'] = 2
-
-                elif strategy == "ShortWeakRS_Retrace_Position":
-                    # Use regime-specific config for partial exits
-                    regime = position.get('regime', 'sideways')
-                    cfg = get_regime_config(regime)
-                    if current_r >= cfg["PARTIAL_R"]:
-                        should_partial = True
-                        partial_trigger = f"{cfg['PARTIAL_R']}R"
-                        partial_size = cfg["PARTIAL_SIZE"]
-
-                elif strategy == "LeaderPullback_Short_Position":
-                    # Use leader short config for partial exits
-                    cfg = LEADER_SHORT_CFG_BULL
-                    if current_r >= cfg["PARTIAL_R"]:
-                        should_partial = True
-                        partial_trigger = f"{cfg['PARTIAL_R']}R"
-                        partial_size = cfg["PARTIAL_SIZE"]
+                if strategy == "RelativeStrength_Ranker_Position" and current_r >= RS_RANKER_PARTIAL_R:
+                    should_partial = True
+                    partial_trigger = f"{RS_RANKER_PARTIAL_R}R"
+                    partial_size = RS_RANKER_PARTIAL_SIZE
 
                 if should_partial:
                     position['partial_exited'] = True
@@ -770,17 +621,12 @@ class WalkForwardBacktester:
         return closed_positions
 
     def _evaluate_exit_conditions(self, position, current_date, today_data, current_close, current_r, full_df):
-        """
-        Evaluate if position should exit based on strategy-specific conditions.
-        Returns trade result dict if exiting, None if holding.
-        """
-        ticker = position['ticker']
-        strategy = position['strategy']
-        direction = position['direction']
-        entry = position['entry_price']
-        stop = position['stop_price']
-        days_held = position['days_held']
-        max_days = position['max_days']
+        """Evaluate supported strategy exits and the shared hard stop/time stop."""
+        strategy = position["strategy"]
+        direction = position["direction"]
+        entry = position["entry_price"]
+        stop = position["stop_price"]
+        days_held = position["days_held"]
 
         # Streak positions are a fixed close-to-close hypothesis test. Do not
         # allow intraday stops or generic exits to replace the next-session close.
@@ -801,326 +647,29 @@ class WalkForwardBacktester:
             stop_r = (entry - stop) / risk_amount  # actual R at stop for short
             return self._close_position(position, current_date, stop, "StopLoss", stop_r)
 
-        # Calculate indicators (need historical context)
         recent_df = full_df[full_df.index <= current_date].tail(250).copy()
-        if len(recent_df) < 50:
-            return None  # Not enough data
-
-        recent_df["EMA21"] = recent_df["Close"].ewm(span=21).mean()
-        recent_df["EMA50"] = recent_df["Close"].ewm(span=50).mean()
-        recent_df["MA50"] = recent_df["Close"].rolling(50).mean()
-        recent_df["MA100"] = recent_df["Close"].rolling(100).mean()
-        recent_df["MA200"] = recent_df["Close"].rolling(200).mean()
-        recent_df["RSI14"] = compute_rsi(recent_df["Close"], 14)
-
-        # Get current indicator values
-        ema21 = recent_df["EMA21"].iloc[-1] if len(recent_df) >= 21 else None
-        ema50 = recent_df["EMA50"].iloc[-1] if len(recent_df) >= 50 else None
-        ma50 = recent_df["MA50"].iloc[-1] if len(recent_df) >= 50 else None
-        ma100 = recent_df["MA100"].iloc[-1] if len(recent_df) >= 100 else None
-        ma200 = recent_df["MA200"].iloc[-1] if len(recent_df) >= 200 else None
-        rsi14 = recent_df["RSI14"].iloc[-1]
-
-        # Strategy-specific exits
-        if strategy in {"EMA_Crossover_Position", "EMA_StackAlignment_Position"}:
-            if ma100 and pd.notna(ma100):
-                if current_close < ma100:
-                    position['closes_below_trail'] += 1
-                    if position['closes_below_trail'] >= EMA_CROSS_POS_TRAIL_DAYS:
-                        return self._close_position(position, current_date, current_close, "MA100_Trail", current_r)
+        if strategy == "RallyPattern_Position":
+            from src.strategies.rally_pattern import RallyPatternPosition
+            exit_condition = RallyPatternPosition().get_exit_conditions(position, recent_df, current_date)
+            if exit_condition is not None:
+                return self._close_position(position, current_date, float(exit_condition.get("exit_price", current_close)), str(exit_condition["reason"]), current_r)
+        elif strategy == "RelativeStrength_Ranker_Position" and len(recent_df) >= 100:
+            ema21 = recent_df["Close"].ewm(span=21).mean().iloc[-1]
+            ma100 = recent_df["Close"].rolling(100).mean().iloc[-1]
+            trail = ema21 if days_held <= 60 and current_r >= 0.75 else ma100 if days_held > 60 else None
+            required_closes = 5 if days_held <= 60 else 8
+            if trail is not None and pd.notna(trail):
+                if current_close < trail:
+                    position["closes_below_trail"] += 1
+                    if position["closes_below_trail"] >= required_closes:
+                        reason = "EMA21_Trail_Early" if days_held <= 60 else "MA100_Trail_Late"
+                        return self._close_position(position, current_date, current_close, reason, current_r)
                 else:
-                    position['closes_below_trail'] = 0
+                    position["closes_below_trail"] = 0
 
-        elif strategy == "%B_MeanReversion_Position":
-            if ma50 and pd.notna(ma50):
-                if current_close < ma50:
-                    position['closes_below_trail'] += 1
-                    if position['closes_below_trail'] >= PERCENT_B_POS_TRAIL_DAYS:
-                        return self._close_position(position, current_date, current_close, "MA50_Trail", current_r)
-                else:
-                    position['closes_below_trail'] = 0
-
-        elif strategy == "High52_Position":
-            # High52: HYBRID TRAIL - EMA21 early (protect), MA100 late (let run)
-            if days_held <= 60:
-                # First 60 days: Tight EMA21 trail (cut losers fast)
-                if ema21 and pd.notna(ema21):
-                    if current_close < ema21:
-                        position['closes_below_trail'] += 1
-                        if position['closes_below_trail'] >= 5:
-                            return self._close_position(position, current_date, current_close, "EMA21_Trail_Early", current_r)
-                    else:
-                        position['closes_below_trail'] = 0
-            else:
-                # After 60 days: Loose MA100 trail (let winners run to time stop)
-                if ma100 and pd.notna(ma100):
-                    if current_close < ma100:
-                        position['closes_below_trail'] += 1
-                        if position['closes_below_trail'] >= 8:
-                            return self._close_position(position, current_date, current_close, "MA100_Trail_Late", current_r)
-                    else:
-                        position['closes_below_trail'] = 0
-
-        elif strategy == "BigBase_Breakout_Position":
-            # BigBase: HYBRID TRAIL - EMA21 early (cut failed breakouts), MA200 late (home runs)
-            if days_held <= 45:
-                # First 45 days: Tight EMA21 trail (cut failed breakouts fast)
-                if ema21 and pd.notna(ema21):
-                    if current_close < ema21:
-                        position['closes_below_trail'] += 1
-                        if position['closes_below_trail'] >= 5:
-                            return self._close_position(position, current_date, current_close, "EMA21_Trail_Early", current_r)
-                    else:
-                        position['closes_below_trail'] = 0
-            else:
-                # After 45 days: Loose MA200 trail (let home runs develop)
-                if ma200 and pd.notna(ma200):
-                    if current_close < ma200:
-                        position['closes_below_trail'] += 1
-                        if position['closes_below_trail'] >= 10:
-                            return self._close_position(position, current_date, current_close, "MA200_Trail_Late", current_r)
-                    else:
-                        position['closes_below_trail'] = 0
-
-        elif strategy == "TrendContinuation_Position":
-            if ma50 and pd.notna(ma50):
-                if current_close < ma50:
-                    position['closes_below_trail'] += 1
-                    if position['closes_below_trail'] >= TREND_CONT_TRAIL_DAYS:
-                        return self._close_position(position, current_date, current_close, "MA50_Trail", current_r)
-                else:
-                    position['closes_below_trail'] = 0
-
-        elif strategy == "RelativeStrength_Ranker_Position":
-            # RS_Ranker: HYBRID TRAIL - EMA21 early (protect), MA100 late (let run)
-            # PROFIT-GATED: Skip EMA21 trail until +0.75R profit reached
-            profit_gate_threshold = 0.75  # Don't use EMA21 until +0.75R
-            
-            if days_held <= 60:
-                # First 60 days: Tight EMA21 trail (cut losers fast) - BUT ONLY AFTER +0.75R
-                if ema21 and pd.notna(ema21):
-                    # Check if we should apply EMA21 exit
-                    if current_r >= profit_gate_threshold:
-                        # Profit-gated: Use EMA21 trail
-                        if current_close < ema21:
-                            position['closes_below_trail'] += 1
-                            if position['closes_below_trail'] >= 5:
-                                return self._close_position(position, current_date, current_close, "EMA21_Trail_Early", current_r)
-                        else:
-                            position['closes_below_trail'] = 0
-                    else:
-                        # Before +0.75R: Ignore EMA21, only stop loss applies
-                        position['closes_below_trail'] = 0
-            else:
-                # After 60 days: Loose MA100 trail (let winners run to time stop)
-                if ma100 and pd.notna(ma100):
-                    if current_close < ma100:
-                        position['closes_below_trail'] += 1
-                        if position['closes_below_trail'] >= 8:
-                            return self._close_position(position, current_date, current_close, "MA100_Trail_Late", current_r)
-                    else:
-                        position['closes_below_trail'] = 0
-
-        # All sector-based ranker strategies use same exit logic as RS_Ranker
-        elif strategy == "ConsumerDisc_Ranker_Position":
-            # SECTOR RANKERS: HYBRID TRAIL - EMA21 early (protect), MA100 late (let run)
-            # PROFIT-GATED: Skip EMA21 trail until +0.75R profit reached
-            profit_gate_threshold = 0.75
-            
-            if days_held <= 60:
-                # First 60 days: Tight EMA21 trail (cut losers fast) - BUT ONLY AFTER +0.75R
-                if ema21 and pd.notna(ema21):
-                    if current_r >= profit_gate_threshold:
-                        # Profit-gated: Use EMA21 trail
-                        if current_close < ema21:
-                            position['closes_below_trail'] += 1
-                            if position['closes_below_trail'] >= 5:
-                                return self._close_position(position, current_date, current_close, "EMA21_Trail_Early", current_r)
-                        else:
-                            position['closes_below_trail'] = 0
-                    else:
-                        # Before +0.75R: Ignore EMA21, only stop loss applies
-                        position['closes_below_trail'] = 0
-            else:
-                # After 60 days: Loose MA100 trail (let winners run to time stop)
-                if ma100 and pd.notna(ma100):
-                    if current_close < ma100:
-                        position['closes_below_trail'] += 1
-                        if position['closes_below_trail'] >= 8:
-                            return self._close_position(position, current_date, current_close, "MA100_Trail_Late", current_r)
-                    else:
-                        position['closes_below_trail'] = 0
-
-        elif strategy == "ShortWeakRS_Retrace_Position":
-            # REGIME-BASED: SHORT strategy with regime-specific exit parameters
-            # For shorts, we exit if price closes ABOVE trail (opposite of longs)
-            regime = position.get('regime', 'sideways')
-            cfg = get_regime_config(regime)
-
-            # Trailing stop (regime-specific)
-            trail_ema = cfg.get("TRAIL_EMA")
-            trail_days = cfg.get("TRAIL_DAYS")
-            trail_only_after_partial = cfg.get("TRAIL_ONLY_AFTER_PARTIAL", True)
-
-            if trail_ema is not None and trail_days is not None:
-                # Only trail if partial was taken (protect winners only)
-                should_trail = True
-                if trail_only_after_partial:
-                    should_trail = position.get('partial_exited', False)
-
-                if should_trail:
-                    # Use regime-specific EMA for trailing
-                    ema_trail = recent_df['Close'].ewm(span=trail_ema, adjust=False).mean().iloc[-1] if len(recent_df) >= trail_ema else None
-
-                    if ema_trail and pd.notna(ema_trail):
-                        if current_close > ema_trail:  # Price rising above trail = exit short
-                            position['closes_below_trail'] += 1
-                            if position['closes_below_trail'] >= trail_days:
-                                return self._close_position(position, current_date, current_close, f"EMA{trail_ema}_Trail_Short", current_r)
-                        else:
-                            position['closes_below_trail'] = 0
-
-            # Early time stop (regime-specific)
-            early_exit_days = cfg.get("EARLY_EXIT_DAYS")
-            early_exit_r_threshold = cfg.get("EARLY_EXIT_R_THRESHOLD")
-
-            if early_exit_days is not None and early_exit_r_threshold is not None:
-                if days_held >= early_exit_days:
-                    if current_r < early_exit_r_threshold:
-                        return self._close_position(position, current_date, current_close, f"TimeStop_Early_{early_exit_days}d", current_r)
-
-        elif strategy == "LeaderPullback_Short_Position":
-            # LEADER PULLBACK SHORT: Fast tactical exits
-            # For shorts, we exit if price closes ABOVE trail (opposite of longs)
-            cfg = LEADER_SHORT_CFG_BULL
-
-            # Trailing stop (leader-specific)
-            trail_ema = cfg.get("TRAIL_EMA")
-            trail_days = cfg.get("TRAIL_DAYS")
-            trail_only_after_partial = cfg.get("TRAIL_ONLY_AFTER_PARTIAL", True)
-
-            if trail_ema is not None and trail_days is not None:
-                # Only trail if partial was taken (protect winners only)
-                should_trail = True
-                if trail_only_after_partial:
-                    should_trail = position.get('partial_exited', False)
-
-                if should_trail:
-                    # Use leader-specific EMA for trailing
-                    ema_trail = recent_df['Close'].ewm(span=trail_ema, adjust=False).mean().iloc[-1] if len(recent_df) >= trail_ema else None
-
-                    if ema_trail and pd.notna(ema_trail):
-                        if current_close > ema_trail:  # Price rising above trail = exit short
-                            position['closes_below_trail'] += 1
-                            if position['closes_below_trail'] >= trail_days:
-                                return self._close_position(position, current_date, current_close, f"EMA{trail_ema}_Trail_Leader", current_r)
-                        else:
-                            position['closes_below_trail'] = 0
-
-            # Early time stop (leader-specific - faster than trend shorts)
-            # Only exit if R <= 0 AND price hasn't moved much (avoiding premature exit on working trades)
-            early_exit_days = cfg.get("EARLY_EXIT_DAYS")
-            early_exit_r_threshold = cfg.get("EARLY_EXIT_R_THRESHOLD")
-
-            if early_exit_days is not None and early_exit_r_threshold is not None:
-                if days_held >= early_exit_days:
-                    # For SHORT: exit if R <= 0 AND close hasn't dropped much (close >= entry * 0.99)
-                    # This avoids cutting trades that are working but haven't reached 0R yet due to wide stops
-                    if direction == "SHORT":
-                        if current_r <= early_exit_r_threshold and current_close >= position['entry_price'] * 0.99:
-                            return self._close_position(position, current_date, current_close, f"TimeStop_Early_{early_exit_days}d_Leader", current_r)
-                    else:
-                        # For LONG: keep original logic
-                        if current_r < early_exit_r_threshold:
-                            return self._close_position(position, current_date, current_close, f"TimeStop_Early_{early_exit_days}d_Leader", current_r)
-
-        elif strategy == "GapReversal_Position":
-            from src.strategies.gap_reversal import GapReversalPosition
-
-            reversal_strategy = GapReversalPosition()
-            exit_cond = reversal_strategy.get_exit_conditions(
-                {
-                    "Direction": direction,
-                    "GapFillLevel": position.get("gap_fill_level"),
-                    "GapHigh": position.get("gap_high"),
-                    "GapLow": position.get("gap_low"),
-                    "GapMid": position.get("gap_mid"),
-                    "GapSupport": position.get("gap_support"),
-                    "GapResistance": position.get("gap_resistance"),
-                    "ZoneSupport": position.get("zone_support"),
-                    "ZoneResistance": position.get("zone_resistance"),
-                    "stop_loss": position.get("stop_price"),
-                    "metadata": {
-                        "GapFillLevel": position.get("gap_fill_level"),
-                        "GapHigh": position.get("gap_high"),
-                        "GapLow": position.get("gap_low"),
-                        "GapMid": position.get("gap_mid"),
-                        "GapSupport": position.get("gap_support"),
-                        "GapResistance": position.get("gap_resistance"),
-                        "ZoneSupport": position.get("zone_support"),
-                        "ZoneResistance": position.get("zone_resistance"),
-                    },
-                },
-                recent_df,
-                current_date,
-            )
-            if exit_cond is not None:
-                return self._close_position(
-                    position,
-                    current_date,
-                    float(exit_cond.get("exit_price", current_close)),
-                    str(exit_cond["reason"]),
-                    current_r,
-                )
-
-        elif strategy == "GapContinuation_Position":
-            from src.strategies.gap_continuation import GapContinuationPosition
-
-            continuation_strategy = GapContinuationPosition()
-            exit_cond = continuation_strategy.get_exit_conditions(
-                {
-                    "Direction": direction,
-                    "GapLow": position.get("gap_low"),
-                    "GapSupport": position.get("gap_support"),
-                    "ZoneSupport": position.get("zone_support"),
-                    "stop_loss": position.get("stop_price"),
-                    "metadata": {
-                        "GapLow": position.get("gap_low"),
-                        "GapSupport": position.get("gap_support"),
-                        "ZoneSupport": position.get("zone_support"),
-                    },
-                },
-                recent_df,
-                current_date,
-            )
-            if exit_cond is not None:
-                return self._close_position(
-                    position,
-                    current_date,
-                    float(exit_cond.get("exit_price", current_close)),
-                    str(exit_cond["reason"]),
-                    current_r,
-                )
-
-
-        has_pyramids = len(position['pyramid_adds']) > 0
-
-        # GapReversal: always enforce MaxDays hard cap — never pyramid, and open-ended
-        # holds are what caused the -245R PLTR trade (1134 days with no exit).
-        if strategy in {"GapReversal_Position", "GapContinuation_Position"} and days_held >= max_days:
-            self.log.info(
-                f"{strategy} EXIT max_days | {position.get('ticker','?')} {direction} | "
-                f"date={current_date} days={days_held} R={current_r:.2f}"
-            )
-            return self._close_position(position, current_date, current_close, f"TimeStop_{max_days}d", current_r)
-
-        if not has_pyramids and days_held >= max_days:
-            # Only apply time stop to non-pyramided positions
-            return self._close_position(position, current_date, current_close, f"TimeStop_{max_days}d", current_r)
-
-        # Pyramided positions: No time limit, managed by trail stops only
-
-        return None  # Continue holding
+        if not position["pyramid_adds"] and days_held >= position["max_days"]:
+            return self._close_position(position, current_date, current_close, f"TimeStop_{position['max_days']}d", current_r)
+        return None
 
     def _close_position(self, position, exit_date, exit_price, exit_reason, r_multiple):
         """
@@ -1211,8 +760,6 @@ class WalkForwardBacktester:
             "PnL_$": net_pnl,  # Net after brokerage + tax (used for all equity/R calculations)
             "HoldingDays": days_held,
             "PyramidAdds": len(position['pyramid_adds']),
-            "GapPct": position.get("gap_pct"),
-            "SmoothedRSI": position.get("smoothed_rsi"),
             "SignalType": position.get("signal_type"),
         }
 
@@ -1248,7 +795,7 @@ class WalkForwardBacktester:
         print(f"💼 Brokerage: {'ENABLED (SEC + FINRA fees)' if BACKTEST_BROKERAGE_ENABLED else 'DISABLED'}")
         print(f"🏛️  Tax: {'ENABLED (37% ST / 20% LT)' if BACKTEST_TAX_ENABLED else 'DISABLED'}")
         if isinstance(POSITION_MAX_PER_STRATEGY, dict):
-            print(f"📊 Max positions: {POSITION_MAX_TOTAL} total, per-strategy limits (3-8)")
+            print(f"📊 Max positions: {POSITION_MAX_TOTAL} total, per-strategy limits")
         else:
             print(f"📊 Max positions: {POSITION_MAX_TOTAL} total, {POSITION_MAX_PER_STRATEGY} per strategy")
         if self.strategy_bucket_limits:
@@ -1314,7 +861,12 @@ class WalkForwardBacktester:
                         print(f"      - {strat}: {count} signal(s)")
                 
                 # Pre-buy check (deduplication, formatting)
-                validated = pre_buy_check(signals, benchmark="QQQ", as_of_date=day)
+                validated = pre_buy_check(
+                    signals,
+                    rr_ratio=self.rr_ratio,
+                    benchmark="QQQ",
+                    as_of_date=day,
+                )
                 
                 # Log filtering results
                 filtered_out = signal_count - len(validated)
@@ -1389,12 +941,6 @@ class WalkForwardBacktester:
                             if success:
                                 # Show trade entry
                                 print(f"   ✅ {day.date()} | ENTER {trade['Ticker']} @ ${trade['Entry']:.2f} | {strategy[:20]}")
-                                if strategy == "GapReversal_Position":
-                                    self.log.info(
-                                        f"GapReversal ENTER | {trade['Ticker']} {trade.get('Direction','?')} | "
-                                        f"date={day.date()} entry={trade['Entry']:.2f} stop={trade.get('StopLoss', trade.get('StopPrice','?'))} "
-                                        f"gap={trade.get('GapPct','?')}% rsi={trade.get('SmoothedRSI','?')}"
-                                    )
                                 entered_count += 1
 
                                 # Update position counts

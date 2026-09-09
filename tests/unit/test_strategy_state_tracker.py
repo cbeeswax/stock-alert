@@ -13,10 +13,8 @@ from src.scanning.rs_bought_tracker import (
 def test_strategy_file_paths_use_expected_keys():
     assert strategy_file_key("RelativeStrength_Ranker_Position") == "rs_ranker"
     assert strategy_file_key("RallyPattern_Position") == "rally_pattern"
-    assert strategy_file_key("GapReversal_Position") == "gap_reversal"
-    assert strategy_file_key("%B_MeanReversion_Position") == "percent_b_mean_reversion"
     assert tracker_file_path_for_strategy("RallyPattern_Position").endswith("rally_pattern_bought.json")
-    assert history_file_path_for_strategy("GapReversal_Position").endswith("gap_reversal_trade_history.json")
+    assert history_file_path_for_strategy("Streak_Position").endswith("streak_trade_history.json")
 
 
 def test_strategy_tracker_writes_closed_trade_history_without_prior_active_row():
@@ -63,10 +61,10 @@ def test_strategy_tracker_writes_closed_trade_history_without_prior_active_row()
 def test_strategy_tracker_add_and_close_round_trip():
     with tempfile.TemporaryDirectory(prefix="strategy-tracker-backtest-") as tmp_dir:
         base = Path(tmp_dir) / "backtest"
-        bought_path = base / "gap_reversal_bought.json"
-        history_path = base / "gap_reversal_trade_history.json"
+        bought_path = base / "streak_bought.json"
+        history_path = base / "streak_trade_history.json"
         tracker = StrategyStateTracker(
-            strategy_name="GapReversal_Position",
+            strategy_name="Streak_Position",
             file_path=str(bought_path),
             history_file_path=str(history_path),
             load_from_file=False,
@@ -83,7 +81,7 @@ def test_strategy_tracker_add_and_close_round_trip():
             ticker="PLTR",
             exit_date="2026-04-22",
             exit_price=42.0,
-            exit_reason="EMA21_TRAIL_GAP",
+            exit_reason="NEXT_SESSION_CLOSE",
             profit_loss=1.5,
             r_multiple=0.8,
             days_held=2,
@@ -96,8 +94,8 @@ def test_strategy_tracker_add_and_close_round_trip():
             history = json.load(handle)
 
         trade = next(iter(history.values()))
-        assert trade["strategy"] == "GapReversal_Position"
-        assert trade["exit_reason"] == "EMA21_TRAIL_GAP"
+        assert trade["strategy"] == "Streak_Position"
+        assert trade["exit_reason"] == "NEXT_SESSION_CLOSE"
 
 
 def test_strategy_tracker_preserves_rally_metadata_on_close():

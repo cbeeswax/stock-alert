@@ -6,8 +6,6 @@ a clean per-strategy, long/short, and yearly P&L breakdown.
 
 Usage:
     python scripts/backtest_strategies.py                      # all active strategies
-    python scripts/backtest_strategies.py --strategy gap       # GapReversal only
-    python scripts/backtest_strategies.py --strategy gapcont   # GapContinuation only
     python scripts/backtest_strategies.py --strategy rally     # RallyPattern only
     python scripts/backtest_strategies.py --strategy rs        # RS Ranker only
     python scripts/backtest_strategies.py --strategy all       # explicitly all
@@ -16,13 +14,9 @@ Usage:
     python scripts/backtest_strategies.py --output my_results.csv
 
 Strategy aliases:
-    gap       → GapReversal_Position
-    gapcont   → GapContinuation_Position
     rally     → RallyPattern_Position
     streak    → Streak_Position
     rs        → RelativeStrength_Ranker_Position
-    high52    → High52_Position
-    bigbase   → BigBase_Breakout_Position
     all       → all strategies (active + backtest-enabled)
 """
 import sys
@@ -53,31 +47,17 @@ import src.config.settings as cfg
 
 # ─── Strategy aliases & max positions for backtest ────────────────────────────
 STRATEGY_ALIASES = {
-    "gap":     "GapReversal_Position",
-    "gapcont": "GapContinuation_Position",
-    "rally":   "RallyPattern_Position",
-    "streak":  "Streak_Position",
-    "rs":      "RelativeStrength_Ranker_Position",
-    "high52":  "High52_Position",
-    "bigbase": "BigBase_Breakout_Position",
-    "ema":     "EMA_Crossover_Position",
-    "emastack":"EMA_StackAlignment_Position",
-    "trend":   "TrendContinuation_Position",
+    "rally": "RallyPattern_Position",
+    "rs": "RelativeStrength_Ranker_Position",
+    "streak": "Streak_Position",
 }
 
 # Backtest max positions per strategy (overrides 0 for isolated runs)
 # Only strategies listed here are enabled when running --strategy all
 BACKTEST_MAX_POSITIONS = {
-    "GapReversal_Position": 5,
-    "GapContinuation_Position": 5,
     "RallyPattern_Position": 5,
-    "Streak_Position": 1,
     "RelativeStrength_Ranker_Position": 10,
-    # EMA_StackAlignment_Position: disabled — needs validation
-    # High52_Position: disabled — needs further tuning
-    # TrendContinuation_Position: disabled — needs further tuning
-    # BigBase_Breakout_Position: disabled — not yet validated
-    # EMA_Crossover_Position: disabled — not yet validated
+    "Streak_Position": 1,
 }
 
 RALLY_STAGE_BACKTEST_CAPS = {
@@ -151,10 +131,6 @@ def _parse_args():
         help="Scan frequency (B=daily)",
     )
     p.add_argument("--capital", type=float, default=100_000, help="Starting capital")
-    p.add_argument(
-        "--direction", default=None, choices=["long", "short", "both"],
-        help="Trade direction for GapReversal (long/short/both). Only applies when --strategy gap.",
-    )
     p.add_argument("--output", default=None, help="Output CSV (default: auto-named)")
     p.add_argument("--no-download", action="store_true", help="Skip data download")
     return p.parse_args()
@@ -365,12 +341,7 @@ def main():
             isolated_max_positions = sum(RALLY_STAGE_BACKTEST_CAPS.values())
             strategy_bucket_limits = {target_strategy: dict(RALLY_STAGE_BACKTEST_CAPS)}
         cfg.POSITION_MAX_PER_STRATEGY[target_strategy] = isolated_max_positions
-        if target_strategy == "GapReversal_Position":
-            direction = args.direction or "both"
-            cfg.GAP_REVERSAL_DIRECTION = direction
-            label = f"{target_strategy} [{direction.upper()}]"
-        else:
-            label = target_strategy
+        label = target_strategy
 
     # Auto output name
     output_path = args.output or f"backtest_{strategy_key}.csv"

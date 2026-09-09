@@ -5,8 +5,7 @@ Uses the same position trading strategies as the backtester.
 Scans for active long strategies including:
 - RelativeStrength_Ranker_Position
 - RallyPattern_Position
-- High52_Position
-- BigBase_Breakout_Position
+- Streak_Position
 """
 
 import argparse
@@ -124,14 +123,14 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Live Position Trading Scanner")
     parser.add_argument(
         "--strategies",
-        help="Comma-separated list of strategies to scan (e.g. GapReversal_Position). "
+        help="Comma-separated list of strategies to scan (e.g. RallyPattern_Position). "
              "If set, only these strategies run for new entries.",
     )
     parser.add_argument(
         "--skip-strategies",
         dest="skip_strategies",
         help="Comma-separated list of strategies to exclude from new entries "
-             "(e.g. GapReversal_Position). Position monitoring always runs for all.",
+             "(e.g. RallyPattern_Position). Position monitoring always runs for all.",
     )
     parser.add_argument(
         "--skip-monitor",
@@ -144,7 +143,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--label",
         default="",
-        help="Optional label appended to the email subject (e.g. 'Morning Gap Scan').",
+        help="Optional label appended to the email subject (e.g. 'Morning Scan').",
     )
     args = parser.parse_args()
 
@@ -161,7 +160,7 @@ if __name__ == "__main__":
             if key in POSITION_MAX_PER_STRATEGY:
                 POSITION_MAX_PER_STRATEGY[key] = 0
 
-    scan_label = args.label or ("Morning Gap Scan" if args.strategies else "Evening Scan")
+    scan_label = args.label or ("Morning Scan" if args.strategies else "Evening Scan")
 
     print("="*80)
     print("🚀 LIVE POSITION TRADING SCANNER")
@@ -394,7 +393,7 @@ if __name__ == "__main__":
                 continue
 
             # Calculate shares — enforce 1% minimum stop distance to prevent
-            # position-size explosions when gap fill level is very close to entry.
+            # position-size explosions when a stop is very close to entry.
             risk_per_share = abs(entry - stop)
             min_risk = entry * 0.01
             risk_per_share = max(risk_per_share, min_risk)
@@ -439,14 +438,8 @@ if __name__ == "__main__":
                 'setup_type': trade.get('SetupType'),
                 'signal_type': trade.get('SignalType'),
                 'trigger_level': trade.get('TriggerLevel'),
-                'gap_fill_level': trade.get('GapFillLevel'),
-                'gap_high': trade.get('GapHigh'),
                 'zone_support': trade.get('ZoneSupport'),
                 'zone_resistance': trade.get('ZoneResistance'),
-                'gap_low': trade.get('GapLow'),
-                'gap_mid': trade.get('GapMid'),
-                'gap_support': trade.get('GapSupport'),
-                'gap_resistance': trade.get('GapResistance'),
             }
             extra_fields = {
                 key: value

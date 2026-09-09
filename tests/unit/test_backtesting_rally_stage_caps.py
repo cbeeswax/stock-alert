@@ -26,7 +26,7 @@ def test_resolve_trade_bucket_uses_rally_setup_type():
         {"Strategy": "RallyPattern_Position", "SetupType": "power_breakout"}
     ) == "confirmed"
     assert WalkForwardBacktester._resolve_trade_bucket(
-        {"Strategy": "GapReversal_Position", "SetupType": "gap_long"}
+        {"Strategy": "Streak_Position", "SetupType": "next_session"}
     ) is None
 
 

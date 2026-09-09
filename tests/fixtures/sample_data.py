@@ -187,7 +187,7 @@ class PositionDataBuilder:
         if positions is None:
             positions = [
                 PositionDataBuilder.create_position("AAPL", 150, strategy="RS_Ranker"),
-                PositionDataBuilder.create_position("MSFT", 340, strategy="High52"),
+                PositionDataBuilder.create_position("MSFT", 340, strategy="RallyPattern_Position"),
             ]
         
         portfolio = {}
@@ -288,6 +288,6 @@ def get_sample_position_data() -> Dict[str, Any]:
     builder = PositionDataBuilder()
     return builder.create_portfolio([
         builder.create_position("AAPL", 150, strategy="RelativeStrength_Ranker_Position"),
-        builder.create_position("MSFT", 340, strategy="High52_Position"),
-        builder.create_position("GOOGL", 140, strategy="BigBase_Breakout_Position"),
+        builder.create_position("MSFT", 340, strategy="RallyPattern_Position"),
+        builder.create_position("GOOGL", 140, strategy="Streak_Position"),
     ])

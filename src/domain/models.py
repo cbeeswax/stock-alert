@@ -12,13 +12,9 @@ from enum import Enum
 
 class StrategyType(str, Enum):
     """Available strategy types."""
+    RALLY_PATTERN = "RallyPattern_Position"
     RELATIVE_STRENGTH = "RelativeStrength_Ranker_Position"
-    HIGH_52W = "High52_Position"
-    BIGBASE_BREAKOUT = "BigBase_Breakout_Position"
-    EMA_CROSSOVER = "EMA_Crossover_Position"
-    EMA_STACK_ALIGNMENT = "EMA_StackAlignment_Position"
-    TREND_CONTINUATION = "TrendContinuation_Position"
-    PERCENT_B = "%B_MeanReversion_Position"
+    STREAK = "Streak_Position"
 
 
 class SignalType(str, Enum):
